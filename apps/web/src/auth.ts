@@ -1,5 +1,6 @@
-import NextAuth from "next-auth";
+import NextAuth, { customFetch } from "next-auth";
 import GitHub from "next-auth/providers/github";
+import { githubFetch } from "./server/retry-fetch";
 
 declare module "next-auth" {
   interface Session {
@@ -8,9 +9,18 @@ declare module "next-auth" {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  providers: [GitHub],
+  trustHost: true,
+  providers: [
+    GitHub({
+      clientId: process.env.AUTH_GITHUB_ID,
+      clientSecret: process.env.AUTH_GITHUB_SECRET,
+      // GitHub Apps authorize with App permissions; keep profile + email for the panel user.
+      authorization: { params: { scope: "read:user user:email" } },
+      [customFetch]: githubFetch,
+    }),
+  ],
   session: { strategy: "jwt" },
-  pages: { signIn: "/signin" },
+  pages: { signIn: "/signin", error: "/signin" },
   callbacks: {
     async jwt({ token, profile }) {
       if (profile) {

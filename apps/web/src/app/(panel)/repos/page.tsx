@@ -1,7 +1,7 @@
-import { teamRepos } from "@foundry/control";
+import { syncUnlinkedInstallations, teamRepos } from "@foundry/control";
 import { HARNESS_IDS } from "@foundry/shared";
 import { requireTeam } from "@/server/session";
-import { onboardAction, repoSettingsAction } from "../../actions";
+import { onboardAction, repoSettingsAction, syncReposAction } from "../../actions";
 
 const ONBOARDING: Record<string, { label: string; tone: string }> = {
   not_started: { label: "not onboarded", tone: "" },
@@ -13,7 +13,16 @@ const ONBOARDING: Record<string, { label: string; tone: string }> = {
 
 export default async function Repos({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   const { ctx, team, role } = await requireTeam();
-  const list = await teamRepos(ctx, team.id);
+  let list = await teamRepos(ctx, team.id);
+  let syncError: string | null = null;
+  if (list.length === 0 && role === "admin") {
+    try {
+      await syncUnlinkedInstallations(ctx, team.id);
+      list = await teamRepos(ctx, team.id);
+    } catch (err) {
+      syncError = err instanceof Error ? err.message : String(err);
+    }
+  }
   const sp = await searchParams;
   const appSlug = process.env.GITHUB_APP_SLUG;
   return (
@@ -23,13 +32,25 @@ export default async function Repos({ searchParams }: { searchParams: Promise<Re
           <div className="eyebrow">{team.name}</div>
           <h1>Repos</h1>
         </div>
-        {appSlug && role === "admin" ? (
-          <a className="button primary" href={`https://github.com/apps/${appSlug}/installations/new`}>
-            Install GitHub App
-          </a>
-        ) : null}
+        <div className="row">
+          {role === "admin" ? (
+            <form action={syncReposAction}>
+              <button type="submit">Sync from GitHub</button>
+            </form>
+          ) : null}
+          {appSlug && role === "admin" ? (
+            <a className="button primary" href={`https://github.com/apps/${appSlug}/installations/new`}>
+              Install GitHub App
+            </a>
+          ) : null}
+        </div>
       </div>
       {sp.installed ? <div className="notice" style={{ marginBottom: 14 }}>GitHub App installed. Repos synced.</div> : null}
+      {syncError ? (
+        <div className="notice" data-tone="bad" style={{ marginBottom: 14 }}>
+          Could not list GitHub App repos: {syncError}
+        </div>
+      ) : null}
       {list.length === 0 ? (
         <div className="notice">
           No repos yet. Install the Foundry GitHub App on your org or account and pick the repos Foundry may work on.

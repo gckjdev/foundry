@@ -1,3 +1,4 @@
+import { teams } from "@foundry/db";
 import { TEST_DATABASE_URL } from "@foundry/db/testing";
 import { stageLabel } from "@foundry/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -10,6 +11,7 @@ import { answerFromCheckbox } from "./questions";
 import { runnerAsk, runnerConfidence, runnerEvidence, runnerStage } from "./runner-api";
 import { createJoinToken, heartbeat, joinRunner } from "./runners";
 import { requeueLostJobs } from "./sweeper";
+import { syncUnlinkedInstallations } from "./teams";
 import { createTestEnv, issueLabeledPayload, seedRunner, seedTeam, type TestEnv, touchRunner } from "./testing";
 
 async function deliver(env: TestEnv, event: string, payload: unknown, id: string = crypto.randomUUID()) {
@@ -186,5 +188,17 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
       review: { state: "changes_requested", body: "Use a reversible migration", user: { login: "carol", type: "User" } },
     });
     expect(await getJob(env.ctx, b.jobId)).toMatchObject({ status: "queued", resumeStage: "implementing" });
+  });
+
+  it("syncs unlinked GitHub App installations onto the current team", async () => {
+    const { team } = await seedTeam(env);
+    env.gh.installations.set(99, [{ id: 99, fullName: "acme/other", defaultBranch: "main" }]);
+    env.gh.appInstallations.push({ id: 1, accountLogin: "acme", accountType: "Organization" }, { id: 99, accountLogin: "acme", accountType: "Organization" });
+    env.gh.installations.set(1, [{ id: 4242, fullName: "acme/app", defaultBranch: "main" }]);
+    const linked = await syncUnlinkedInstallations(env.ctx, team.id);
+    expect(linked.map((r) => r.fullName).sort()).toEqual(["acme/app", "acme/other"]);
+    const [other] = await env.ctx.db.insert(teams).values({ name: "other" }).returning();
+    const stolen = await syncUnlinkedInstallations(env.ctx, other!.id);
+    expect(stolen).toEqual([]);
   });
 });

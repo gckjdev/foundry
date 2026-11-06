@@ -9,7 +9,7 @@ const config: NextConfig = {
   outputFileTracingRoot: root,
   // Workspace packages ship TypeScript source.
   transpilePackages: ["@foundry/control", "@foundry/db", "@foundry/github", "@foundry/shared"],
-  serverExternalPackages: ["postgres", "web-push", "nodemailer"],
+  serverExternalPackages: ["postgres", "web-push", "nodemailer", "undici"],
   outputFileTracingIncludes: {
     "/**": ["../../packages/db/migrations/**"],
   },

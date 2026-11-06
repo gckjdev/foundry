@@ -1,6 +1,9 @@
 import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
-import type { CiState, GhPullRequest, GitHubClient, RepoRef } from "./types";
+import type { CiState, GhAppInstallation, GhPullRequest, GitHubClient, RepoRef } from "./types";
+
+/** Resolve fetch at call time so the web app's GitHub proxy wrapper is used. */
+const liveFetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
 
 export interface GitHubAppConfig {
   appId: string | number;
@@ -69,7 +72,11 @@ export class OctokitGitHubClient implements GitHubClient {
   private readonly cache = new Map<number, { octokit: Octokit; expires: number }>();
 
   constructor(private readonly config: GitHubAppConfig) {
-    this.app = new Octokit({ authStrategy: createAppAuth, auth: { appId: config.appId, privateKey: config.privateKey } });
+    this.app = new Octokit({
+      authStrategy: createAppAuth,
+      auth: { appId: config.appId, privateKey: config.privateKey },
+      request: { fetch: liveFetch },
+    });
   }
 
   private kit(installationId: number): Octokit {
@@ -78,9 +85,19 @@ export class OctokitGitHubClient implements GitHubClient {
     const octokit = new Octokit({
       authStrategy: createAppAuth,
       auth: { appId: this.config.appId, privateKey: this.config.privateKey, installationId },
+      request: { fetch: liveFetch },
     });
     this.cache.set(installationId, { octokit, expires: Date.now() + 30 * 60_000 });
     return octokit;
+  }
+
+  async listAppInstallations(): Promise<GhAppInstallation[]> {
+    const list = await this.app.paginate(this.app.apps.listInstallations, { per_page: 100 });
+    return list.map((i) => ({
+      id: i.id,
+      accountLogin: "login" in (i.account ?? {}) ? ((i.account as { login: string }).login ?? "") : "",
+      accountType: "type" in (i.account ?? {}) ? ((i.account as { type?: string }).type ?? "") : "",
+    }));
   }
 
   async installationToken(installationId: number) {

@@ -1,5 +1,6 @@
 import type {
   CiState,
+  GhAppInstallation,
   GhComment,
   GhInstallationRepo,
   GhIssue,
@@ -27,6 +28,7 @@ interface FakeRepo {
 export class FakeGitHub implements GitHubClient {
   readonly repos = new Map<string, FakeRepo>();
   readonly installations = new Map<number, GhInstallationRepo[]>();
+  readonly appInstallations: GhAppInstallation[] = [];
   readonly projectStatus = new Map<string, string>();
   readonly calls: { method: string; args: unknown[] }[] = [];
   private nextId = 1000;
@@ -74,6 +76,11 @@ export class FakeGitHub implements GitHubClient {
   async installationToken(installationId: number) {
     this.record("installationToken", installationId);
     return { token: `ghs_fake_${installationId}`, expiresAt: new Date(Date.now() + 3600_000).toISOString() };
+  }
+
+  async listAppInstallations() {
+    if (this.appInstallations.length > 0) return this.appInstallations;
+    return [...this.installations.keys()].map((id) => ({ id, accountLogin: "fake", accountType: "Organization" }));
   }
 
   async listInstallationRepos(installationId: number) {

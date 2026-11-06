@@ -86,6 +86,27 @@ export async function teamMembers(ctx: ControlContext, teamId: string) {
     .where(eq(memberships.teamId, teamId));
 }
 
+/**
+ * Attach GitHub App installations that are not already owned by another team.
+ * Recovers the common local case: the App was installed before login, so the
+ * Setup URL never linked repos.
+ */
+export async function syncUnlinkedInstallations(ctx: ControlContext, teamId: string): Promise<Repo[]> {
+  const installations = await ctx.gh.listAppInstallations();
+  const existing = await ctx.db.select({ installationId: repos.ghInstallationId, teamId: repos.teamId }).from(repos);
+  const owner = new Map<number, string>();
+  for (const row of existing) {
+    if (!owner.has(row.installationId)) owner.set(row.installationId, row.teamId);
+  }
+  const out: Repo[] = [];
+  for (const inst of installations) {
+    const taken = owner.get(inst.id);
+    if (taken && taken !== teamId) continue;
+    out.push(...(await linkInstallation(ctx, teamId, inst.id)));
+  }
+  return out;
+}
+
 /** GitHub App install callback: attach every repo the installation can see to the team. */
 export async function linkInstallation(ctx: ControlContext, teamId: string, installationId: number): Promise<Repo[]> {
   const list = await ctx.gh.listInstallationRepos(installationId);

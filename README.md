@@ -32,13 +32,13 @@ pnpm dev                        # web on :3000, realtime on :3001
 pnpm dev:webhooks               # forward GitHub webhooks via smee.io
 ```
 
-Run a runner from source:
+The runner is a separate process (join a team first, then start it):
 
 ```bash
-bun apps/runner/src/cli.ts runner join <team-token> --url http://localhost:3000
-bun apps/runner/src/cli.ts runner start
+bun apps/runner/src/cli.ts runner join <token> --server http://localhost:3000
+pnpm dev:runner
 ```
 
 Tests: `pnpm test` (set `FOUNDRY_TEST_DATABASE_URL` to a Postgres you can create databases on, otherwise database tests are skipped).
 
-See `docs/` for install, onboarding, the `.foundry/` reference and self-hosting.
+See `docs/local-setup.md` for GitHub App URLs, `.env`, local Postgres, and Docker Compose deploy. Other notes live under `docs/`.

@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 import { getContext } from "./context";
 
 export const TEAM_COOKIE = "foundry_team";
+export const INSTALL_COOKIE = "foundry_install";
 
 export async function requireUser() {
   const session = await auth();

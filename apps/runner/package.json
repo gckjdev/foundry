@@ -7,7 +7,7 @@
     "foundry": "./src/cli.ts"
   },
   "scripts": {
-    "dev": "bun src/cli.ts runner start",
+    "start": "bun src/cli.ts runner start",
     "build:local": "bun build src/cli.ts --compile --outfile dist/foundry",
     "build:release": "bun scripts/build-release.ts",
     "typecheck": "tsc -p tsconfig.json"

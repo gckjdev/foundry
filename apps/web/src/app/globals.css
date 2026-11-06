@@ -505,6 +505,10 @@ pre {
   border-color: rgba(232, 193, 90, 0.5);
   color: var(--warn);
 }
+.notice[data-tone="bad"] {
+  border-color: rgba(240, 103, 90, 0.5);
+  color: var(--bad);
+}
 code.token {
   display: block;
   padding: 10px;

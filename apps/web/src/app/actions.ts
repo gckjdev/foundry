@@ -7,12 +7,14 @@ import {
   createTeam,
   getJob,
   inviteMember,
+  linkInstallation,
   markQuestionHelpful,
   requireMember,
   retryJob,
   sendMessage,
   setRunnerStatus,
   startOnboarding,
+  syncUnlinkedInstallations,
   updateRepoSettings,
 } from "@foundry/control";
 import { questions, repos, runners, teams, users } from "@foundry/db";
@@ -23,12 +25,12 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { signIn, signOut } from "@/auth";
 import { getContext } from "@/server/context";
-import { requireAdmin, requireTeam, requireUser, TEAM_COOKIE } from "@/server/session";
+import { INSTALL_COOKIE, requireAdmin, requireTeam, requireUser, TEAM_COOKIE } from "@/server/session";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 
 export async function signInAction() {
-  await signIn("github", { redirectTo: "/board" });
+  await signIn("github", { redirectTo: "/api/github/setup" });
 }
 
 export async function signOutAction() {
@@ -40,8 +42,27 @@ export async function createTeamAction(form: FormData) {
   const name = str(form, "name");
   if (!name) return;
   const team = await createTeam(await getContext(), user.id, name);
-  (await cookies()).set(TEAM_COOKIE, team.id, { httpOnly: true, sameSite: "lax", path: "/" });
+  const jar = await cookies();
+  jar.set(TEAM_COOKIE, team.id, { httpOnly: true, sameSite: "lax", path: "/" });
+  const ctx = await getContext();
+  const installationId = Number(jar.get(INSTALL_COOKIE)?.value);
+  try {
+    if (Number.isInteger(installationId) && installationId > 0) {
+      await linkInstallation(ctx, team.id, installationId);
+      jar.delete(INSTALL_COOKIE);
+    }
+    await syncUnlinkedInstallations(ctx, team.id);
+  } catch (err) {
+    console.error("[foundry] GitHub installation sync after create team failed", err);
+  }
   redirect("/repos");
+}
+
+export async function syncReposAction() {
+  const { ctx, team } = await requireAdmin();
+  await syncUnlinkedInstallations(ctx, team.id);
+  revalidatePath("/repos");
+  redirect("/repos?installed=1");
 }
 
 export async function switchTeamAction(form: FormData) {

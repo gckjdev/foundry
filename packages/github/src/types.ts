@@ -48,11 +48,18 @@ export interface GhInstallationRepo {
   defaultBranch: string;
 }
 
+export interface GhAppInstallation {
+  id: number;
+  accountLogin: string;
+  accountType: string;
+}
+
 export type CiState = "success" | "failure" | "pending" | "none";
 
 /** Everything Foundry needs from GitHub, behind one interface so tests use the in-memory fake. */
 export interface GitHubClient {
   installationToken(installationId: number): Promise<{ token: string; expiresAt: string }>;
+  listAppInstallations(): Promise<GhAppInstallation[]>;
   listInstallationRepos(installationId: number): Promise<GhInstallationRepo[]>;
 
   getIssue(repo: RepoRef, number: number): Promise<GhIssue>;
