@@ -41,4 +41,4 @@ pnpm dev:runner
 
 Tests: `pnpm test` (set `FOUNDRY_TEST_DATABASE_URL` to a Postgres you can create databases on, otherwise database tests are skipped).
 
-See `docs/local-setup.md` for GitHub App URLs, `.env`, local Postgres, and Docker Compose deploy. Other notes live under `docs/`.
+See `docs/local-setup.md` for GitHub App URLs, `.env`, local Postgres, and Docker Compose deploy. Repo onboarding (join token, runner, recipe PR) is `docs/onboarding.md`.

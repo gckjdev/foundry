@@ -125,7 +125,7 @@ bun apps/runner/src/cli.ts runner join <token> --server http://localhost:3000
 pnpm dev:runner
 ```
 
-Jobs start when an issue is labeled `foundry`.
+Then onboard the repo so it can accept jobs: `docs/onboarding.md`. After the recipe PR is merged, label an issue `foundry` to start work.
 
 If Authorize leaves you on GitHub’s “You are being redirected…” page, the Node process could not reach `github.com` (common when the browser uses a system proxy and Node does not). Retry after a restart of `pnpm dev`; the panel now sends GitHub OAuth/API calls through the detected macOS HTTPS proxy.
 
