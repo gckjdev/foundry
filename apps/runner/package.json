@@ -1,0 +1,35 @@
+{
+  "name": "@foundry/runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "foundry": "./src/cli.ts"
+  },
+  "scripts": {
+    "dev": "bun src/cli.ts runner start",
+    "build:local": "bun build src/cli.ts --compile --outfile dist/foundry",
+    "build:release": "bun scripts/build-release.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@foundry/harness-claude-code": "workspace:*",
+    "@foundry/harness-core": "workspace:*",
+    "@foundry/harness-opencode": "workspace:*",
+    "@foundry/mcp-foundry": "workspace:*",
+    "@foundry/os-adapters": "workspace:*",
+    "@foundry/playbooks": "workspace:*",
+    "@foundry/shared": "workspace:*",
+    "postgres": "^3.4.7",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@types/bun": "^1.3.0"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

@@ -1,0 +1,44 @@
+class Foundry < Formula
+  desc "Foundry runner: works GitHub issues with Claude Code or OpenCode on your machines"
+  homepage "https://github.com/foundry-dev/foundry"
+  version "{{VERSION}}"
+  license "MIT"
+
+  on_macos do
+    on_arm do
+      url "{{RELEASE_URL}}/foundry-darwin-arm64.tar.gz"
+      sha256 "{{SHA_DARWIN_ARM64}}"
+    end
+    on_intel do
+      url "{{RELEASE_URL}}/foundry-darwin-x64.tar.gz"
+      sha256 "{{SHA_DARWIN_X64}}"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "{{RELEASE_URL}}/foundry-linux-arm64.tar.gz"
+      sha256 "{{SHA_LINUX_ARM64}}"
+    end
+    on_intel do
+      url "{{RELEASE_URL}}/foundry-linux-x64.tar.gz"
+      sha256 "{{SHA_LINUX_X64}}"
+    end
+  end
+
+  def install
+    bin.install "foundry"
+  end
+
+  def caveats
+    <<~EOS
+      Join your team, then start the runner on login:
+        foundry runner join <token> --server https://<your-foundry>
+        foundry runner install-service
+    EOS
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/foundry --version")
+  end
+end

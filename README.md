@@ -1,0 +1,44 @@
+# Foundry
+
+Foundry turns GitHub issues into verified, merged pull requests. Coding agents (Claude Code or OpenCode) run on your team's own Mac and Linux machines, follow a fixed playbook (triage, investigate, implement, verify, PR), and a confidence gate decides whether a change merges itself or goes to a human.
+
+Product spec: `software-factory-product-spec.md` (v0.5).
+
+## Layout
+
+| Path | What it is |
+|---|---|
+| `apps/web` | Control plane: Next.js panel, API routes, webhook ingest, runner API |
+| `apps/realtime` | Postgres LISTEN/NOTIFY to WebSocket fan-out |
+| `apps/runner` | Runner daemon and `foundry` CLI (Bun, compiled per platform) |
+| `packages/shared` | zod schemas, state machine, gate, scheduler, GitHub comment templates |
+| `packages/db` | Drizzle schema, SQL migrations, NOTIFY triggers |
+| `packages/control` | Control-plane services: ingest, jobs, claiming, questions, gate, sweeper, notifier, metrics |
+| `packages/github` | GitHub App client (and an in-memory fake for tests) |
+| `packages/harness-*` | Harness adapter interface, Claude Code and OpenCode adapters |
+| `packages/mcp-foundry` | Per-job MCP server: `stage`, `ask`, `evidence`, `confidence`, `plan` |
+| `packages/os-adapters` | macOS and Linux adapters (service, user, secrets, limits, sleep, idle, power) |
+| `packages/playbooks` | Default playbook and prompt assembly |
+| `deploy/` | Docker Compose stack (web, realtime, Postgres, Caddy) |
+
+## Development
+
+```bash
+pnpm install
+cp .env.example .env            # fill in GitHub App + OAuth values
+docker compose -f deploy/compose.yaml up -d postgres   # or any Postgres 16+
+pnpm db:migrate
+pnpm dev                        # web on :3000, realtime on :3001
+pnpm dev:webhooks               # forward GitHub webhooks via smee.io
+```
+
+Run a runner from source:
+
+```bash
+bun apps/runner/src/cli.ts runner join <team-token> --url http://localhost:3000
+bun apps/runner/src/cli.ts runner start
+```
+
+Tests: `pnpm test` (set `FOUNDRY_TEST_DATABASE_URL` to a Postgres you can create databases on, otherwise database tests are skipped).
+
+See `docs/` for install, onboarding, the `.foundry/` reference and self-hosting.

@@ -1,0 +1,28 @@
+{
+  "name": "@foundry/control",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@foundry/db": "workspace:*",
+    "@foundry/github": "workspace:*",
+    "@foundry/shared": "workspace:*",
+    "drizzle-orm": "^0.45.0",
+    "nodemailer": "^7.0.0",
+    "postgres": "^3.4.9",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "^7.0.0",
+    "@types/web-push": "^3.6.4"
+  }
+}

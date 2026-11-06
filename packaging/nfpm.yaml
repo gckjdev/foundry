@@ -1,0 +1,23 @@
+# nfpm config for the .deb and .rpm runner packages. build-release.ts sets the env vars.
+name: foundry
+arch: ${FOUNDRY_ARCH}
+platform: linux
+version: ${FOUNDRY_VERSION}
+section: devel
+priority: optional
+maintainer: Foundry <foundry@users.noreply.github.com>
+description: |
+  Foundry runner: works GitHub issues with Claude Code or OpenCode on your machines.
+homepage: https://github.com/foundry-dev/foundry
+license: MIT
+depends:
+  - git
+recommends:
+  - systemd
+contents:
+  - src: ${FOUNDRY_BINARY}
+    dst: /usr/bin/foundry
+    file_info:
+      mode: 0755
+scripts:
+  postinstall: packaging/linux/postinstall.sh

@@ -1,0 +1,28 @@
+{
+  "name": "foundry",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "dev:webhooks": "smee --url \"$SMEE_URL\" --target http://localhost:3000/api/webhooks/github",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:migrate": "pnpm --filter @foundry/db migrate"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.0",
+    "@types/node": "^22.10.0",
+    "smee-client": "^2.0.4",
+    "turbo": "^2.6.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.0"
+  }
+}

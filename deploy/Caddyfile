@@ -1,0 +1,12 @@
+{$FOUNDRY_DOMAIN} {
+	encode gzip
+
+	# WebSocket fan-out. Caddy proxies Upgrade requests transparently.
+	handle_path /realtime* {
+		reverse_proxy realtime:3001
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}
