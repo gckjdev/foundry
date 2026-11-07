@@ -41,7 +41,7 @@ bun apps/runner/src/cli.ts runner join <token> --server http://localhost:3000
 pnpm dev:runner
 ```
 
-Several jobs on one daemon: re-join with `--concurrency N`. A second daemon on the same login needs its own `--name` and `FOUNDRY_HOME` (`docs/local-setup.md` §3).
+Several jobs on one daemon: re-join with `--concurrency N`. A second daemon on the same login needs its own `--name` and `--home` (`docs/local-setup.md` §3).
 
 Tests: `pnpm test` (unit + API + in-process e2e). Set `FOUNDRY_TEST_DATABASE_URL` to a Postgres you can create databases on, otherwise database tests are skipped. Browser e2e: `pnpm test:e2e`. Coverage: `pnpm test:report`. See `docs/testing.md`.
 

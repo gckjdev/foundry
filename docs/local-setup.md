@@ -169,35 +169,52 @@ If **Repos** is empty after you installed the App, the Setup URL ran before you 
 
 ### Multiple runners on one computer
 
-One joined runner can already detect **both** Claude Code and OpenCode (whichever is installed) and can run several jobs at once with `--concurrency`. You only need extra daemons if you want **separate names** (for `runner:<name>` pins), a personal runner and a `--shared` runner on the same box, or isolated worktrees.
+One joined runner already detects **both** Claude Code and OpenCode (whichever is installed). Extra daemons are for **separate identities**, not for having both harnesses.
 
-**More jobs, same runner** (usual case):
+| You want                                                                | What to do                                     |
+| ----------------------------------------------------------------------- | ---------------------------------------------- |
+| More jobs on one runner                                                 | Re-join that runner with `--concurrency N`     |
+| A second name, a personal runner plus `--shared`, or isolated worktrees | A second daemon: its own `--name` and `--home` |
+
+Re-joining with the **same** `--name` updates that runner. The default name is `<user>-<hostname>`. Two daemons need two names, or the second join replaces the first row on **Runners**.
+
+Each daemon has its own home. The default is `~/.foundry` (`config.json`, the join token, the MCP socket, port leases, worktrees, logs). A second daemon must use another directory. `--home` sets that for the command. `FOUNDRY_HOME` still works if you export it. Do not point two daemons at one home.
+
+`pnpm dev` does not start a runner. `pnpm dev:runner` is only the default home. Create one join token on **Runners** — it is a team token; you can join many daemons with it.
 
 ```bash
-bun apps/runner/src/cli.ts runner join <token> --server http://localhost:3000 --concurrency 2
-pnpm dev:runner
-```
-
-Re-joining with the **same** `--name` updates that runner (including concurrency). The default name is `<user>-<hostname>`.
-
-**Two daemons on one login:** each needs its own `--name` and `FOUNDRY_HOME`. They cannot share `~/.foundry` (that directory holds `config.json`, the MCP socket, port leases, and worktrees). Create one join token on **Runners** — it is a team token; you can join many machines with it.
-
-```bash
-# Terminal A — default home, default name
+# Terminal A — default home
 bun apps/runner/src/cli.ts runner join <token> --server http://localhost:3000 --name pipi-claude
 pnpm dev:runner
 
-# Terminal B — second home and name (keep this FOUNDRY_HOME on every command for this runner)
-export FOUNDRY_HOME="$HOME/.foundry-opencode"
-bun apps/runner/src/cli.ts runner join <token> --server http://localhost:3000 --name pipi-opencode
-bun apps/runner/src/cli.ts runner start
+# Terminal B — second home and name
+bun apps/runner/src/cli.ts runner join <token> --server http://localhost:3000 \
+  --name pipi-opencode --home ~/.foundry-opencode
+bun apps/runner/src/cli.ts runner start --home ~/.foundry-opencode
 ```
 
-`pnpm dev:runner` always uses `~/.foundry`. Extra runners must be started with `FOUNDRY_HOME=… bun apps/runner/src/cli.ts runner start` (same for `doctor`, `status`, `open`).
+`foundry runner status` and `foundry runner status --home ~/.foundry-opencode` each report their own name. If a home is not joined, the error includes that directory.
 
-Do **not** run `foundry runner install-service` twice on one user — launchd/systemd only have one unit name. Leave the second daemon in the foreground, or in its own terminal.
+On **Runners**, both names show **accepting**. Heartbeats stay independent, and claim uses row locks so the two daemons do not take the same job.
 
-On **Runners**, you should see both names **accepting**. Stop each with Ctrl+C in its terminal. After a restart, export the same `FOUNDRY_HOME` before `runner start` or the second process will look like “not joined yet”.
+**Services.** `install-service` writes one unit per runner name and puts `FOUNDRY_HOME` in the unit environment, so installing the second does not replace the first.
+
+```bash
+bun apps/runner/src/cli.ts runner install-service
+bun apps/runner/src/cli.ts runner install-service --home ~/.foundry-opencode
+```
+
+|            | macOS                                                             | Linux (user systemd)                                                  |
+| ---------- | ----------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Unit       | `dev.foundry.runner.<name>` in `~/Library/LaunchAgents/`          | `foundry-runner-<name>.service`                                       |
+| Stop one   | `foundry runner uninstall-service --home ~/.foundry-opencode`     | same flag                                                             |
+| Or by hand | `launchctl bootout gui/$(id -u)/dev.foundry.runner.pipi-opencode` | `systemctl --user disable --now foundry-runner-pipi-opencode.service` |
+
+The name in the unit is lowercased, with other characters turned into `-`. `KeepAlive` (macOS) and `Restart=always` (Linux) apply per unit. A system-wide unit (`--system`) still needs sudo; the command prints the file or the bootout lines when you are not root.
+
+An older install used the single label `dev.foundry.runner` / `foundry-runner.service`. After you install the named unit, boot that old one out or two copies of the same runner will run.
+
+The token for `~/.foundry` stays in the macOS Keychain (or `~/.config/foundry` on Linux). Any other home stores its token in `<home>/secrets`, so a second join does not invalidate the first.
 
 ## 4. Daily commands
 

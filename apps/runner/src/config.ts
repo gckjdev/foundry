@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { foundryHome, resolveFoundryHome } from "@foundry/os-adapters";
 import { LAPTOP_DEFAULT_SCHEDULE, type LocalSchedule, SHARED_DEFAULT_SCHEDULE } from "@foundry/shared";
 import { z } from "zod";
 
@@ -38,7 +38,17 @@ export type RunnerConfig = z.infer<typeof RunnerConfigSchema>;
 export const TOKEN_SECRET_KEY = "runner-token";
 
 export function dataDir(): string {
-  return process.env.FOUNDRY_HOME ?? join(homedir(), ".foundry");
+  return foundryHome();
+}
+
+/** `--home` for this process. Later commands see the same directory through `FOUNDRY_HOME`. */
+export function applyRunnerHome(home: string | undefined): void {
+  if (!home?.trim()) return;
+  process.env.FOUNDRY_HOME = resolveFoundryHome(home);
+}
+
+export function notJoinedMessage(dir = dataDir()): string {
+  return `not joined yet; run \`foundry runner join\` (config dir ${dir})`;
 }
 
 export function configPath(dir = dataDir()): string {
