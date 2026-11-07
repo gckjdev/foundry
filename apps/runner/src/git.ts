@@ -82,6 +82,11 @@ function spawnGit(args: string[], opts: GitOpts): Promise<GitResult> {
     child.on("close", (code) => {
       resolve({ code: code ?? 1, stdout, stderr });
     });
+    // A git command that reads no stdin can exit before this write lands, closing the pipe.
+    // That surfaces as EPIPE on stdin; the exit code and captured output decide the result.
+    child.stdin.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code !== "EPIPE") reject(err);
+    });
     child.stdin.end(opts.input ?? "");
   });
 }
