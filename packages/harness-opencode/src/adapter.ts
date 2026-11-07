@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { connect } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -48,7 +49,11 @@ interface RunningServer {
 
 const DEFAULT_START_TIMEOUT_MS = 60_000;
 
-/** Start `opencode serve` in the worktree and wait for its "listening on <url>" line. */
+/**
+ * Start `opencode serve` in the worktree. Recent builds accept connections before they flush
+ * "listening on <url>" (stdout is block-buffered when it is not a terminal), so readiness is the
+ * port we asked for, with the log line as a confirmation when it shows up.
+ */
 export function startOpencodeServer(opts: {
   cwd: string;
   port: number;
@@ -67,7 +72,10 @@ export function startOpencodeServer(opts: {
   return new Promise((resolve, reject) => {
     let output = "";
     let started = false;
-    const stopWait = () => clearTimeout(timer);
+    const stopWait = () => {
+      clearTimeout(timer);
+      clearInterval(probe);
+    };
     const finish = (url: string) => {
       if (started) return;
       started = true;
@@ -84,6 +92,15 @@ export function startOpencodeServer(opts: {
       kill(proc);
       fail(new Error(`opencode serve did not start within ${timeoutMs}ms: ${output.slice(-500)}`));
     }, timeoutMs);
+    // The bound port is the URL. Probing it unblocks startup when the log line stays buffered.
+    const probe = setInterval(() => {
+      const socket = connect({ host: "127.0.0.1", port: opts.port });
+      socket.once("connect", () => {
+        socket.destroy();
+        finish(`http://127.0.0.1:${opts.port}`);
+      });
+      socket.once("error", () => socket.destroy());
+    }, 200);
     const onChunk = (stream: "stdout" | "stderr") => (chunk: Buffer) => {
       const s = chunk.toString();
       output += s;
