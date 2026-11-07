@@ -1,6 +1,5 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { connect } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -50,9 +49,10 @@ interface RunningServer {
 const DEFAULT_START_TIMEOUT_MS = 60_000;
 
 /**
- * Start `opencode serve` in the worktree. Recent builds accept connections before they flush
- * "listening on <url>" (stdout is block-buffered when it is not a terminal), so readiness is the
- * port we asked for, with the log line as a confirmation when it shows up.
+ * Start `opencode serve` in the worktree. Readiness is an HTTP response, not a listening port:
+ * opencode binds its socket before the router finishes initialising, so a request sent in that
+ * window hangs. Polling /config (auth-less) until it returns 2xx guarantees the next request
+ * (e.g. session.create) is actually served.
  */
 export function startOpencodeServer(opts: {
   cwd: string;
@@ -63,6 +63,7 @@ export function startOpencodeServer(opts: {
   onLog?: (stream: "stdout" | "stderr", chunk: string) => void;
 }): Promise<{ url: string; proc: ChildProcess }> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_START_TIMEOUT_MS;
+  const url = `http://127.0.0.1:${opts.port}`;
   const proc = spawn(opencodeBinary(), ["serve", "--hostname=127.0.0.1", `--port=${opts.port}`], {
     cwd: opts.cwd,
     env: { ...process.env, ...opts.env, OPENCODE_CONFIG_CONTENT: JSON.stringify(opts.config) },
@@ -72,41 +73,43 @@ export function startOpencodeServer(opts: {
   return new Promise((resolve, reject) => {
     let output = "";
     let started = false;
-    const stopWait = () => {
-      clearTimeout(timer);
-      clearInterval(probe);
-    };
-    const finish = (url: string) => {
+    const finish = () => {
       if (started) return;
       started = true;
-      stopWait();
+      clearTimeout(timer);
       resolve({ url, proc });
     };
     const fail = (err: Error) => {
       if (started) return;
       started = true;
-      stopWait();
+      clearTimeout(timer);
       reject(err);
     };
     const timer = setTimeout(() => {
       kill(proc);
       fail(new Error(`opencode serve did not start within ${timeoutMs}ms: ${output.slice(-500)}`));
     }, timeoutMs);
-    // The bound port is the URL. Probing it unblocks startup when the log line stays buffered.
-    const probe = setInterval(() => {
-      const socket = connect({ host: "127.0.0.1", port: opts.port });
-      socket.once("connect", () => {
-        socket.destroy();
-        finish(`http://127.0.0.1:${opts.port}`);
-      });
-      socket.once("error", () => socket.destroy());
-    }, 200);
+    // Poll the HTTP server until it actually answers, retrying every 200ms with a 1s
+    // per-attempt timeout. Connection-refused (not yet bound) and timeouts (bound but not
+    // dispatching yet) both mean "not ready".
+    const poll = async () => {
+      if (started) return;
+      try {
+        const res = await fetch(`${url}/config`, { signal: AbortSignal.timeout(1000) });
+        if (res.ok) {
+          finish();
+          return;
+        }
+      } catch {
+        // not ready yet
+      }
+      setTimeout(poll, 200);
+    };
+    void poll();
     const onChunk = (stream: "stdout" | "stderr") => (chunk: Buffer) => {
       const s = chunk.toString();
       output += s;
       opts.onLog?.(stream, s);
-      const m = /listening on\s+(https?:\/\/\S+)/.exec(output);
-      if (m) finish(m[1]!);
     };
     proc.stdout?.on("data", onChunk("stdout"));
     proc.stderr?.on("data", onChunk("stderr"));
