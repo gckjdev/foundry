@@ -50,6 +50,8 @@ export const HeartbeatResponseSchema = z.object({
   draining: z.boolean(),
   /** Jobs the runner reported as running that the control plane no longer assigns to it. */
   revokedJobIds: z.array(z.string()),
+  /** Jobs this runner should keep parked locally: `needs_input` and in-progress (`RUNNING_STATUSES`). */
+  keepJobIds: z.array(z.string()),
   repos: z.array(
     z.object({
       id: z.string(),
