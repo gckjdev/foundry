@@ -69,7 +69,11 @@ export interface AnswerInput {
 }
 
 /** Store the answer, hand it to the agent as input and put the job back in the queue. */
-export async function answerQuestion(ctx: ControlContext, questionId: string, a: AnswerInput): Promise<Job | null> {
+export async function answerQuestion(
+  ctx: ControlContext,
+  questionId: string,
+  a: AnswerInput,
+): Promise<Job | null> {
   const [q] = await ctx.db
     .update(questions)
     .set({
@@ -148,5 +152,7 @@ export async function questionsForUser(ctx: ControlContext, teamId: string, user
     .select({ question: questions, job: jobs })
     .from(questions)
     .innerJoin(jobs, eq(jobs.id, questions.jobId))
-    .where(and(eq(questions.teamId, teamId), isNull(questions.answeredAt), eq(questions.askedLogin, user.ghLogin)));
+    .where(
+      and(eq(questions.teamId, teamId), isNull(questions.answeredAt), eq(questions.askedLogin, user.ghLogin)),
+    );
 }

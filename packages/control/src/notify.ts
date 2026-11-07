@@ -23,7 +23,11 @@ export interface Transports {
 export async function defaultTransports(): Promise<Transports> {
   const t: Transports = {
     async postWebhook(url, body) {
-      const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
       if (!res.ok) throw new Error(`webhook responded ${res.status}`);
     },
   };
@@ -59,10 +63,14 @@ const SUBJECT: Record<NotifyEventType, string> = {
 /** Who hears about an event: the person asked or routed to review, else the ticket author. */
 async function recipients(ctx: ControlContext, input: NotifyInput): Promise<User[]> {
   const logins = new Set<string>();
-  if (input.event === "handover") for (const r of (input.job.assignedReviewers as string[]) ?? []) logins.add(r.toLowerCase());
+  if (input.event === "handover")
+    for (const r of (input.job.assignedReviewers as string[]) ?? []) logins.add(r.toLowerCase());
   if (input.job.authorLogin) logins.add(input.job.authorLogin.toLowerCase());
   if (logins.size === 0) return [];
-  return ctx.db.select().from(users).where(inArray(users.ghLogin, [...logins]));
+  return ctx.db
+    .select()
+    .from(users)
+    .where(inArray(users.ghLogin, [...logins]));
 }
 
 /**
@@ -104,7 +112,9 @@ export class ChannelNotifier implements Notifier {
         case "email":
           if (user.email && this.transports.sendEmail) {
             const to = user.email;
-            await this.record(ctx, input, user.id, "email", () => this.transports.sendEmail!(to, SUBJECT[input.event], line));
+            await this.record(ctx, input, user.id, "email", () =>
+              this.transports.sendEmail!(to, SUBJECT[input.event], line),
+            );
           }
           break;
         case "push":

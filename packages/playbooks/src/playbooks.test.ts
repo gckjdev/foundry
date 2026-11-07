@@ -25,7 +25,10 @@ describe("assemblePrompt", () => {
   it("applies repo overrides, harness notes and skills", () => {
     const { systemPrompt } = assemblePrompt({
       job: { ...job, playbook: "bugfix" },
-      repo: { named: { "claude-code": "Use pnpm only." }, skills: [{ name: "testing", content: "Run vitest with --run." }] },
+      repo: {
+        named: { "claude-code": "Use pnpm only." },
+        skills: [{ name: "testing", content: "Run vitest with --run." }],
+      },
     });
     expect(systemPrompt).toContain("## Bug fix notes");
     expect(systemPrompt).toContain("## Notes for claude-code\n\nUse pnpm only.");
@@ -59,7 +62,12 @@ describe("assemblePrompt", () => {
   });
 
   it("renders the in-place resume message", () => {
-    expect(resumeMessage([{ kind: "answer", text: "CSV", by: "alice", questionPrompt: "Format?" }], "investigating")).toBe(
+    expect(
+      resumeMessage(
+        [{ kind: "answer", text: "CSV", by: "alice", questionPrompt: "Format?" }],
+        "investigating",
+      ),
+    ).toBe(
       '@alice answered your question "Format?": CSV\n\nContinue with the playbook from the investigating stage.',
     );
   });

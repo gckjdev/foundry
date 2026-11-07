@@ -8,5 +8,7 @@ export function GET() {
     serverUrl: process.env.FOUNDRY_PUBLIC_URL ?? "http://localhost:3000",
     releaseUrl: process.env.FOUNDRY_RELEASE_URL,
   });
-  return new Response(body, { headers: { "content-type": "text/x-shellscript; charset=utf-8", "cache-control": "no-store" } });
+  return new Response(body, {
+    headers: { "content-type": "text/x-shellscript; charset=utf-8", "cache-control": "no-store" },
+  });
 }

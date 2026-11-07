@@ -18,10 +18,15 @@ describe("combineCi", () => {
     expect(combineCi([{ name: "test", status: "in_progress", conclusion: null }], [])).toBe("pending");
     expect(combineCi([{ name: "test", status: "completed", conclusion: "failure" }], [])).toBe("failure");
     expect(
-      combineCi([{ name: "test", status: "completed", conclusion: "success" }], [{ context: "lint", state: "success" }]),
+      combineCi(
+        [{ name: "test", status: "completed", conclusion: "success" }],
+        [{ context: "lint", state: "success" }],
+      ),
     ).toBe("success");
   });
   it("treats a missing required check as pending", () => {
-    expect(combineCi([{ name: "test", status: "completed", conclusion: "success" }], [], ["e2e"])).toBe("pending");
+    expect(combineCi([{ name: "test", status: "completed", conclusion: "success" }], [], ["e2e"])).toBe(
+      "pending",
+    );
   });
 });

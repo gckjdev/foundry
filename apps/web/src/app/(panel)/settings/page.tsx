@@ -51,14 +51,24 @@ export default async function Settings() {
             {team.dailySpendCapUsd ? ` of ${usd(team.dailySpendCapUsd)} cap` : ""}
           </div>
           <form action={teamSettingsAction} className="stack">
-            <fieldset disabled={role !== "admin"} className="stack" style={{ border: 0, padding: 0, margin: 0 }}>
+            <fieldset
+              disabled={role !== "admin"}
+              className="stack"
+              style={{ border: 0, padding: 0, margin: 0 }}
+            >
               <label>
                 Team name
                 <input name="name" defaultValue={team.name} />
               </label>
               <label>
                 Daily spend cap (USD) — runners stop claiming new jobs once reached
-                <input name="dailySpendCapUsd" type="number" step="0.5" min="0" defaultValue={team.dailySpendCapUsd ?? ""} />
+                <input
+                  name="dailySpendCapUsd"
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  defaultValue={team.dailySpendCapUsd ?? ""}
+                />
               </label>
               <label>
                 Default harness
@@ -72,11 +82,21 @@ export default async function Settings() {
               </label>
               <label>
                 Default model
-                <input name="defaultModel" defaultValue={team.defaultModel ?? ""} placeholder="harness default" />
+                <input
+                  name="defaultModel"
+                  defaultValue={team.defaultModel ?? ""}
+                  placeholder="harness default"
+                />
               </label>
               <label>
-                Outgoing webhook (Slack, Discord or any URL) — receives handovers, questions, merges and failures
-                <input name="outgoingWebhookUrl" type="url" defaultValue={team.outgoingWebhookUrl ?? ""} placeholder="https://hooks.slack.com/…" />
+                Outgoing webhook (Slack, Discord or any URL) — receives handovers, questions, merges and
+                failures
+                <input
+                  name="outgoingWebhookUrl"
+                  type="url"
+                  defaultValue={team.outgoingWebhookUrl ?? ""}
+                  placeholder="https://hooks.slack.com/…"
+                />
               </label>
               <div>
                 <button type="submit">Save team settings</button>

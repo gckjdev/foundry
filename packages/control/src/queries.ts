@@ -68,7 +68,9 @@ export async function inbox(ctx: ControlContext, teamId: string, userId: string)
       .select({ question: questions, job: jobs })
       .from(questions)
       .innerJoin(jobs, eq(jobs.id, questions.jobId))
-      .where(and(eq(questions.teamId, teamId), isNull(questions.answeredAt), eq(questions.askedLogin, login))),
+      .where(
+        and(eq(questions.teamId, teamId), isNull(questions.answeredAt), eq(questions.askedLogin, login)),
+      ),
     ctx.db
       .select()
       .from(jobs)
@@ -104,5 +106,10 @@ export async function runningJobsByRunner(ctx: ControlContext, runnerIds: string
   return ctx.db
     .select({ id: jobs.id, title: jobs.title, status: jobs.status, runnerId: jobs.runnerId })
     .from(jobs)
-    .where(and(inArray(jobs.runnerId, runnerIds), inArray(jobs.status, ["triage", "investigating", "implementing", "verifying"])));
+    .where(
+      and(
+        inArray(jobs.runnerId, runnerIds),
+        inArray(jobs.status, ["triage", "investigating", "implementing", "verifying"]),
+      ),
+    );
 }

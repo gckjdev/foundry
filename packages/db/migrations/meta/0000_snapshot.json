@@ -65,12 +65,8 @@
           "name": "artifacts_job_id_jobs_id_fk",
           "tableFrom": "artifacts",
           "tableTo": "jobs",
-          "columnsFrom": [
-            "job_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["job_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -178,12 +174,8 @@
           "name": "events_job_id_jobs_id_fk",
           "tableFrom": "events",
           "tableTo": "jobs",
-          "columnsFrom": [
-            "job_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["job_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -280,12 +272,8 @@
           "name": "evidence_job_id_jobs_id_fk",
           "tableFrom": "evidence",
           "tableTo": "jobs",
-          "columnsFrom": [
-            "job_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["job_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -340,12 +328,8 @@
           "name": "invites_team_id_teams_id_fk",
           "tableFrom": "invites",
           "tableTo": "teams",
-          "columnsFrom": [
-            "team_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["team_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -417,12 +401,8 @@
           "name": "job_inputs_job_id_jobs_id_fk",
           "tableFrom": "job_inputs",
           "tableTo": "jobs",
-          "columnsFrom": [
-            "job_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["job_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -816,12 +796,8 @@
           "name": "jobs_team_id_teams_id_fk",
           "tableFrom": "jobs",
           "tableTo": "teams",
-          "columnsFrom": [
-            "team_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["team_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -829,12 +805,8 @@
           "name": "jobs_repo_id_repos_id_fk",
           "tableFrom": "jobs",
           "tableTo": "repos",
-          "columnsFrom": [
-            "repo_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["repo_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -842,12 +814,8 @@
           "name": "jobs_author_user_id_users_id_fk",
           "tableFrom": "jobs",
           "tableTo": "users",
-          "columnsFrom": [
-            "author_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["author_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -855,12 +823,8 @@
           "name": "jobs_runner_id_runners_id_fk",
           "tableFrom": "jobs",
           "tableTo": "runners",
-          "columnsFrom": [
-            "runner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["runner_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -868,12 +832,8 @@
           "name": "jobs_origin_runner_id_runners_id_fk",
           "tableFrom": "jobs",
           "tableTo": "runners",
-          "columnsFrom": [
-            "origin_runner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["origin_runner_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -881,12 +841,8 @@
           "name": "jobs_sticky_runner_id_runners_id_fk",
           "tableFrom": "jobs",
           "tableTo": "runners",
-          "columnsFrom": [
-            "sticky_runner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["sticky_runner_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -934,12 +890,8 @@
           "name": "memberships_team_id_teams_id_fk",
           "tableFrom": "memberships",
           "tableTo": "teams",
-          "columnsFrom": [
-            "team_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["team_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -947,12 +899,8 @@
           "name": "memberships_user_id_users_id_fk",
           "tableFrom": "memberships",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -960,10 +908,7 @@
       "compositePrimaryKeys": {
         "memberships_team_id_user_id_pk": {
           "name": "memberships_team_id_user_id_pk",
-          "columns": [
-            "team_id",
-            "user_id"
-          ]
+          "columns": ["team_id", "user_id"]
         }
       },
       "uniqueConstraints": {},
@@ -1044,12 +989,8 @@
           "name": "notifications_user_id_users_id_fk",
           "tableFrom": "notifications",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1057,12 +998,8 @@
           "name": "notifications_job_id_jobs_id_fk",
           "tableFrom": "notifications",
           "tableTo": "jobs",
-          "columnsFrom": [
-            "job_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["job_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1177,12 +1114,8 @@
           "name": "questions_job_id_jobs_id_fk",
           "tableFrom": "questions",
           "tableTo": "jobs",
-          "columnsFrom": [
-            "job_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["job_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1190,12 +1123,8 @@
           "name": "questions_asked_user_id_users_id_fk",
           "tableFrom": "questions",
           "tableTo": "users",
-          "columnsFrom": [
-            "asked_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["asked_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1335,12 +1264,8 @@
           "name": "repos_team_id_teams_id_fk",
           "tableFrom": "repos",
           "tableTo": "teams",
-          "columnsFrom": [
-            "team_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["team_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1399,12 +1324,8 @@
           "name": "runner_repo_readiness_runner_id_runners_id_fk",
           "tableFrom": "runner_repo_readiness",
           "tableTo": "runners",
-          "columnsFrom": [
-            "runner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["runner_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1412,12 +1333,8 @@
           "name": "runner_repo_readiness_repo_id_repos_id_fk",
           "tableFrom": "runner_repo_readiness",
           "tableTo": "repos",
-          "columnsFrom": [
-            "repo_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["repo_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1425,10 +1342,7 @@
       "compositePrimaryKeys": {
         "runner_repo_readiness_runner_id_repo_id_pk": {
           "name": "runner_repo_readiness_runner_id_repo_id_pk",
-          "columns": [
-            "runner_id",
-            "repo_id"
-          ]
+          "columns": ["runner_id", "repo_id"]
         }
       },
       "uniqueConstraints": {},
@@ -1616,12 +1530,8 @@
           "name": "runners_team_id_teams_id_fk",
           "tableFrom": "runners",
           "tableTo": "teams",
-          "columnsFrom": [
-            "team_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["team_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1629,12 +1539,8 @@
           "name": "runners_owner_user_id_users_id_fk",
           "tableFrom": "runners",
           "tableTo": "users",
-          "columnsFrom": [
-            "owner_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["owner_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }

@@ -37,7 +37,11 @@ export async function refreshRepoConfig(ctx: ControlContext, repo: Repo): Promis
       recipeYaml: recipe?.content ?? null,
       policyYaml: policy?.content ?? null,
       acceptsJobs: valid,
-      onboardingStatus: valid ? "done" : repo.onboardingStatus === "done" ? "not_started" : repo.onboardingStatus,
+      onboardingStatus: valid
+        ? "done"
+        : repo.onboardingStatus === "done"
+          ? "not_started"
+          : repo.onboardingStatus,
     })
     .where(eq(repos.id, repo.id))
     .returning();

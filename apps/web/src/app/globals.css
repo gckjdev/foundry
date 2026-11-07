@@ -255,7 +255,9 @@ main {
 }
 .ticket[data-live="true"] {
   border-color: rgba(255, 106, 31, 0.45);
-  box-shadow: 0 0 0 1px var(--molten-glow), 0 6px 22px -10px var(--molten);
+  box-shadow:
+    0 0 0 1px var(--molten-glow),
+    0 6px 22px -10px var(--molten);
 }
 .ticket-title {
   font-family: var(--display);

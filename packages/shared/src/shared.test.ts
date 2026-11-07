@@ -60,7 +60,10 @@ risk_rules:
 `);
     const m = matchRiskRules(diff, policy.risk_rules);
     expect(m.map((x) => x.rule)).toEqual(["database schema", "secrets and env"]);
-    expect(splitReviewers(m.flatMap((x) => x.reviewers))).toEqual({ users: ["alice"], teams: ["backend-leads"] });
+    expect(splitReviewers(m.flatMap((x) => x.reviewers))).toEqual({
+      users: ["alice"],
+      teams: ["backend-leads"],
+    });
   });
   it("detects UI changes", () => {
     expect(isUiChange(diff, parseRecipeYaml("{}").ui_paths)).toBe(true);
@@ -119,7 +122,8 @@ describe("tickets", () => {
     });
   });
   it("parses issue form sections", () => {
-    const body = "### Goal\n\nAdd favorites\n\n### Acceptance criteria\n\n- star button\n\n### Constraints\n\n_No response_";
+    const body =
+      "### Goal\n\nAdd favorites\n\n### Acceptance criteria\n\n- star button\n\n### Constraints\n\n_No response_";
     expect(parseTicketSections(body)).toEqual({ goal: "Add favorites", acceptanceCriteria: "- star button" });
     expect(missingTicketSections("make it nicer")).toEqual(["goal", "acceptanceCriteria"]);
   });

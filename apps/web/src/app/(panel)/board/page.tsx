@@ -61,7 +61,9 @@ export default async function Board() {
                       </div>
                       <div className="ticket-meta">
                         <span>
-                          {lane.statuses.length > 1 ? STATUS_TITLES[job.status as JobStatus] : (runnerName ?? job.harness)}
+                          {lane.statuses.length > 1
+                            ? STATUS_TITLES[job.status as JobStatus]
+                            : (runnerName ?? job.harness)}
                         </span>
                         <span>{ago(job.updatedAt)}</span>
                       </div>

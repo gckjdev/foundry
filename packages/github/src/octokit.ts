@@ -114,7 +114,10 @@ export class OctokitGitHubClient implements GitHubClient {
   }
 
   async getIssue(ref: RepoRef, number: number) {
-    const { data } = await this.kit(ref.installationId).issues.get({ ...split(ref.fullName), issue_number: number });
+    const { data } = await this.kit(ref.installationId).issues.get({
+      ...split(ref.fullName),
+      issue_number: number,
+    });
     return {
       number: data.number,
       nodeId: data.node_id,
@@ -136,7 +139,11 @@ export class OctokitGitHubClient implements GitHubClient {
   }
 
   async updateComment(ref: RepoRef, commentId: number, body: string) {
-    await this.kit(ref.installationId).issues.updateComment({ ...split(ref.fullName), comment_id: commentId, body });
+    await this.kit(ref.installationId).issues.updateComment({
+      ...split(ref.fullName),
+      comment_id: commentId,
+      body,
+    });
   }
 
   async getComment(ref: RepoRef, commentId: number) {
@@ -149,7 +156,11 @@ export class OctokitGitHubClient implements GitHubClient {
 
   async addLabels(ref: RepoRef, issueNumber: number, labels: string[]) {
     if (labels.length === 0) return;
-    await this.kit(ref.installationId).issues.addLabels({ ...split(ref.fullName), issue_number: issueNumber, labels });
+    await this.kit(ref.installationId).issues.addLabels({
+      ...split(ref.fullName),
+      issue_number: issueNumber,
+      labels,
+    });
   }
 
   async removeLabel(ref: RepoRef, issueNumber: number, label: string) {
@@ -201,29 +212,53 @@ export class OctokitGitHubClient implements GitHubClient {
 
   async findPullRequest(ref: RepoRef, head: string) {
     const { owner, repo } = split(ref.fullName);
-    const { data } = await this.kit(ref.installationId).pulls.list({ owner, repo, head: `${owner}:${head}`, state: "all" });
+    const { data } = await this.kit(ref.installationId).pulls.list({
+      owner,
+      repo,
+      head: `${owner}:${head}`,
+      state: "all",
+    });
     const pr = data[0];
     return pr ? toPr(pr) : null;
   }
 
   async getPullRequest(ref: RepoRef, number: number) {
-    const { data } = await this.kit(ref.installationId).pulls.get({ ...split(ref.fullName), pull_number: number });
+    const { data } = await this.kit(ref.installationId).pulls.get({
+      ...split(ref.fullName),
+      pull_number: number,
+    });
     return toPr(data);
   }
 
-  async createPullRequest(ref: RepoRef, input: { head: string; base: string; title: string; body: string; draft?: boolean }) {
+  async createPullRequest(
+    ref: RepoRef,
+    input: { head: string; base: string; title: string; body: string; draft?: boolean },
+  ) {
     const { data } = await this.kit(ref.installationId).pulls.create({ ...split(ref.fullName), ...input });
     return toPr(data);
   }
 
   async updatePullRequest(ref: RepoRef, number: number, input: { title?: string; body?: string }) {
-    await this.kit(ref.installationId).pulls.update({ ...split(ref.fullName), pull_number: number, ...input });
+    await this.kit(ref.installationId).pulls.update({
+      ...split(ref.fullName),
+      pull_number: number,
+      ...input,
+    });
   }
 
   async listPullRequestFiles(ref: RepoRef, number: number) {
     const kit = this.kit(ref.installationId);
-    const files = await kit.paginate(kit.pulls.listFiles, { ...split(ref.fullName), pull_number: number, per_page: 100 });
-    return files.map((f) => ({ filename: f.filename, additions: f.additions, deletions: f.deletions, patch: f.patch }));
+    const files = await kit.paginate(kit.pulls.listFiles, {
+      ...split(ref.fullName),
+      pull_number: number,
+      per_page: 100,
+    });
+    return files.map((f) => ({
+      filename: f.filename,
+      additions: f.additions,
+      deletions: f.deletions,
+      patch: f.patch,
+    }));
   }
 
   async listReviews(ref: RepoRef, number: number) {
@@ -233,7 +268,12 @@ export class OctokitGitHubClient implements GitHubClient {
       pull_number: number,
       per_page: 100,
     });
-    return reviews.map((r) => ({ id: r.id, author: r.user?.login ?? "", state: r.state, body: r.body ?? "" }));
+    return reviews.map((r) => ({
+      id: r.id,
+      author: r.user?.login ?? "",
+      state: r.state,
+      body: r.body ?? "",
+    }));
   }
 
   async requestReviewers(ref: RepoRef, number: number, users: string[], teams: string[]) {
@@ -247,7 +287,11 @@ export class OctokitGitHubClient implements GitHubClient {
   }
 
   async mergePullRequest(ref: RepoRef, number: number, method: "squash" | "merge" | "rebase") {
-    await this.kit(ref.installationId).pulls.merge({ ...split(ref.fullName), pull_number: number, merge_method: method });
+    await this.kit(ref.installationId).pulls.merge({
+      ...split(ref.fullName),
+      pull_number: number,
+      merge_method: method,
+    });
   }
 
   async ciState(ref: RepoRef, sha: string, requiredChecks: string[] = []) {

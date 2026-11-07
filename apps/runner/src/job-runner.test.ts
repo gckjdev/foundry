@@ -63,7 +63,13 @@ function deps(harness: FakeHarness): JobRunnerDeps {
 
 /** A whole well-behaved agent turn: stages in order, writes the file, verifies, finishes. */
 const happyTurn: FakeTurn = {
-  events: [{ kind: "message", role: "agent", text: "Looking at the repo with token ghs_abcdefghijklmnopqrstuvwxyz123456" }],
+  events: [
+    {
+      kind: "message",
+      role: "agent",
+      text: "Looking at the repo with token ghs_abcdefghijklmnopqrstuvwxyz123456",
+    },
+  ],
   costUsd: 0.12,
   act: async ({ cwd, env }) => {
     const call = agentTools(env);
@@ -86,16 +92,32 @@ describe("JobRunner", () => {
     const outcome = await new JobRunner(deps(harness), job).run();
     expect(outcome).toBe("pr_opened");
 
-    expect(api.named("stage").map((c) => (c.body as { to: string }).to)).toEqual(["investigating", "implementing", "verifying"]);
-    const pr = api.named("openPr")[0]!.body as { title: string; summary: string; changedLines: number; uiChanged: boolean };
-    expect(pr).toMatchObject({ title: "Add done marker", summary: "Adds done.txt", changedLines: 1, uiChanged: false });
+    expect(api.named("stage").map((c) => (c.body as { to: string }).to)).toEqual([
+      "investigating",
+      "implementing",
+      "verifying",
+    ]);
+    const pr = api.named("openPr")[0]!.body as {
+      title: string;
+      summary: string;
+      changedLines: number;
+      uiChanged: boolean;
+    };
+    expect(pr).toMatchObject({
+      title: "Add done marker",
+      summary: "Adds done.txt",
+      changedLines: 1,
+      uiChanged: false,
+    });
     // The agent's run_checks result at the same tree is reused: one check evidence, not two.
     expect(api.named("evidence")).toHaveLength(1);
     expect(api.named("checkpoint")).toHaveLength(3);
 
     const origin = join(fixture.root, "acme/app.git");
     expect(gitIn(origin, "show", `${job.branch}:done.txt`)).toBe("done");
-    expect(gitIn(origin, "show", `refs/foundry/${job.id}/brief:brief.md`)).toContain("Stage reached: **implementing**");
+    expect(gitIn(origin, "show", `refs/foundry/${job.id}/brief:brief.md`)).toContain(
+      "Stage reached: **implementing**",
+    );
 
     const events = api.named("events").flatMap((c) => c.body as { kind: string; text?: string }[]);
     const said = events.find((e) => e.kind === "message")!;
@@ -125,10 +147,19 @@ describe("JobRunner", () => {
         },
       },
     ]);
-    const outcome = await new JobRunner(deps(harness), claimedJob({ id: "22222222-0000-0000-0000-000000000000", branch: "foundry/2" })).run();
+    const outcome = await new JobRunner(
+      deps(harness),
+      claimedJob({ id: "22222222-0000-0000-0000-000000000000", branch: "foundry/2" }),
+    ).run();
     expect(outcome).toBe("pr_opened");
     const stages = api.named("stage").map((c) => c.body as { to: string; loopCount?: number });
-    expect(stages.map((s) => s.to)).toEqual(["investigating", "implementing", "verifying", "implementing", "verifying"]);
+    expect(stages.map((s) => s.to)).toEqual([
+      "investigating",
+      "implementing",
+      "verifying",
+      "implementing",
+      "verifying",
+    ]);
     expect(stages[3]!.loopCount).toBe(1);
     const checks = api.named("evidence").map((c) => (c.body as { status: string }).status);
     expect(checks).toEqual(["failed", "passed"]);
@@ -144,10 +175,15 @@ describe("JobRunner", () => {
         },
       },
     ]);
-    const outcome = await new JobRunner({ ...deps(harness), maxNudges: 0 }, claimedJob({ id: "33333333-0000-0000-0000-000000000000", branch: "foundry/3" })).run();
+    const outcome = await new JobRunner(
+      { ...deps(harness), maxNudges: 0 },
+      claimedJob({ id: "33333333-0000-0000-0000-000000000000", branch: "foundry/3" }),
+    ).run();
     expect(reply).toContain("call stage(investigating) first");
     expect(outcome).toBe("failed");
-    expect((api.named("stage").at(-1)!.body as { reason: string }).reason).toContain("stopped before finishing");
+    expect((api.named("stage").at(-1)!.body as { reason: string }).reason).toContain(
+      "stopped before finishing",
+    );
   });
 
   it("parks on a question, then resumes the same session in place with the answer", async () => {
@@ -225,9 +261,15 @@ describe("JobRunner", () => {
 
   it("fails a job that exceeds the cost budget", async () => {
     const harness = new FakeHarness("claude-code", [
-      { events: [{ kind: "usage", tokensIn: 1, tokensOut: 1, costUsd: 9 }], act: () => new Promise((r) => setTimeout(r, 5_000)) },
+      {
+        events: [{ kind: "usage", tokensIn: 1, tokensOut: 1, costUsd: 9 }],
+        act: () => new Promise((r) => setTimeout(r, 5_000)),
+      },
     ]);
-    const outcome = await new JobRunner(deps(harness), claimedJob({ id: "66666666-0000-0000-0000-000000000000", branch: "foundry/6" })).run();
+    const outcome = await new JobRunner(
+      deps(harness),
+      claimedJob({ id: "66666666-0000-0000-0000-000000000000", branch: "foundry/6" }),
+    ).run();
     expect(outcome).toBe("failed");
     expect((api.named("stage").at(-1)!.body as { reason: string }).reason).toContain("max_cost_per_job_usd");
   });
@@ -241,7 +283,10 @@ describe("JobRunner", () => {
           await call("stage", { name: "implementing", summary: "commands found" });
           const { mkdirSync } = await import("node:fs");
           mkdirSync(join(cwd, ".foundry"), { recursive: true });
-          writeFileSync(join(cwd, ".foundry/recipe.yaml"), "checks:\n  - name: json\n    run: test -f package.json\n");
+          writeFileSync(
+            join(cwd, ".foundry/recipe.yaml"),
+            "checks:\n  - name: json\n    run: test -f package.json\n",
+          );
           writeFileSync(join(cwd, ".foundry/policy.yaml"), "merge: off\n");
           await call("stage", { name: "verifying", summary: "files written" });
           await call("stage", { name: "done", summary: "Recipe runs one check" });
@@ -259,6 +304,8 @@ describe("JobRunner", () => {
     expect(await new JobRunner(deps(harness), job).run()).toBe("onboarded");
     const result = api.named("onboarding")[0]!.body as { ok: boolean; headSha: string };
     expect(result.ok).toBe(true);
-    expect(gitIn(join(fixture.root, "acme/fresh.git"), "show", `${job.branch}:.foundry/recipe.yaml`)).toContain("test -f package.json");
+    expect(
+      gitIn(join(fixture.root, "acme/fresh.git"), "show", `${job.branch}:.foundry/recipe.yaml`),
+    ).toContain("test -f package.json");
   });
 });

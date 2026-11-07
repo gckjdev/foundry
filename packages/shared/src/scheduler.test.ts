@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { LAPTOP_DEFAULT_SCHEDULE, rankRunners, type SchedJob, type SchedRunner, scheduleAllows } from "./scheduler";
+import {
+  LAPTOP_DEFAULT_SCHEDULE,
+  rankRunners,
+  type SchedJob,
+  type SchedRunner,
+  scheduleAllows,
+} from "./scheduler";
 
 const now = new Date("2026-11-06T10:00:00");
 const runner = (over: Partial<SchedRunner>): SchedRunner => ({
@@ -37,7 +43,12 @@ describe("rankRunners", () => {
       runner({ name: "busy", running: 1 }),
       runner({ name: "mini", kind: "shared", maxConcurrency: 6, running: 3 }),
     ];
-    expect(rankRunners(job(), rs, now).map((r) => r.name)).toEqual(["mini", "alice-laptop", "bob-laptop", "busy"]);
+    expect(rankRunners(job(), rs, now).map((r) => r.name)).toEqual([
+      "mini",
+      "alice-laptop",
+      "bob-laptop",
+      "busy",
+    ]);
   });
 
   it("filters by readiness, harness, os, pin and liveness", () => {
@@ -51,7 +62,9 @@ describe("rankRunners", () => {
     ];
     expect(rankRunners(job({ harness: "opencode" }), rs, now).map((r) => r.name)).toEqual(["linux"]);
     expect(rankRunners(job({ harness: "opencode", allowedOs: ["macos"] }), rs, now)).toEqual([]);
-    expect(rankRunners(job({ pinnedRunnerName: "linux", harness: "opencode" }), rs, now)[0]?.name).toBe("linux");
+    expect(rankRunners(job({ pinnedRunnerName: "linux", harness: "opencode" }), rs, now)[0]?.name).toBe(
+      "linux",
+    );
   });
 
   it("reserves a job for its sticky runner while that runner is online", () => {
@@ -71,9 +84,9 @@ describe("scheduleAllows", () => {
     expect(scheduleAllows(LAPTOP_DEFAULT_SCHEDULE, { onAcPower: true, idleSeconds: 0 }, now).ok).toBe(true);
     const nights = { ...LAPTOP_DEFAULT_SCHEDULE, windows: ["19:00-07:00"], weekends: false };
     expect(scheduleAllows(nights, { onAcPower: true, idleSeconds: 0 }, now).ok).toBe(false);
-    expect(scheduleAllows(nights, { onAcPower: true, idleSeconds: 0 }, new Date("2026-11-06T23:30:00")).ok).toBe(
-      true,
-    );
+    expect(
+      scheduleAllows(nights, { onAcPower: true, idleSeconds: 0 }, new Date("2026-11-06T23:30:00")).ok,
+    ).toBe(true);
     const active = { ...LAPTOP_DEFAULT_SCHEDULE, pauseWhenActiveMinutes: 10 };
     expect(scheduleAllows(active, { onAcPower: true, idleSeconds: 30 }, now).reason).toBe("owner is active");
   });

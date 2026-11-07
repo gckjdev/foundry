@@ -38,7 +38,11 @@ describe("macOS parsing", () => {
     expect(plist).toContain("<string>/usr/local/bin/foundry</string>\n    <string>runner</string>");
   });
   it("uses the injected exec for power state", async () => {
-    const run: Exec = async (cmd) => ({ code: 0, stdout: cmd === "pmset" ? "Now drawing from 'Battery Power'" : "", stderr: "" });
+    const run: Exec = async (cmd) => ({
+      code: 0,
+      stdout: cmd === "pmset" ? "Now drawing from 'Battery Power'" : "",
+      stderr: "",
+    });
     expect(await new MacOsAdapter(run).onAcPower()).toBe(false);
   });
 });
@@ -60,11 +64,28 @@ describe("Linux parsing", () => {
   });
   it("wraps job commands in a cgroup scope when user scopes work", async () => {
     const run: Exec = async () => ({ code: 0, stdout: "", stderr: "" });
-    expect(await new LinuxAdapter(run).wrapWithLimits(["pnpm", "test"], { memMb: 4096, cpuPercent: 200 })).toEqual([
-      "systemd-run", "--user", "--scope", "--quiet", "--collect", "-p", "MemoryMax=4096M", "-p", "CPUQuota=200%", "pnpm", "test",
+    expect(
+      await new LinuxAdapter(run).wrapWithLimits(["pnpm", "test"], { memMb: 4096, cpuPercent: 200 }),
+    ).toEqual([
+      "systemd-run",
+      "--user",
+      "--scope",
+      "--quiet",
+      "--collect",
+      "-p",
+      "MemoryMax=4096M",
+      "-p",
+      "CPUQuota=200%",
+      "pnpm",
+      "test",
     ]);
     const failing: Exec = async () => ({ code: 1, stdout: "", stderr: "" });
-    expect(await new LinuxAdapter(failing).wrapWithLimits(["x"], { memMb: 1 })).toEqual(["nice", "-n", "5", "x"]);
+    expect(await new LinuxAdapter(failing).wrapWithLimits(["x"], { memMb: 1 })).toEqual([
+      "nice",
+      "-n",
+      "5",
+      "x",
+    ]);
   });
 });
 

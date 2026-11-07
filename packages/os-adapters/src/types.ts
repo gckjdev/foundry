@@ -6,7 +6,11 @@ export interface ExecResult {
   stderr: string;
 }
 
-export type Exec = (cmd: string, args: string[], opts?: { input?: string; timeoutMs?: number }) => Promise<ExecResult>;
+export type Exec = (
+  cmd: string,
+  args: string[],
+  opts?: { input?: string; timeoutMs?: number },
+) => Promise<ExecResult>;
 
 export interface MachineInfo {
   os: OsName;

@@ -1,4 +1,4 @@
-import { repos, runnerRepoReadiness, runners, teams, users, memberships } from "@foundry/db";
+import { memberships, repos, runnerRepoReadiness, runners, teams, users } from "@foundry/db";
 import { createTestDatabase } from "@foundry/db/testing";
 import { FakeGitHub } from "@foundry/github";
 import { sha256 } from "@foundry/shared";
@@ -52,7 +52,10 @@ export async function createTestEnv(): Promise<TestEnv> {
 export async function seedTeam(env: TestEnv, opts: { mergeMode?: string; policyYaml?: string } = {}) {
   const { ctx, gh } = env;
   const [team] = await ctx.db.insert(teams).values({ name: "acme" }).returning();
-  const [alice] = await ctx.db.insert(users).values({ ghLogin: "alice", email: "alice@acme.test" }).returning();
+  const [alice] = await ctx.db
+    .insert(users)
+    .values({ ghLogin: "alice", email: "alice@acme.test" })
+    .returning();
   await ctx.db.insert(memberships).values({ teamId: team!.id, userId: alice!.id, role: "admin" });
   const [repo] = await ctx.db
     .insert(repos)
@@ -76,7 +79,13 @@ export async function seedRunner(
   env: TestEnv,
   teamId: string,
   repoId: string,
-  opts: { name: string; kind?: "shared" | "personal"; os?: "macos" | "linux"; ownerUserId?: string | null; harnesses?: string[] },
+  opts: {
+    name: string;
+    kind?: "shared" | "personal";
+    os?: "macos" | "linux";
+    ownerUserId?: string | null;
+    harnesses?: string[];
+  },
 ) {
   const { ctx } = env;
   const [runner] = await ctx.db
@@ -91,10 +100,16 @@ export async function seedRunner(
       tokenHash: sha256(`token-${opts.name}`),
       lastSeenAt: ctx.now(),
       ownerUserId: opts.ownerUserId ?? null,
-      harnesses: (opts.harnesses ?? ["claude-code", "opencode"]).map((id) => ({ id, installed: true, authOk: true })),
+      harnesses: (opts.harnesses ?? ["claude-code", "opencode"]).map((id) => ({
+        id,
+        installed: true,
+        authOk: true,
+      })),
     })
     .returning();
-  await ctx.db.insert(runnerRepoReadiness).values({ runnerId: runner!.id, repoId, recipeSha: "sha-recipe", ready: true });
+  await ctx.db
+    .insert(runnerRepoReadiness)
+    .values({ runnerId: runner!.id, repoId, recipeSha: "sha-recipe", ready: true });
   return runner!;
 }
 
@@ -103,7 +118,13 @@ export async function touchRunner(env: TestEnv, runnerId: string) {
 }
 
 /** A recorded-shape `issues.labeled` webhook payload. */
-export function issueLabeledPayload(opts: { number: number; title: string; body?: string; author?: string; labels?: string[] }) {
+export function issueLabeledPayload(opts: {
+  number: number;
+  title: string;
+  body?: string;
+  author?: string;
+  labels?: string[];
+}) {
   const labels = opts.labels ?? ["foundry"];
   return {
     action: "labeled",

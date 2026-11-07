@@ -39,6 +39,12 @@ function isNetworkGit(args: string[]): boolean {
   return NETWORK.has(args[0] ?? "");
 }
 
+/** Local `file://` fixtures (tests) must not go through the HTTP proxy. */
+export function gitRemoteUsesHttpProxy(gitBase = process.env.FOUNDRY_GIT_BASE): boolean {
+  if (!gitBase) return true;
+  return /^https?:/i.test(gitBase);
+}
+
 function isTransientGitFailure(result: GitResult): boolean {
   const s = result.stderr.toLowerCase();
   return /empty reply|unable to access|timed out|timeout|connection reset|could not resolve|ssl|502|503|429|early eof/.test(
@@ -47,13 +53,14 @@ function isTransientGitFailure(result: GitResult): boolean {
 }
 
 function spawnGit(args: string[], opts: GitOpts): Promise<GitResult> {
-  const full = [...gitProxyArgs(), ...authArgs(opts.token), ...args];
+  const proxy = gitRemoteUsesHttpProxy();
+  const full = [...(proxy ? gitProxyArgs() : []), ...authArgs(opts.token), ...args];
   return new Promise((resolve, reject) => {
     const child = spawn("git", full, {
       cwd: opts.cwd,
       env: {
         ...process.env,
-        ...httpProxyEnv(),
+        ...(proxy ? httpProxyEnv() : {}),
         GIT_TERMINAL_PROMPT: "0",
         GIT_AUTHOR_NAME: process.env.GIT_AUTHOR_NAME ?? "Foundry",
         GIT_AUTHOR_EMAIL: process.env.GIT_AUTHOR_EMAIL ?? "foundry@users.noreply.github.com",

@@ -46,6 +46,8 @@ interface RunningServer {
   configKey: string;
 }
 
+const DEFAULT_START_TIMEOUT_MS = 60_000;
+
 /** Start `opencode serve` in the worktree and wait for its "listening on <url>" line. */
 export function startOpencodeServer(opts: {
   cwd: string;
@@ -55,6 +57,7 @@ export function startOpencodeServer(opts: {
   timeoutMs?: number;
   onLog?: (stream: "stdout" | "stderr", chunk: string) => void;
 }): Promise<{ url: string; proc: ChildProcess }> {
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_START_TIMEOUT_MS;
   const proc = spawn(opencodeBinary(), ["serve", "--hostname=127.0.0.1", `--port=${opts.port}`], {
     cwd: opts.cwd,
     env: { ...process.env, ...opts.env, OPENCODE_CONFIG_CONTENT: JSON.stringify(opts.config) },
@@ -64,34 +67,35 @@ export function startOpencodeServer(opts: {
   return new Promise((resolve, reject) => {
     let output = "";
     let started = false;
+    const stopWait = () => clearTimeout(timer);
+    const finish = (url: string) => {
+      if (started) return;
+      started = true;
+      stopWait();
+      resolve({ url, proc });
+    };
+    const fail = (err: Error) => {
+      if (started) return;
+      started = true;
+      stopWait();
+      reject(err);
+    };
     const timer = setTimeout(() => {
       kill(proc);
-      reject(
-        new Error(`opencode serve did not start within ${opts.timeoutMs ?? 30_000}ms: ${output.slice(-500)}`),
-      );
-    }, opts.timeoutMs ?? 30_000);
+      fail(new Error(`opencode serve did not start within ${timeoutMs}ms: ${output.slice(-500)}`));
+    }, timeoutMs);
     const onChunk = (stream: "stdout" | "stderr") => (chunk: Buffer) => {
       const s = chunk.toString();
       output += s;
       opts.onLog?.(stream, s);
-      if (started) return;
       const m = /listening on\s+(https?:\/\/\S+)/.exec(output);
-      if (m) {
-        started = true;
-        clearTimeout(timer);
-        resolve({ url: m[1]!, proc });
-      }
+      if (m) finish(m[1]!);
     };
     proc.stdout?.on("data", onChunk("stdout"));
     proc.stderr?.on("data", onChunk("stderr"));
-    proc.once("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
+    proc.once("error", (err) => fail(err));
     proc.once("exit", (code, signal) => {
-      if (started) return;
-      clearTimeout(timer);
-      reject(new Error(`opencode serve exited with ${code ?? signal}: ${output.slice(-500)}`));
+      fail(new Error(`opencode serve exited with ${code ?? signal}: ${output.slice(-500)}`));
     });
   });
 }

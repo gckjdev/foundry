@@ -1,5 +1,5 @@
-import type { Job } from "@foundry/db";
 import { inbox } from "@foundry/control";
+import type { Job } from "@foundry/db";
 import Link from "next/link";
 import { ago, StatusPill } from "@/components/status";
 import { requireTeam } from "@/server/session";
@@ -19,7 +19,17 @@ function JobRow({ job, note }: { job: Job; note?: string }) {
   );
 }
 
-function Section({ title, empty, children, count }: { title: string; empty: string; children: React.ReactNode; count: number }) {
+function Section({
+  title,
+  empty,
+  children,
+  count,
+}: {
+  title: string;
+  empty: string;
+  children: React.ReactNode;
+  count: number;
+}) {
   return (
     <section className="card">
       <div className="row" style={{ justifyContent: "space-between", marginBottom: 10 }}>
@@ -59,7 +69,11 @@ export default async function Inbox() {
             <JobRow key={job.id} job={job} note={job.prUrl ?? undefined} />
           ))}
         </Section>
-        <Section title="Unassigned handovers" empty="Every handover has a reviewer." count={box.unassigned.length}>
+        <Section
+          title="Unassigned handovers"
+          empty="Every handover has a reviewer."
+          count={box.unassigned.length}
+        >
           {box.unassigned.map((job) => (
             <JobRow key={job.id} job={job} />
           ))}

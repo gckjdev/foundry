@@ -3,9 +3,9 @@ import {
   type HeartbeatRequest,
   type HeartbeatResponse,
   type JoinRequest,
+  type RealtimeClaims,
   RUNNING_STATUSES,
   randomToken,
-  type RealtimeClaims,
   sha256,
   signToken,
   verifyToken,
@@ -39,7 +39,7 @@ export function createJoinToken(ctx: ControlContext, teamId: string, userId: str
 
 export async function joinRunner(ctx: ControlContext, req: JoinRequest) {
   const claims = verifyToken<JoinClaims>(req.joinToken.replace(/^fdj_/, ""), ctx.secret, ctx.now().getTime());
-  if (!claims || claims.kind !== "join") throw new UnauthorizedError("invalid or expired join token");
+  if (claims?.kind !== "join") throw new UnauthorizedError("invalid or expired join token");
   const runnerToken = randomToken("fdr");
   const values = {
     teamId: claims.teamId,
@@ -75,12 +75,19 @@ export async function authenticateRunner(ctx: ControlContext, authorization: str
 
 export function realtimeToken(ctx: ControlContext, claims: Omit<RealtimeClaims, "exp">): string {
   return signToken(
-    { ...claims, exp: Math.floor(ctx.now().getTime() / 1000) + REALTIME_TOKEN_TTL_S } satisfies RealtimeClaims,
+    {
+      ...claims,
+      exp: Math.floor(ctx.now().getTime() / 1000) + REALTIME_TOKEN_TTL_S,
+    } satisfies RealtimeClaims,
     ctx.secret,
   );
 }
 
-export async function heartbeat(ctx: ControlContext, runner: Runner, req: HeartbeatRequest): Promise<HeartbeatResponse> {
+export async function heartbeat(
+  ctx: ControlContext,
+  runner: Runner,
+  req: HeartbeatRequest,
+): Promise<HeartbeatResponse> {
   await ctx.db
     .update(runners)
     .set({
@@ -134,16 +141,29 @@ export async function reportReadiness(
   runner: Runner,
   r: { repoId: string; recipeSha: string | null; ready: boolean; reason: string | null },
 ) {
-  const repo = await ctx.db.query.repos.findFirst({ where: and(eq(repos.id, r.repoId), eq(repos.teamId, runner.teamId)) });
+  const repo = await ctx.db.query.repos.findFirst({
+    where: and(eq(repos.id, r.repoId), eq(repos.teamId, runner.teamId)),
+  });
   if (!repo) throw new UnauthorizedError("repo not in runner's team");
-  const values = { runnerId: runner.id, repoId: r.repoId, recipeSha: r.recipeSha, ready: r.ready, reason: r.reason, checkedAt: ctx.now() };
+  const values = {
+    runnerId: runner.id,
+    repoId: r.repoId,
+    recipeSha: r.recipeSha,
+    ready: r.ready,
+    reason: r.reason,
+    checkedAt: ctx.now(),
+  };
   await ctx.db
     .insert(runnerRepoReadiness)
     .values(values)
     .onConflictDoUpdate({ target: [runnerRepoReadiness.runnerId, runnerRepoReadiness.repoId], set: values });
 }
 
-export async function setRunnerStatus(ctx: ControlContext, runnerId: string, status: "active" | "draining" | "removed") {
+export async function setRunnerStatus(
+  ctx: ControlContext,
+  runnerId: string,
+  status: "active" | "draining" | "removed",
+) {
   const [row] = await ctx.db.update(runners).set({ status }).where(eq(runners.id, runnerId)).returning();
   return row;
 }

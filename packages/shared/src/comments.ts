@@ -22,15 +22,10 @@ export function renderQuestionComment(q: {
   options: string[];
 }): string {
   const who = q.mention ? `@${q.mention} ` : "";
-  const lines = [
-    questionMarker(q.id),
-    `${who}I need one decision before continuing:`,
-    "",
-    `**${q.prompt}**`,
-  ];
+  const lines = [questionMarker(q.id), `${who}I need one decision before continuing:`, "", `**${q.prompt}**`];
   if (q.options.length > 0) {
     lines.push("");
-    q.options.forEach((opt, i) => lines.push(`- [ ] ${LETTERS[i]}. ${opt}`));
+    for (const [i, opt] of q.options.entries()) lines.push(`- [ ] ${LETTERS[i]}. ${opt}`);
     lines.push("", "Tick one box, or reply with your own answer.");
   } else {
     lines.push("", "Reply to this issue with your answer.");
@@ -44,7 +39,9 @@ export function renderAnsweredQuestion(
 ): string {
   const label = answer.optionIndex !== null ? `${LETTERS[answer.optionIndex]}. ${answer.text}` : answer.text;
   const lines = [questionMarker(q.id), `**${q.prompt}**`, ""];
-  q.options.forEach((opt, i) => lines.push(`- [${i === answer.optionIndex ? "x" : " "}] ${LETTERS[i]}. ${opt}`));
+  for (const [i, opt] of q.options.entries()) {
+    lines.push(`- [${i === answer.optionIndex ? "x" : " "}] ${LETTERS[i]}. ${opt}`);
+  }
   lines.push("", `Answered: ${label} by @${answer.by}`);
   return lines.join("\n");
 }
@@ -57,7 +54,10 @@ export function parseCheckedOption(body: string): number | null {
 }
 
 /** Interpret a reply comment: "A", "b.", "Option C ..." pick an option; anything else is free text. */
-export function parseReplyAnswer(text: string, options: string[]): { optionIndex: number | null; text: string } {
+export function parseReplyAnswer(
+  text: string,
+  options: string[],
+): { optionIndex: number | null; text: string } {
   const trimmed = text.trim();
   const m = /^(?:option\s+)?([A-J])(?:[.):\s]|$)/i.exec(trimmed);
   if (m && options.length > 0) {

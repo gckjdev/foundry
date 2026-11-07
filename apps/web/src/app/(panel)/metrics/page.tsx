@@ -7,7 +7,11 @@ function Stat({ label, value, target }: { label: string; value: string; target?:
     <div className="card">
       <div className="stat">{value}</div>
       <div className="stat-label">{label}</div>
-      {target ? <div className="faint small" style={{ marginTop: 4 }}>target {target}</div> : null}
+      {target ? (
+        <div className="faint small" style={{ marginTop: 4 }}>
+          target {target}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -46,7 +50,8 @@ function BreakdownTable({ title, rows }: { title: string; rows: Breakdown[] }) {
   );
 }
 
-const minutes = (n: number | null) => (n === null ? "—" : n < 90 ? `${Math.round(n)}m` : `${(n / 60).toFixed(1)}h`);
+const minutes = (n: number | null) =>
+  n === null ? "—" : n < 90 ? `${Math.round(n)}m` : `${(n / 60).toFixed(1)}h`;
 
 export default async function Metrics({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   const { ctx, team } = await requireTeam();
@@ -88,7 +93,11 @@ export default async function Metrics({ searchParams }: { searchParams: Promise<
         <Stat label="ticket → green PR" value={pct(m.ticketToPrRate)} target="≥ 70%" />
         <Stat label="auto-merge rate" value={pct(m.autoMergeRate)} target="≥ 40%" />
         <Stat label="revert rate (auto-merged)" value={pct(m.revertRate)} target="≤ 5%" />
-        <Stat label="human touches / merged PR" value={m.medianHumanTouches?.toFixed(1) ?? "—"} target="≤ 1.0" />
+        <Stat
+          label="human touches / merged PR"
+          value={m.medianHumanTouches?.toFixed(1) ?? "—"}
+          target="≤ 1.0"
+        />
         <Stat label="lead time (median)" value={minutes(m.medianLeadTimeMin)} target="< 45m" />
         <Stat label="cost / merged PR" value={usd(m.medianCostPerMerged)} target="< $3" />
         <Stat label="good questions" value={pct(m.goodQuestionRate)} target="≥ 80%" />

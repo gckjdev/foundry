@@ -27,9 +27,15 @@ export async function upsertUser(ctx: ControlContext, profile: GitHubProfile): P
   const [user] = await ctx.db
     .insert(users)
     .values(values)
-    .onConflictDoUpdate({ target: users.ghLogin, set: { ghId: values.ghId, name: values.name, avatarUrl: values.avatarUrl } })
+    .onConflictDoUpdate({
+      target: users.ghLogin,
+      set: { ghId: values.ghId, name: values.name, avatarUrl: values.avatarUrl },
+    })
     .returning();
-  const pending = await ctx.db.select().from(invites).where(eq(invites.ghLogin, profile.ghLogin.toLowerCase()));
+  const pending = await ctx.db
+    .select()
+    .from(invites)
+    .where(eq(invites.ghLogin, profile.ghLogin.toLowerCase()));
   for (const invite of pending) {
     await ctx.db
       .insert(memberships)
@@ -93,7 +99,9 @@ export async function teamMembers(ctx: ControlContext, teamId: string) {
  */
 export async function syncUnlinkedInstallations(ctx: ControlContext, teamId: string): Promise<Repo[]> {
   const installations = await ctx.gh.listAppInstallations();
-  const existing = await ctx.db.select({ installationId: repos.ghInstallationId, teamId: repos.teamId }).from(repos);
+  const existing = await ctx.db
+    .select({ installationId: repos.ghInstallationId, teamId: repos.teamId })
+    .from(repos);
   const owner = new Map<number, string>();
   for (const row of existing) {
     if (!owner.has(row.installationId)) owner.set(row.installationId, row.teamId);
@@ -108,16 +116,31 @@ export async function syncUnlinkedInstallations(ctx: ControlContext, teamId: str
 }
 
 /** GitHub App install callback: attach every repo the installation can see to the team. */
-export async function linkInstallation(ctx: ControlContext, teamId: string, installationId: number): Promise<Repo[]> {
+export async function linkInstallation(
+  ctx: ControlContext,
+  teamId: string,
+  installationId: number,
+): Promise<Repo[]> {
   const list = await ctx.gh.listInstallationRepos(installationId);
   const out: Repo[] = [];
   for (const r of list) {
     const [row] = await ctx.db
       .insert(repos)
-      .values({ teamId, ghInstallationId: installationId, ghRepoId: r.id, fullName: r.fullName, defaultBranch: r.defaultBranch })
+      .values({
+        teamId,
+        ghInstallationId: installationId,
+        ghRepoId: r.id,
+        fullName: r.fullName,
+        defaultBranch: r.defaultBranch,
+      })
       .onConflictDoUpdate({
         target: repos.ghRepoId,
-        set: { teamId, ghInstallationId: installationId, fullName: r.fullName, defaultBranch: r.defaultBranch },
+        set: {
+          teamId,
+          ghInstallationId: installationId,
+          fullName: r.fullName,
+          defaultBranch: r.defaultBranch,
+        },
       })
       .returning();
     out.push(row!);

@@ -42,14 +42,14 @@ The per-job `foundry` MCP server must run as a stdio subprocess that the harness
 
 ## Spike results (darwin-x64, Bun 1.3.14)
 
-| Check | Result |
-| --- | --- |
-| `bun build --compile` of the CLI | ✓ 388 modules, 73 MB, about 2 s |
-| `foundry --version`, `foundry doctor` from the binary | ✓ |
-| `foundry mcp` from the binary: MCP client lists 6 tools, `confidence` call reaches the runner socket | ✓ (`bun scripts/mcp-smoke.ts dist/foundry`) |
-| Claude Agent SDK `query()` from the binary launches the installed `claude` with user provider env | ✓ engine started and authenticated. The provider rejected the request for account balance (HTTP 402), so a full model turn was not observed on this machine. |
+| Check                                                                                                                                             | Result                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `bun build --compile` of the CLI                                                                                                                  | ✓ 388 modules, 73 MB, about 2 s                                                                                                                                                            |
+| `foundry --version`, `foundry doctor` from the binary                                                                                             | ✓                                                                                                                                                                                          |
+| `foundry mcp` from the binary: MCP client lists 6 tools, `confidence` call reaches the runner socket                                              | ✓ (`bun scripts/mcp-smoke.ts dist/foundry`)                                                                                                                                                |
+| Claude Agent SDK `query()` from the binary launches the installed `claude` with user provider env                                                 | ✓ engine started and authenticated. The provider rejected the request for account balance (HTTP 402), so a full model turn was not observed on this machine.                               |
 | OpenCode from the binary: `opencode serve` (1.16.2) in a worktree with `OPENCODE_CONFIG_CONTENT`, SDK client creates a session and streams events | ✓ (live test in `packages/harness-opencode`). The configured provider (GLM Coding Plan) had expired, so the turn ended with the provider's error after 3 retries instead of a model reply. |
-| Full turn with MCP tool call | Run `foundry doctor --live` on a machine with working credentials |
+| Full turn with MCP tool call                                                                                                                      | Run `foundry doctor --live` on a machine with working credentials                                                                                                                          |
 
 ## Consequences
 

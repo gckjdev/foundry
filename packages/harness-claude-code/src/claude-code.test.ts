@@ -5,7 +5,14 @@ import { normalizeClaudeMessage } from "./normalize";
 
 // Shapes recorded from @anthropic-ai/claude-agent-sdk 0.3.x streams.
 const recorded = [
-  { type: "system", subtype: "init", session_id: "sess-abc", model: "claude-sonnet-4-5", cwd: "/w", tools: [] },
+  {
+    type: "system",
+    subtype: "init",
+    session_id: "sess-abc",
+    model: "claude-sonnet-4-5",
+    cwd: "/w",
+    tools: [],
+  },
   {
     type: "assistant",
     session_id: "sess-abc",
@@ -18,12 +25,21 @@ const recorded = [
     parent_tool_use_id: null,
     message: { content: [{ type: "tool_use", name: "Bash", input: { command: "pnpm test --filter auth" } }] },
   },
-  { type: "system", subtype: "task_started", session_id: "sess-abc", task_id: "t1", description: "explore", subagent_type: "Explore" },
+  {
+    type: "system",
+    subtype: "task_started",
+    session_id: "sess-abc",
+    task_id: "t1",
+    description: "explore",
+    subagent_type: "Explore",
+  },
   {
     type: "assistant",
     session_id: "sess-abc",
     parent_tool_use_id: null,
-    message: { content: [{ type: "tool_use", name: "mcp__foundry__stage", input: { name: "implementing" } }] },
+    message: {
+      content: [{ type: "tool_use", name: "mcp__foundry__stage", input: { name: "implementing" } }],
+    },
   },
   {
     type: "result",
@@ -51,7 +67,10 @@ describe("normalizeClaudeMessage", () => {
 
   it("reports only the cost added since the last result (resumed sessions carry totals)", () => {
     const state = { reportedCostUsd: 0.42 };
-    const [usage] = normalizeClaudeMessage({ type: "result", subtype: "success", total_cost_usd: 0.5, usage: {} }, state);
+    const [usage] = normalizeClaudeMessage(
+      { type: "result", subtype: "success", total_cost_usd: 0.5, usage: {} },
+      state,
+    );
     expect(usage).toMatchObject({ costUsd: expect.closeTo(0.08, 5) });
   });
 });

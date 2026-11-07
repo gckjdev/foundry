@@ -24,7 +24,12 @@ export async function GET(req: Request) {
   }
 
   if (!session?.user?.id) {
-    jar.set(INSTALL_COOKIE, String(installationId), { httpOnly: true, sameSite: "lax", path: "/", maxAge: 30 * 60 });
+    jar.set(INSTALL_COOKIE, String(installationId), {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 30 * 60,
+    });
     redirect("/signin");
   }
 

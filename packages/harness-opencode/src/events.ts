@@ -9,16 +9,37 @@ export type OpencodeEvent =
   | {
       type: "message.updated";
       properties: {
-        info: { id: string; sessionID: string; role: string; modelID?: string; providerID?: string; time?: { completed?: number } };
+        info: {
+          id: string;
+          sessionID: string;
+          role: string;
+          modelID?: string;
+          providerID?: string;
+          time?: { completed?: number };
+        };
       };
     }
   | { type: "session.idle"; properties: { sessionID: string } }
-  | { type: "session.status"; properties: { sessionID: string; status: { type: string; attempt?: number; message?: string } } }
-  | { type: "session.error"; properties: { sessionID?: string; error?: { name?: string; data?: { message?: string } } } }
+  | {
+      type: "session.status";
+      properties: { sessionID: string; status: { type: string; attempt?: number; message?: string } };
+    }
+  | {
+      type: "session.error";
+      properties: { sessionID?: string; error?: { name?: string; data?: { message?: string } } };
+    }
   | { type: string; properties?: unknown };
 
 export type OpencodePart =
-  | { id: string; sessionID: string; messageID: string; type: "text"; text: string; synthetic?: boolean; time?: { start: number; end?: number } }
+  | {
+      id: string;
+      sessionID: string;
+      messageID: string;
+      type: "text";
+      text: string;
+      synthetic?: boolean;
+      time?: { start: number; end?: number };
+    }
   | {
       id: string;
       sessionID: string;
@@ -40,7 +61,14 @@ export type OpencodePart =
   | { id: string; sessionID: string; messageID: string; type: string };
 
 function summarize(input: Record<string, unknown> | undefined, title?: string): string | undefined {
-  const pick = input?.command ?? input?.filePath ?? input?.path ?? input?.pattern ?? input?.url ?? input?.description ?? title;
+  const pick =
+    input?.command ??
+    input?.filePath ??
+    input?.path ??
+    input?.pattern ??
+    input?.url ??
+    input?.description ??
+    title;
   if (typeof pick !== "string") return undefined;
   return pick.length > MAX_SUMMARY ? `${pick.slice(0, MAX_SUMMARY)}…` : pick;
 }
@@ -136,7 +164,9 @@ export class OpencodeEventMapper {
     if (part.type === "tool") {
       const p = part as Extract<OpencodePart, { type: "tool" }>;
       if (p.state.status === "pending" || !this.once(`tool:${p.callID}`)) return { events: [] };
-      const tool = p.tool.startsWith("foundry_") ? `mcp__foundry__${p.tool.slice("foundry_".length)}` : p.tool;
+      const tool = p.tool.startsWith("foundry_")
+        ? `mcp__foundry__${p.tool.slice("foundry_".length)}`
+        : p.tool;
       const summary = summarize(p.state.input, p.state.title);
       const out: HarnessEvent[] = [{ kind: "tool_call", tool, ...(summary ? { summary } : {}) }];
       if (p.tool === "task") out.push({ kind: "subagent_started", name: summary ?? "task" });
@@ -149,7 +179,9 @@ export class OpencodeEventMapper {
       const tokensOut = p.tokens.output + p.tokens.reasoning;
       const costUsd = p.cost > 0 ? p.cost : (costFromUsage(this.model, tokensIn, tokensOut) ?? 0);
       return {
-        events: [{ kind: "usage", ...(this.model ? { model: this.model } : {}), tokensIn, tokensOut, costUsd }],
+        events: [
+          { kind: "usage", ...(this.model ? { model: this.model } : {}), tokensIn, tokensOut, costUsd },
+        ],
       };
     }
     return { events: [] };

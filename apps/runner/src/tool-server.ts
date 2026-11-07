@@ -31,7 +31,8 @@ export class ToolServer {
         try {
           const call = JSON.parse(body) as ToolCallRequest;
           const entry = this.handlers.get(call.jobId);
-          if (!entry || entry.token !== call.token) return reply(403, { text: "This job is not running on this runner.", isError: true });
+          if (!entry || entry.token !== call.token)
+            return reply(403, { text: "This job is not running on this runner.", isError: true });
           reply(200, await entry.handler(call.tool, call.args ?? {}));
         } catch (err) {
           reply(500, { text: `Runner error: ${String(err)}`, isError: true });

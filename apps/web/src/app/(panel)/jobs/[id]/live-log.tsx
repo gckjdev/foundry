@@ -63,7 +63,8 @@ export function LiveLog({ jobId, initial, after }: { jobId: string; initial: Lin
 
   useEffect(() => {
     const el = box.current;
-    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 80) el.scrollTop = el.scrollHeight;
+    if (!el || lines.length === 0) return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) el.scrollTop = el.scrollHeight;
   }, [lines]);
 
   return (

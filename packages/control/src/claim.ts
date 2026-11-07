@@ -31,7 +31,12 @@ export async function schedulerSnapshot(ctx: ControlContext, teamId: string): Pr
     .where(and(inArray(jobs.runnerId, ids), inArray(jobs.status, [...RUNNING_STATUSES])))
     .groupBy(jobs.runnerId);
   const ready = await ctx.db
-    .select({ runnerId: runnerRepoReadiness.runnerId, repoId: runnerRepoReadiness.repoId, sha: runnerRepoReadiness.recipeSha, repoSha: repos.recipeSha })
+    .select({
+      runnerId: runnerRepoReadiness.runnerId,
+      repoId: runnerRepoReadiness.repoId,
+      sha: runnerRepoReadiness.recipeSha,
+      repoSha: repos.recipeSha,
+    })
     .from(runnerRepoReadiness)
     .innerJoin(repos, eq(repos.id, runnerRepoReadiness.repoId))
     .where(and(inArray(runnerRepoReadiness.runnerId, ids), eq(runnerRepoReadiness.ready, true)));
@@ -114,7 +119,9 @@ export async function claimJob(ctx: ControlContext, runner: Runner): Promise<Cla
           // A different machine cannot continue another machine's native session.
           harnessSessionId: sticky ? job.harnessSessionId : null,
         })
-        .where(sql`${jobs.id} = (select id from jobs where id = ${job.id} and status = 'queued' for update skip locked)`)
+        .where(
+          sql`${jobs.id} = (select id from jobs where id = ${job.id} and status = 'queued' for update skip locked)`,
+        )
         .returning();
       if (!row) return null;
       const list: FoundryEvent[] = [
@@ -130,7 +137,13 @@ export async function claimJob(ctx: ControlContext, runner: Runner): Promise<Cla
         });
       }
       await tx.insert(events).values(
-        list.map((e) => ({ jobId: row.id, teamId: row.teamId, kind: e.kind, stage: resumeStage, payload: e })),
+        list.map((e) => ({
+          jobId: row.id,
+          teamId: row.teamId,
+          kind: e.kind,
+          stage: resumeStage,
+          payload: e,
+        })),
       );
       return row;
     });
@@ -194,10 +207,12 @@ export async function diagnoseQueue(ctx: ControlContext, teamId: string): Promis
     return queued.map(({ job }) => ({ jobId: job.id, reason: "daily spend cap reached" }));
   }
   return queued.map(({ job, repo }) => {
-    if (job.kind !== "onboarding" && !repo.acceptsJobs) return { jobId: job.id, reason: "repo not onboarded" };
+    if (job.kind !== "onboarding" && !repo.acceptsJobs)
+      return { jobId: job.id, reason: "repo not onboarded" };
     if (snapshot.length === 0) return { jobId: job.id, reason: "no runners joined" };
     const schedJob = toSchedJob(job, repoRecipe(repo)?.os ?? null);
-    const pool = job.kind === "onboarding" ? snapshot.map((r) => ({ ...r, readyRepoIds: [repo.id] })) : snapshot;
+    const pool =
+      job.kind === "onboarding" ? snapshot.map((r) => ({ ...r, readyRepoIds: [repo.id] })) : snapshot;
     if (rankRunners(schedJob, pool, now).length > 0) return { jobId: job.id, reason: null };
     const reasons = pool.map((r) => ineligibility(schedJob, r, now));
     if (reasons.every((r) => r === "offline")) return { jobId: job.id, reason: "no runner online" };

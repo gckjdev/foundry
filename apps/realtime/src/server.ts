@@ -40,7 +40,11 @@ function tokenFrom(req: IncomingMessage): string | null {
  * One Postgres LISTEN connection, fanned out to WebSocket clients per team. Messages carry only
  * `{table, id, op}`; clients fetch rows through the authenticated API.
  */
-export async function startRealtime(opts: { sql: Sql | null; secret: string; port: number }): Promise<RealtimeServer> {
+export async function startRealtime(opts: {
+  sql: Sql | null;
+  secret: string;
+  port: number;
+}): Promise<RealtimeServer> {
   const clients = new Set<Client>();
   const server = createServer((req, res) => {
     if (req.url === "/healthz") {

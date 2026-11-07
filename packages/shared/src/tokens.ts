@@ -18,7 +18,11 @@ export function signToken(payload: object, secret: string): string {
   return `${body}.${sig}`;
 }
 
-export function verifyToken<T extends { exp: number }>(token: string, secret: string, now = Date.now()): T | null {
+export function verifyToken<T extends { exp: number }>(
+  token: string,
+  secret: string,
+  now = Date.now(),
+): T | null {
   const [body, sig] = token.split(".");
   if (!body || !sig) return null;
   const expected = createHmac("sha256", secret).update(body).digest();

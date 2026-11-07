@@ -1,6 +1,12 @@
 import { artifactUrl, diagnoseQueue, jobDetail } from "@foundry/control";
 import type { EventRow } from "@foundry/db";
-import { type FoundryEvent, type GateResult, RUNNER_STAGES, STATUS_TITLES, type JobStatus } from "@foundry/shared";
+import {
+  type FoundryEvent,
+  type GateResult,
+  type JobStatus,
+  RUNNER_STAGES,
+  STATUS_TITLES,
+} from "@foundry/shared";
 import { notFound } from "next/navigation";
 import { ago, StatusPill, usd } from "@/components/status";
 import { requireTeam } from "@/server/session";
@@ -32,7 +38,16 @@ function describe(e: FoundryEvent): string | null {
   }
 }
 
-const TIMELINE_KINDS = new Set(["stage_changed", "resumed", "question", "answer", "checkpoint", "gate", "error", "message"]);
+const TIMELINE_KINDS = new Set([
+  "stage_changed",
+  "resumed",
+  "question",
+  "answer",
+  "checkpoint",
+  "gate",
+  "error",
+  "message",
+]);
 
 export default async function JobPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -44,10 +59,13 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const gate = job.gateResult as GateResult | null;
   const confidence = job.confidence as { level: string; reasons: string[]; uncertainties: string[] } | null;
   const openQuestion = d.questions.find((q) => !q.answeredAt);
-  const waiting = status === "queued" ? (await diagnoseQueue(ctx, team.id)).find((x) => x.jobId === job.id)?.reason : null;
+  const waiting =
+    status === "queued" ? (await diagnoseQueue(ctx, team.id)).find((x) => x.jobId === job.id)?.reason : null;
   const timeline = d.timeline.filter((e: EventRow) => TIMELINE_KINDS.has(e.kind));
   const lastEventId = d.timeline.at(-1)?.id ?? 0;
-  const initialLog = d.timeline.slice(-200).map((e) => ({ id: e.id, ts: e.ts.toISOString(), payload: e.payload as FoundryEvent }));
+  const initialLog = d.timeline
+    .slice(-200)
+    .map((e) => ({ id: e.id, ts: e.ts.toISOString(), payload: e.payload as FoundryEvent }));
 
   return (
     <>
@@ -58,7 +76,9 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             {job.issueNumber ? (
               <>
                 {" · "}
-                <a href={`https://github.com/${repo.fullName}/issues/${job.issueNumber}`}>#{job.issueNumber}</a>
+                <a href={`https://github.com/${repo.fullName}/issues/${job.issueNumber}`}>
+                  #{job.issueNumber}
+                </a>
               </>
             ) : null}
             {job.kind === "onboarding" ? " · onboarding" : ""}
@@ -73,11 +93,23 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             <span className="dim">· {d.runnerName ? `on ${d.runnerName}` : "no runner"}</span>
             <span className="dim">· {usd(job.costUsd)}</span>
             <span className="dim">· loop {job.loopCount}</span>
-            {job.resumeCount > 0 ? <span className="pill" data-tone="info">resumed ×{job.resumeCount}</span> : null}
+            {job.resumeCount > 0 ? (
+              <span className="pill" data-tone="info">
+                resumed ×{job.resumeCount}
+              </span>
+            ) : null}
             {job.prUrl ? <a href={job.prUrl}>Pull request ↗</a> : null}
           </div>
-          {waiting ? <div className="waiting" style={{ marginTop: 8 }}>⏸ Waiting: {waiting}</div> : null}
-          {job.failureReason && status === "failed" ? <div className="waiting" style={{ color: "var(--bad)" }}>{job.failureReason}</div> : null}
+          {waiting ? (
+            <div className="waiting" style={{ marginTop: 8 }}>
+              ⏸ Waiting: {waiting}
+            </div>
+          ) : null}
+          {job.failureReason && status === "failed" ? (
+            <div className="waiting" style={{ color: "var(--bad)" }}>
+              {job.failureReason}
+            </div>
+          ) : null}
         </div>
         <div className="row">
           <form action={retryAction} className="row">
@@ -142,7 +174,9 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 return (
                   <div key={e.id} className="tl-item" data-kind={e.kind}>
                     <div>{text}</div>
-                    <div className="tl-time">{e.ts.toLocaleString()} · {ago(e.ts)}</div>
+                    <div className="tl-time">
+                      {e.ts.toLocaleString()} · {ago(e.ts)}
+                    </div>
                   </div>
                 );
               })}
@@ -152,7 +186,10 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             <h2 style={{ marginBottom: 10 }}>Message the agent</h2>
             <form action={messageAction} className="stack">
               <input type="hidden" name="jobId" value={job.id} />
-              <textarea name="text" placeholder="Guidance, a correction, or a follow-up change. Parked jobs resume at Implementing." />
+              <textarea
+                name="text"
+                placeholder="Guidance, a correction, or a follow-up change. Parked jobs resume at Implementing."
+              />
               <div>
                 <button type="submit">Send</button>
               </div>
@@ -173,10 +210,22 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                       <input type="hidden" name="jobId" value={job.id} />
                       <input type="hidden" name="questionId" value={q.id} />
                       <span className="faint">Good question?</span>
-                      <button name="helpful" value="yes" type="submit" style={{ padding: "1px 8px" }} aria-pressed={q.helpful === true}>
+                      <button
+                        name="helpful"
+                        value="yes"
+                        type="submit"
+                        style={{ padding: "1px 8px" }}
+                        aria-pressed={q.helpful === true}
+                      >
                         👍
                       </button>
-                      <button name="helpful" value="no" type="submit" style={{ padding: "1px 8px" }} aria-pressed={q.helpful === false}>
+                      <button
+                        name="helpful"
+                        value="no"
+                        type="submit"
+                        style={{ padding: "1px 8px" }}
+                        aria-pressed={q.helpful === false}
+                      >
                         👎
                       </button>
                     </form>
@@ -203,7 +252,10 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                   {d.evidence.map((e) => (
                     <tr key={e.id}>
                       <td>
-                        <span className="pill" data-tone={e.status === "passed" ? "ok" : e.status === "failed" ? "bad" : ""}>
+                        <span
+                          className="pill"
+                          data-tone={e.status === "passed" ? "ok" : e.status === "failed" ? "bad" : ""}
+                        >
                           {e.status}
                         </span>
                       </td>
@@ -214,9 +266,15 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                         {e.command ? <div className="faint small">$ {e.command}</div> : null}
                         {e.artifactId ? (
                           // biome-ignore lint/performance/noImgElement: signed artifact URL, not a static asset
-                          <img src={artifactUrl(ctx, e.artifactId)} alt={e.name} style={{ maxWidth: "100%", marginTop: 8, borderRadius: 4 }} />
+                          <img
+                            src={artifactUrl(ctx, e.artifactId)}
+                            alt={e.name}
+                            style={{ maxWidth: "100%", marginTop: 8, borderRadius: 4 }}
+                          />
                         ) : null}
-                        {e.outputTail && e.status === "failed" ? <pre className="log small">{e.outputTail}</pre> : null}
+                        {e.outputTail && e.status === "failed" ? (
+                          <pre className="log small">{e.outputTail}</pre>
+                        ) : null}
                       </td>
                     </tr>
                   ))}
@@ -253,7 +311,9 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                   ))}
                 </ul>
                 {(job.assignedReviewers as string[]).length ? (
-                  <div className="small">Routed to {(job.assignedReviewers as string[]).map((r) => `@${r}`).join(", ")}</div>
+                  <div className="small">
+                    Routed to {(job.assignedReviewers as string[]).map((r) => `@${r}`).join(", ")}
+                  </div>
                 ) : null}
               </>
             ) : (

@@ -21,7 +21,13 @@ describe.skipIf(!TEST_DATABASE_URL)("db", () => {
       .returning();
     const [job] = await t.db
       .insert(jobs)
-      .values({ teamId: team!.id, repoId: repo!.id, title: "Fix", harness: "claude-code", branch: "foundry/x" })
+      .values({
+        teamId: team!.id,
+        repoId: repo!.id,
+        title: "Fix",
+        harness: "claude-code",
+        branch: "foundry/x",
+      })
       .returning();
     for (let i = 0; i < 50 && received.length === 0; i++) await new Promise((r) => setTimeout(r, 20));
     expect(received).toContainEqual({ table: "jobs", id: job!.id, team_id: team!.id, op: "INSERT" });

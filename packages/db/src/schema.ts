@@ -14,10 +14,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-const id = () =>
-  uuid("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`);
+const id = () => uuid("id").primaryKey().default(sql`gen_random_uuid()`);
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const ts = (name: string) => timestamp(name, { withTimezone: true });
 
@@ -126,7 +123,10 @@ export const runners = pgTable(
     status: text("status").notNull().default("active"), // active | draining | removed
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex("runners_token_idx").on(t.tokenHash), uniqueIndex("runners_team_name_idx").on(t.teamId, t.name)],
+  (t) => [
+    uniqueIndex("runners_token_idx").on(t.tokenHash),
+    uniqueIndex("runners_team_name_idx").on(t.teamId, t.name),
+  ],
 );
 
 export const runnerRepoReadiness = pgTable(

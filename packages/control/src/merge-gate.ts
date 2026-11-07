@@ -16,7 +16,11 @@ import { effectiveMergeMode, repoPolicy, repoRecipe } from "./repos";
 
 /** Latest evidence per (kind, name) for the job's current verify loop. */
 export async function latestEvidence(ctx: ControlContext, job: Pick<Job, "id" | "loopCount">) {
-  const rows = await ctx.db.select().from(evidence).where(eq(evidence.jobId, job.id)).orderBy(desc(evidence.createdAt));
+  const rows = await ctx.db
+    .select()
+    .from(evidence)
+    .where(eq(evidence.jobId, job.id))
+    .orderBy(desc(evidence.createdAt));
   const seen = new Set<string>();
   return rows.filter((r) => {
     const key = `${r.kind}:${r.name}`;
@@ -60,13 +64,19 @@ export async function evaluateJobGate(ctx: ControlContext, jobId: string): Promi
     mergeMode: job.kind === "onboarding" ? "off" : effectiveMergeMode(repo),
     policy,
     requiredChecks: recipe?.checks.map((c) => c.name) ?? [],
-    evidence: ev.map((e) => ({ kind: e.kind, name: e.name, status: e.status as "passed" | "failed" | "skipped" })),
+    evidence: ev.map((e) => ({
+      kind: e.kind,
+      name: e.name,
+      status: e.status as "passed" | "failed" | "skipped",
+    })),
     uiChanged: job.uiChanged,
     ci,
     aiReview: { present: !!lastBot, blocking: lastBot?.state === "CHANGES_REQUESTED" },
     riskMatches,
     changedLines: diff.changedLines,
-    confidence: confidence ? { level: confidence.level, uncertainties: confidence.uncertainties ?? [] } : null,
+    confidence: confidence
+      ? { level: confidence.level, uncertainties: confidence.uncertainties ?? [] }
+      : null,
     costUsd: job.costUsd,
   });
 
@@ -80,7 +90,10 @@ export async function evaluateJobGate(ctx: ControlContext, jobId: string): Promi
 
   if (result.pass) {
     await ctx.gh.mergePullRequest(ref, job.prNumber, "squash");
-    const merged = await transitionJob(ctx, job.id, "merged", { reason: "confidence gate passed", from: ["pr_ci"] });
+    const merged = await transitionJob(ctx, job.id, "merged", {
+      reason: "confidence gate passed",
+      from: ["pr_ci"],
+    });
     if (merged) await ctx.notifier.notify(ctx, { event: "merged", job: merged, detail: "auto-merged" });
     return result;
   }

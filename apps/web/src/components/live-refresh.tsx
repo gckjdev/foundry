@@ -40,11 +40,13 @@ export function LiveRefresh({ tables }: { tables?: string[] }) {
         };
         ws.onclose = () => {
           setState("offline");
-          if (!closed) setTimeout(connect, (backoff = Math.min(backoff * 2, 30_000)));
+          backoff = Math.min(backoff * 2, 30_000);
+          if (!closed) setTimeout(connect, backoff);
         };
       } catch {
         setState("offline");
-        if (!closed) setTimeout(connect, (backoff = Math.min(backoff * 2, 30_000)));
+        backoff = Math.min(backoff * 2, 30_000);
+        if (!closed) setTimeout(connect, backoff);
       }
     };
     void connect();
@@ -55,7 +57,11 @@ export function LiveRefresh({ tables }: { tables?: string[] }) {
   }, [router, filter]);
 
   return (
-    <span className="pill" data-tone={state === "live" ? "live" : state === "offline" ? "bad" : ""} title="Realtime">
+    <span
+      className="pill"
+      data-tone={state === "live" ? "live" : state === "offline" ? "bad" : ""}
+      title="Realtime"
+    >
       {state === "live" ? "live" : state}
     </span>
   );

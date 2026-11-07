@@ -39,7 +39,8 @@ export async function smokeTest(
       cwd,
       model: opts.model ?? "",
       systemPrompt: "You are testing a tool connection. Do exactly what the user asks and nothing else.",
-      prompt: "Call the `confidence` tool from the `foundry` MCP server with level \"high\" and reasons [\"smoke test\"]. Then reply with the single word OK.",
+      prompt:
+        'Call the `confidence` tool from the `foundry` MCP server with level "high" and reasons ["smoke test"]. Then reply with the single word OK.',
       env,
       mcpServers: [{ name: "foundry", command: mcpCommand.command, args: mcpCommand.args, env }],
       permissions: { denyCommands: ["git push"], allowWebFetch: false },
@@ -57,7 +58,9 @@ export async function smokeTest(
     return {
       harness: harness.id,
       ok,
-      detail: ok ? `session ok, MCP tool called, reply: ${lastText.slice(0, 80)}` : `${result.status}${result.error ? `: ${result.error}` : ""}; tool called: ${called}; last: ${lastText.slice(0, 200)}`,
+      detail: ok
+        ? `session ok, MCP tool called, reply: ${lastText.slice(0, 80)}`
+        : `${result.status}${result.error ? `: ${result.error}` : ""}; tool called: ${called}; last: ${lastText.slice(0, 200)}`,
       costUsd: cost,
     };
   } catch (err) {

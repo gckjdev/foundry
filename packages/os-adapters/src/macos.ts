@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { arch, cpus, homedir, totalmem } from "node:os";
 import { join } from "node:path";
-import { dfFreeMb, exec as defaultExec } from "./exec";
+import { exec as defaultExec, dfFreeMb } from "./exec";
 import type { Exec, OsAdapter, ResourceLimits, SecretStore, ServiceInstall, ServiceSpec } from "./types";
 
 export const LAUNCHD_LABEL = "dev.foundry.runner";
@@ -65,18 +65,40 @@ export class KeychainSecretStore implements SecretStore {
   ) {}
 
   async get(key: string) {
-    const r = await this.run("security", ["find-generic-password", "-a", this.account, "-s", KEYCHAIN_SERVICE_PREFIX + key, "-w"]);
+    const r = await this.run("security", [
+      "find-generic-password",
+      "-a",
+      this.account,
+      "-s",
+      KEYCHAIN_SERVICE_PREFIX + key,
+      "-w",
+    ]);
     return r.code === 0 ? r.stdout.replace(/\n$/, "") : null;
   }
 
   async set(key: string, value: string) {
     // -U updates an existing item. The value goes through argv briefly; `security` has no stdin mode for -w.
-    const r = await this.run("security", ["add-generic-password", "-U", "-a", this.account, "-s", KEYCHAIN_SERVICE_PREFIX + key, "-w", value]);
+    const r = await this.run("security", [
+      "add-generic-password",
+      "-U",
+      "-a",
+      this.account,
+      "-s",
+      KEYCHAIN_SERVICE_PREFIX + key,
+      "-w",
+      value,
+    ]);
     if (r.code !== 0) throw new Error(`keychain write failed: ${r.stderr.trim()}`);
   }
 
   async delete(key: string) {
-    await this.run("security", ["delete-generic-password", "-a", this.account, "-s", KEYCHAIN_SERVICE_PREFIX + key]);
+    await this.run("security", [
+      "delete-generic-password",
+      "-a",
+      this.account,
+      "-s",
+      KEYCHAIN_SERVICE_PREFIX + key,
+    ]);
   }
 }
 
@@ -132,7 +154,19 @@ export class MacOsAdapter implements OsAdapter {
 
   createUserCommands(user: string, home: string) {
     return [
-      ["sysadminctl", "-addUser", user, "-fullName", "Foundry Runner", "-home", home, "-shell", "/bin/zsh", "-password", "-"],
+      [
+        "sysadminctl",
+        "-addUser",
+        user,
+        "-fullName",
+        "Foundry Runner",
+        "-home",
+        home,
+        "-shell",
+        "/bin/zsh",
+        "-password",
+        "-",
+      ],
       ["dscl", ".", "create", `/Users/${user}`, "IsHidden", "1"],
       ["createhomedir", "-c", "-u", user],
     ];

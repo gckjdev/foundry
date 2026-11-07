@@ -6,12 +6,19 @@ import {
   isRunnerStage,
   nextRunnerStage,
   RUNNING_STATUSES,
-  type StageRequest,
   STICKY_WINDOW_MS,
+  type StageRequest,
 } from "@foundry/shared";
 import { eq } from "drizzle-orm";
 import type { ControlContext } from "./context";
-import { getJob, type JobPatch, listPendingInputs, recordEvents, takePendingInputs, transitionJob } from "./jobs";
+import {
+  getJob,
+  type JobPatch,
+  listPendingInputs,
+  recordEvents,
+  takePendingInputs,
+  transitionJob,
+} from "./jobs";
 import { askQuestion } from "./questions";
 
 export class ConflictError extends Error {}
@@ -19,7 +26,11 @@ export class ConflictError extends Error {}
 /** The job must be held by this runner and still running; otherwise it was revoked. */
 export async function ownedJob(ctx: ControlContext, runner: Runner, jobId: string): Promise<Job> {
   const job = await getJob(ctx, jobId);
-  if (job.teamId !== runner.teamId || job.runnerId !== runner.id || !RUNNING_STATUSES.includes(job.status as never)) {
+  if (
+    job.teamId !== runner.teamId ||
+    job.runnerId !== runner.id ||
+    !RUNNING_STATUSES.includes(job.status as never)
+  ) {
     throw new ConflictError("job is not held by this runner");
   }
   return job;
@@ -43,24 +54,40 @@ export async function runnerStage(ctx: ControlContext, runner: Runner, jobId: st
     // The runner is giving the job back (schedule pause, shutdown): resume where it stopped.
     const last = req.lastCompletedStage ?? job.lastCompletedStage;
     const lastStage = last && isRunnerStage(last) ? nextRunnerStage(last) : null;
-    patch.resumeStage = lastStage && lastStage !== "pr_ci" ? lastStage : isRunnerStage(job.status) ? job.status : "triage";
+    patch.resumeStage =
+      lastStage && lastStage !== "pr_ci" ? lastStage : isRunnerStage(job.status) ? job.status : "triage";
     patch.stickyRunnerId = runner.id;
     patch.stickyUntil = new Date(ctx.now().getTime() + STICKY_WINDOW_MS);
   }
   if (req.to === "failed") patch.failureReason = req.reason ?? "failed";
-  const moved = await transitionJob(ctx, job.id, req.to, { reason: req.reason, patch, from: [job.status as never] });
+  const moved = await transitionJob(ctx, job.id, req.to, {
+    reason: req.reason,
+    patch,
+    from: [job.status as never],
+  });
   if (moved && req.to === "failed") {
     await ctx.notifier.notify(ctx, { event: "failed", job: moved, detail: req.reason ?? "" });
   }
   return moved;
 }
 
-export async function runnerAsk(ctx: ControlContext, runner: Runner, jobId: string, prompt: string, options: string[]) {
+export async function runnerAsk(
+  ctx: ControlContext,
+  runner: Runner,
+  jobId: string,
+  prompt: string,
+  options: string[],
+) {
   const job = await ownedJob(ctx, runner, jobId);
   return askQuestion(ctx, job, { prompt, options });
 }
 
-export async function runnerEvidence(ctx: ControlContext, runner: Runner, jobId: string, req: EvidenceRequest) {
+export async function runnerEvidence(
+  ctx: ControlContext,
+  runner: Runner,
+  jobId: string,
+  req: EvidenceRequest,
+) {
   const job = await ownedJob(ctx, runner, jobId);
   const [row] = await ctx.db
     .insert(evidence)
@@ -81,11 +108,20 @@ export async function runnerEvidence(ctx: ControlContext, runner: Runner, jobId:
   return row!;
 }
 
-export async function runnerConfidence(ctx: ControlContext, runner: Runner, jobId: string, req: ConfidenceRequest) {
+export async function runnerConfidence(
+  ctx: ControlContext,
+  runner: Runner,
+  jobId: string,
+  req: ConfidenceRequest,
+) {
   const job = await ownedJob(ctx, runner, jobId);
   await ctx.db.update(jobs).set({ confidence: req }).where(eq(jobs.id, job.id));
   await recordEvents(ctx, job, [
-    { kind: "log", level: "info", message: `Confidence: ${req.level}${req.uncertainties.length ? ` (${req.uncertainties.length} uncertainties)` : ""}` },
+    {
+      kind: "log",
+      level: "info",
+      message: `Confidence: ${req.level}${req.uncertainties.length ? ` (${req.uncertainties.length} uncertainties)` : ""}`,
+    },
   ]);
 }
 

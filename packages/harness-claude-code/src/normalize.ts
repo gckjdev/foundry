@@ -6,7 +6,10 @@ export interface ClaudeMessage {
   subtype?: string;
   session_id?: string;
   parent_tool_use_id?: string | null;
-  message?: { model?: string; content?: Array<{ type: string; text?: string; name?: string; input?: unknown }> };
+  message?: {
+    model?: string;
+    content?: Array<{ type: string; text?: string; name?: string; input?: unknown }>;
+  };
   description?: string;
   subagent_type?: string;
   total_cost_usd?: number;
@@ -28,7 +31,8 @@ export function summarizeToolInput(tool: string, input: unknown): string | undef
   if (!input || typeof input !== "object") return undefined;
   const i = input as Record<string, unknown>;
   const pick = i.command ?? i.file_path ?? i.path ?? i.pattern ?? i.url ?? i.query ?? i.description;
-  if (typeof pick !== "string") return tool.startsWith("mcp__foundry__") ? JSON.stringify(i).slice(0, MAX_SUMMARY) : undefined;
+  if (typeof pick !== "string")
+    return tool.startsWith("mcp__foundry__") ? JSON.stringify(i).slice(0, MAX_SUMMARY) : undefined;
   return pick.length > MAX_SUMMARY ? `${pick.slice(0, MAX_SUMMARY)}…` : pick;
 }
 
@@ -68,12 +72,16 @@ export function normalizeClaudeMessage(msg: ClaudeMessage, state: NormalizeState
     out.push({
       kind: "usage",
       ...(state.model ? { model: state.model } : {}),
-      tokensIn: (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0),
+      tokensIn:
+        (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0),
       tokensOut: u.output_tokens ?? 0,
       costUsd: delta,
     });
     if (msg.is_error || (msg.subtype && msg.subtype !== "success")) {
-      out.push({ kind: "error", message: msg.errors?.join("; ") || msg.result || msg.subtype || "harness error" });
+      out.push({
+        kind: "error",
+        message: msg.errors?.join("; ") || msg.result || msg.subtype || "harness error",
+      });
     }
   }
   return out;

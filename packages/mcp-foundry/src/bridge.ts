@@ -53,6 +53,7 @@ export function bridgeFromEnv(env: NodeJS.ProcessEnv = process.env): ToolBridge 
   const socket = env[MCP_SOCKET_ENV];
   const jobId = env[MCP_JOB_ENV];
   const token = env[MCP_TOKEN_ENV];
-  if (!socket || !jobId || !token) throw new Error(`${MCP_SOCKET_ENV}, ${MCP_JOB_ENV} and ${MCP_TOKEN_ENV} must be set`);
+  if (!socket || !jobId || !token)
+    throw new Error(`${MCP_SOCKET_ENV}, ${MCP_JOB_ENV} and ${MCP_TOKEN_ENV} must be set`);
   return socketBridge(socket, jobId, token);
 }

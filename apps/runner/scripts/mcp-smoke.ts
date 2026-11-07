@@ -20,12 +20,20 @@ const token = tools.register("job-1", async (tool, args) => {
 const transport = new StdioClientTransport({
   command: binary,
   args: ["mcp"],
-  env: { ...(process.env as Record<string, string>), FOUNDRY_MCP_SOCKET: tools.socketPath, FOUNDRY_JOB_ID: "job-1", FOUNDRY_MCP_TOKEN: token },
+  env: {
+    ...(process.env as Record<string, string>),
+    FOUNDRY_MCP_SOCKET: tools.socketPath,
+    FOUNDRY_JOB_ID: "job-1",
+    FOUNDRY_MCP_TOKEN: token,
+  },
 });
 const client = new Client({ name: "smoke", version: "0" });
 await client.connect(transport);
 const list = await client.listTools();
-const result = await client.callTool({ name: "confidence", arguments: { level: "high", reasons: ["smoke"] } });
+const result = await client.callTool({
+  name: "confidence",
+  arguments: { level: "high", reasons: ["smoke"] },
+});
 await client.close();
 await tools.close();
 

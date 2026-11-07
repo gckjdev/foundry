@@ -26,7 +26,10 @@ export function createFoundryMcpServer(bridge: ToolBridge, version = "0.1.0"): M
       const reply = await bridge.call(tool, args);
       return { content: [{ type: "text" as const, text: reply.text }], isError: reply.isError ?? false };
     } catch (err) {
-      return { content: [{ type: "text" as const, text: `Foundry runner unreachable: ${String(err)}` }], isError: true };
+      return {
+        content: [{ type: "text" as const, text: `Foundry runner unreachable: ${String(err)}` }],
+        isError: true,
+      };
     }
   };
 
@@ -36,7 +39,9 @@ export function createFoundryMcpServer(bridge: ToolBridge, version = "0.1.0"): M
       description:
         "Declare that you finished the current playbook stage and are moving to the next one. Stages run in order: triage → investigating → implementing → verifying → done. Call with name='done' after verification passes.",
       inputSchema: {
-        name: z.enum(["investigating", "implementing", "verifying", "done"]).describe("The stage you are starting"),
+        name: z
+          .enum(["investigating", "implementing", "verifying", "done"])
+          .describe("The stage you are starting"),
         summary: z.string().describe("Two or three sentences on what the finished stage established"),
       },
     },
@@ -45,7 +50,8 @@ export function createFoundryMcpServer(bridge: ToolBridge, version = "0.1.0"): M
   server.registerTool(
     "plan",
     {
-      description: "Record your implementation plan (markdown, numbered steps, files you expect to touch). Call once at the end of investigating.",
+      description:
+        "Record your implementation plan (markdown, numbered steps, files you expect to touch). Call once at the end of investigating.",
       inputSchema: { plan: z.string().min(1) },
     },
     forward("plan"),

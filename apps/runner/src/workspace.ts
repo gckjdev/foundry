@@ -44,7 +44,10 @@ export class Workspace {
   }
 
   async remoteBranchExists(mirror: string, branch: string): Promise<boolean> {
-    const r = await git(["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${branch}`], { cwd: mirror, allowFail: true });
+    const r = await git(["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${branch}`], {
+      cwd: mirror,
+      allowFail: true,
+    });
     return r.code === 0;
   }
 
@@ -52,7 +55,13 @@ export class Workspace {
    * Check out the job branch in a fresh worktree. An existing remote branch (portable resume)
    * is continued; otherwise the branch starts from the default branch.
    */
-  async createWorktree(opts: { fullName: string; jobId: string; branch: string; defaultBranch: string; token?: string }) {
+  async createWorktree(opts: {
+    fullName: string;
+    jobId: string;
+    branch: string;
+    defaultBranch: string;
+    token?: string;
+  }) {
     const mirror = await this.ensureMirror(opts.fullName, opts.token);
     const path = this.worktreePath(opts.jobId);
     if (existsSync(path)) await this.removeWorktree(opts.fullName, opts.jobId);
@@ -68,7 +77,8 @@ export class Workspace {
   async removeWorktree(fullName: string, jobId: string): Promise<void> {
     const mirror = this.mirrorPath(fullName);
     const path = this.worktreePath(jobId);
-    if (existsSync(mirror)) await git(["worktree", "remove", "--force", path], { cwd: mirror, allowFail: true });
+    if (existsSync(mirror))
+      await git(["worktree", "remove", "--force", path], { cwd: mirror, allowFail: true });
     await rm(path, { recursive: true, force: true });
     if (existsSync(mirror)) await git(["worktree", "prune"], { cwd: mirror, allowFail: true });
   }
@@ -87,7 +97,10 @@ export class Workspace {
   }
 
   async push(cwd: string, branch: string, token?: string): Promise<void> {
-    await git(["push", "--quiet", "--force-with-lease", "origin", `HEAD:refs/heads/${branch}`], { cwd, token });
+    await git(["push", "--quiet", "--force-with-lease", "origin", `HEAD:refs/heads/${branch}`], {
+      cwd,
+      token,
+    });
   }
 
   /** `git diff` of the job branch against the merge base with the default branch. */
@@ -95,8 +108,15 @@ export class Workspace {
     return (await git(["diff", "--no-color", `origin/${defaultBranch}...HEAD`], { cwd })).stdout;
   }
 
-  async readFileAt(mirror: string, ref: string, path: string): Promise<{ content: string; sha: string } | null> {
-    const sha = await git(["rev-parse", "--verify", "--quiet", `${ref}:${path}`], { cwd: mirror, allowFail: true });
+  async readFileAt(
+    mirror: string,
+    ref: string,
+    path: string,
+  ): Promise<{ content: string; sha: string } | null> {
+    const sha = await git(["rev-parse", "--verify", "--quiet", `${ref}:${path}`], {
+      cwd: mirror,
+      allowFail: true,
+    });
     if (sha.code !== 0) return null;
     const content = await gitOut(["cat-file", "blob", sha.stdout.trim()], { cwd: mirror });
     return { content, sha: sha.stdout.trim() };

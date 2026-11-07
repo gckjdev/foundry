@@ -67,7 +67,8 @@ export function assemblePrompt(input: AssembleInput): { systemPrompt: string; pr
   const parts = [basePlaybook(job, repo)];
   const harnessNotes = repo?.named?.[job.harness];
   if (harnessNotes) parts.push(`## Notes for ${job.harness}\n\n${harnessNotes}`);
-  for (const skill of repo?.skills ?? []) parts.push(`## Repo knowledge: ${skill.name}\n\n${skill.content.trim()}`);
+  for (const skill of repo?.skills ?? [])
+    parts.push(`## Repo knowledge: ${skill.name}\n\n${skill.content.trim()}`);
   const systemPrompt = parts.join("\n\n");
 
   const lines: string[] = [];
@@ -83,7 +84,10 @@ export function assemblePrompt(input: AssembleInput): { systemPrompt: string; pr
       job.body.trim() || "_The ticket has no description._",
     );
     if (!sections.acceptanceCriteria) {
-      lines.push("", "_Note: the ticket has no explicit acceptance criteria. Decide in triage whether to ask._");
+      lines.push(
+        "",
+        "_Note: the ticket has no explicit acceptance criteria. Decide in triage whether to ask._",
+      );
     }
   }
   if (input.brief) {
@@ -115,7 +119,13 @@ export const NUDGE_MESSAGE =
   "You stopped before finishing. Continue with the playbook. If you are waiting on a decision, call `ask`. " +
   "When verification passes, call `confidence` and then `stage(done)`.";
 
-export function verifyFailedMessage(failures: { name: string; command: string; outputTail: string }[], loop: number, max: number): string {
-  const details = failures.map((f) => `### ${f.name} (\`${f.command}\`)\n\n\`\`\`\n${f.outputTail.slice(-4000)}\n\`\`\``).join("\n\n");
+export function verifyFailedMessage(
+  failures: { name: string; command: string; outputTail: string }[],
+  loop: number,
+  max: number,
+): string {
+  const details = failures
+    .map((f) => `### ${f.name} (\`${f.command}\`)\n\n\`\`\`\n${f.outputTail.slice(-4000)}\n\`\`\``)
+    .join("\n\n");
   return `The runner ran the recipe checks and these failed (verify loop ${loop} of ${max}):\n\n${details}\n\nFix them, call \`run_checks\` until they pass, then \`confidence\` and \`stage(done)\`.`;
 }

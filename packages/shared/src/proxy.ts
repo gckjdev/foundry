@@ -42,9 +42,12 @@ export function redactProxyUrl(url: string): string {
   }
 }
 
+let macosProxyMemo: string | undefined | false;
+
 /** macOS System Settings proxy. Node, Bun, and git ignore it; browsers do not. */
 export function detectMacosSystemProxy(): string | undefined {
   if (process.platform !== "darwin") return undefined;
+  if (macosProxyMemo !== undefined) return macosProxyMemo || undefined;
   try {
     const out = execSync("scutil --proxy", {
       encoding: "utf8",
@@ -52,14 +55,18 @@ export function detectMacosSystemProxy(): string | undefined {
       stdio: ["ignore", "pipe", "ignore"],
     });
     const enabled = /HTTPSEnable\s*:\s*1/.test(out) || /HTTPEnable\s*:\s*1/.test(out);
-    if (!enabled) return undefined;
+    if (!enabled) {
+      macosProxyMemo = false;
+      return undefined;
+    }
     const host = (/HTTPSProxy\s*:\s*(\S+)/.exec(out) ?? /HTTPProxy\s*:\s*(\S+)/.exec(out))?.[1];
     const port = (/HTTPSPort\s*:\s*(\d+)/.exec(out) ?? /HTTPPort\s*:\s*(\d+)/.exec(out))?.[1];
-    if (host && port) return `http://${host}:${port}`;
+    macosProxyMemo = host && port ? `http://${host}:${port}` : false;
+    return macosProxyMemo || undefined;
   } catch {
+    macosProxyMemo = false;
     return undefined;
   }
-  return undefined;
 }
 
 /**

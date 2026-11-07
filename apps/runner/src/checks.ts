@@ -15,7 +15,13 @@ const MAX_OUTPUT = 200_000;
  */
 export function runCommand(
   command: string,
-  opts: { cwd: string; env: Record<string, string>; timeoutMs: number; signal?: AbortSignal; wrap?: string[] },
+  opts: {
+    cwd: string;
+    env: Record<string, string>;
+    timeoutMs: number;
+    signal?: AbortSignal;
+    wrap?: string[];
+  },
 ): Promise<CommandResult> {
   const started = Date.now();
   const argv = [...(opts.wrap ?? []), "sh", "-c", command];
@@ -53,7 +59,12 @@ export function runCommand(
     child.on("close", (code) => {
       clearTimeout(timer);
       opts.signal?.removeEventListener("abort", kill);
-      resolve({ exitCode: code, output: output.slice(-MAX_OUTPUT), durationMs: Date.now() - started, timedOut });
+      resolve({
+        exitCode: code,
+        output: output.slice(-MAX_OUTPUT),
+        durationMs: Date.now() - started,
+        timedOut,
+      });
     });
   });
 }

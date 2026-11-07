@@ -32,5 +32,7 @@ export function ago(date: Date | string | null): string {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-export const usd = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `$${n.toFixed(2)}`);
-export const pct = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `${Math.round(n * 100)}%`);
+export const usd = (n: number | null | undefined) =>
+  n === null || n === undefined ? "—" : `$${n.toFixed(2)}`;
+export const pct = (n: number | null | undefined) =>
+  n === null || n === undefined ? "—" : `${Math.round(n * 100)}%`;

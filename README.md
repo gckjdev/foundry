@@ -6,20 +6,20 @@ Product spec: `software-factory-product-spec.md` (v0.5).
 
 ## Layout
 
-| Path | What it is |
-|---|---|
-| `apps/web` | Control plane: Next.js panel, API routes, webhook ingest, runner API |
-| `apps/realtime` | Postgres LISTEN/NOTIFY to WebSocket fan-out |
-| `apps/runner` | Runner daemon and `foundry` CLI (Bun, compiled per platform) |
-| `packages/shared` | zod schemas, state machine, gate, scheduler, GitHub comment templates |
-| `packages/db` | Drizzle schema, SQL migrations, NOTIFY triggers |
-| `packages/control` | Control-plane services: ingest, jobs, claiming, questions, gate, sweeper, notifier, metrics |
-| `packages/github` | GitHub App client (and an in-memory fake for tests) |
-| `packages/harness-*` | Harness adapter interface, Claude Code and OpenCode adapters |
-| `packages/mcp-foundry` | Per-job MCP server: `stage`, `ask`, `evidence`, `confidence`, `plan` |
-| `packages/os-adapters` | macOS and Linux adapters (service, user, secrets, limits, sleep, idle, power) |
-| `packages/playbooks` | Default playbook and prompt assembly |
-| `deploy/` | Docker Compose stack (web, realtime, Postgres, Caddy) |
+| Path                   | What it is                                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------------- |
+| `apps/web`             | Control plane: Next.js panel, API routes, webhook ingest, runner API                        |
+| `apps/realtime`        | Postgres LISTEN/NOTIFY to WebSocket fan-out                                                 |
+| `apps/runner`          | Runner daemon and `foundry` CLI (Bun, compiled per platform)                                |
+| `packages/shared`      | zod schemas, state machine, gate, scheduler, GitHub comment templates                       |
+| `packages/db`          | Drizzle schema, SQL migrations, NOTIFY triggers                                             |
+| `packages/control`     | Control-plane services: ingest, jobs, claiming, questions, gate, sweeper, notifier, metrics |
+| `packages/github`      | GitHub App client (and an in-memory fake for tests)                                         |
+| `packages/harness-*`   | Harness adapter interface, Claude Code and OpenCode adapters                                |
+| `packages/mcp-foundry` | Per-job MCP server: `stage`, `ask`, `evidence`, `confidence`, `plan`                        |
+| `packages/os-adapters` | macOS and Linux adapters (service, user, secrets, limits, sleep, idle, power)               |
+| `packages/playbooks`   | Default playbook and prompt assembly                                                        |
+| `deploy/`              | Docker Compose stack (web, realtime, Postgres, Caddy)                                       |
 
 ## Development
 

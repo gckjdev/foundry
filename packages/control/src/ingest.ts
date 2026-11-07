@@ -25,11 +25,17 @@ export async function processWebhook(ctx: ControlContext, id: number): Promise<v
   if (!row || row.processedAt) return;
   try {
     await dispatch(ctx, row.event, row.payload as Payload);
-    await ctx.db.update(webhookInbox).set({ processedAt: ctx.now(), error: null, attempts: row.attempts + 1 }).where(eq(webhookInbox.id, id));
+    await ctx.db
+      .update(webhookInbox)
+      .set({ processedAt: ctx.now(), error: null, attempts: row.attempts + 1 })
+      .where(eq(webhookInbox.id, id));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     ctx.log("webhook processing failed", { id, event: row.event, error: message });
-    await ctx.db.update(webhookInbox).set({ error: message, attempts: row.attempts + 1 }).where(eq(webhookInbox.id, id));
+    await ctx.db
+      .update(webhookInbox)
+      .set({ error: message, attempts: row.attempts + 1 })
+      .where(eq(webhookInbox.id, id));
   }
 }
 
@@ -98,9 +104,15 @@ async function isTeamMember(ctx: ControlContext, teamId: string, login: string) 
 async function dispatch(ctx: ControlContext, event: string, p: Payload): Promise<void> {
   switch (event) {
     case "installation_repositories": {
-      if (p.repositories_removed?.length) await unlinkRepos(ctx, p.repositories_removed.map((r) => r.id));
+      if (p.repositories_removed?.length)
+        await unlinkRepos(
+          ctx,
+          p.repositories_removed.map((r) => r.id),
+        );
       if (p.action === "added" && p.installation) {
-        const known = await ctx.db.query.repos.findFirst({ where: eq(repos.ghInstallationId, p.installation.id) });
+        const known = await ctx.db.query.repos.findFirst({
+          where: eq(repos.ghInstallationId, p.installation.id),
+        });
         if (known) await linkInstallation(ctx, known.teamId, p.installation.id);
       }
       return;
@@ -115,7 +127,8 @@ async function dispatch(ctx: ControlContext, event: string, p: Payload): Promise
       const repo = await repoFor(ctx, p);
       if (!repo || p.ref !== `refs/heads/${repo.defaultBranch}`) return;
       const touched = (p.commits ?? []).flatMap((c) => [...c.added, ...c.modified, ...c.removed]);
-      if (touched.some((f) => f.startsWith(".foundry/")) || !repo.recipeSha) await refreshRepoConfig(ctx, repo);
+      if (touched.some((f) => f.startsWith(".foundry/")) || !repo.recipeSha)
+        await refreshRepoConfig(ctx, repo);
       return;
     }
     case "issues": {
@@ -143,7 +156,8 @@ async function dispatch(ctx: ControlContext, event: string, p: Payload): Promise
       if (p.action === "edited") {
         // Ticking a box edits our own bot comment, so the sender (not the comment author) answered.
         const questionId = findMarker(p.comment.body, "question");
-        if (questionId && p.sender && !isBot(p.sender)) await answerFromCheckbox(ctx, questionId, p.comment.body, p.sender.login);
+        if (questionId && p.sender && !isBot(p.sender))
+          await answerFromCheckbox(ctx, questionId, p.comment.body, p.sender.login);
         return;
       }
       if (p.action !== "created" || isBot(p.comment.user)) return;
@@ -207,7 +221,8 @@ async function dispatch(ctx: ControlContext, event: string, p: Payload): Promise
       if (p.action && p.action !== "completed" && event !== "status") return;
       const sha = p.check_suite?.head_sha ?? p.check_run?.head_sha ?? p.sha;
       if (!sha) return;
-      for (const job of await jobsForSha(ctx, sha)) if (job.status === "pr_ci") await evaluateJobGate(ctx, job.id);
+      for (const job of await jobsForSha(ctx, sha))
+        if (job.status === "pr_ci") await evaluateJobGate(ctx, job.id);
       return;
     }
   }

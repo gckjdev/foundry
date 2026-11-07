@@ -20,7 +20,9 @@ export function scrub(text: string, known: Iterable<string> = []): string {
     if (value && value.length >= 8) out = out.split(value).join("[redacted]");
   }
   for (const re of PATTERNS) {
-    out = out.replace(re, (m, prefix?: string) => (typeof prefix === "string" && m.startsWith(prefix) ? `${prefix}[redacted]` : "[redacted]"));
+    out = out.replace(re, (m, prefix?: string) =>
+      typeof prefix === "string" && m.startsWith(prefix) ? `${prefix}[redacted]` : "[redacted]",
+    );
   }
   return out;
 }

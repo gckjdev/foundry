@@ -1,6 +1,6 @@
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
-import { spawn } from "node:child_process";
 import type { Exec } from "./types";
 
 /** Run a command and capture output; never throws (a missing binary is exit code 127). */

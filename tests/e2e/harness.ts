@@ -40,7 +40,13 @@ function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, {
     cwd,
     stdio: "pipe",
-    env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" },
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@t",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@t",
+    },
   })
     .toString()
     .trim();
@@ -113,7 +119,10 @@ export class GitBackedGitHub extends FakeGitHub {
     r.prFiles.set(number, files);
   }
 
-  override async createPullRequest(ref: RepoRef, input: { head: string; base: string; title: string; body: string }) {
+  override async createPullRequest(
+    ref: RepoRef,
+    input: { head: string; base: string; title: string; body: string },
+  ) {
     const pr = await super.createPullRequest(ref, input);
     this.refresh(ref, pr.number);
     return this.getPullRequest(ref, pr.number);
@@ -127,7 +136,8 @@ export class GitBackedGitHub extends FakeGitHub {
 
 function revoked<T>(fn: () => Promise<T>): Promise<T> {
   return fn().catch((err) => {
-    if (err instanceof ConflictError || err instanceof InvalidTransitionError) throw new JobRevokedError(String(err.message));
+    if (err instanceof ConflictError || err instanceof InvalidTransitionError)
+      throw new JobRevokedError(String(err.message));
     throw err;
   });
 }
@@ -175,10 +185,14 @@ export class DirectControlPlane implements ControlPlane {
     });
   }
   async ask(jobId: string, prompt: string, options: string[]) {
-    return revoked(async () => ({ questionId: (await runnerAsk(this.ctx, await this.runner(), jobId, prompt, options)).id }));
+    return revoked(async () => ({
+      questionId: (await runnerAsk(this.ctx, await this.runner(), jobId, prompt, options)).id,
+    }));
   }
   async evidence(jobId: string, req: Parameters<ControlPlane["evidence"]>[1]) {
-    return revoked(async () => ({ id: (await runnerEvidence(this.ctx, await this.runner(), jobId, req)).id }));
+    return revoked(async () => ({
+      id: (await runnerEvidence(this.ctx, await this.runner(), jobId, req)).id,
+    }));
   }
   async confidence(jobId: string, req: Parameters<ControlPlane["confidence"]>[1]) {
     await revoked(async () => runnerConfidence(this.ctx, await this.runner(), jobId, req));
@@ -190,7 +204,9 @@ export class DirectControlPlane implements ControlPlane {
     await revoked(async () => runnerCheckpoint(this.ctx, await this.runner(), jobId, req));
   }
   async openPr(jobId: string, req: Parameters<ControlPlane["openPr"]>[1]) {
-    return revoked(async () => openPullRequest(this.ctx, await ownedJob(this.ctx, await this.runner(), jobId), req));
+    return revoked(async () =>
+      openPullRequest(this.ctx, await ownedJob(this.ctx, await this.runner(), jobId), req),
+    );
   }
   async onboarding(jobId: string, result: Parameters<ControlPlane["onboarding"]>[1]) {
     await revoked(async () => {
@@ -207,7 +223,13 @@ export class DirectControlPlane implements ControlPlane {
 export function fakeOs(os: "macos" | "linux", power: { ac: boolean | null } = { ac: null }): OsAdapter {
   return {
     os,
-    info: async () => ({ os, osVersion: os === "macos" ? "15.1" : "Ubuntu 24.04", arch: "arm64", cpu: 8, memMb: 16_000 }),
+    info: async () => ({
+      os,
+      osVersion: os === "macos" ? "15.1" : "Ubuntu 24.04",
+      arch: "arm64",
+      cpu: 8,
+      memMb: 16_000,
+    }),
     diskFreeMb: async () => 100_000,
     onAcPower: async () => power.ac,
     idleSeconds: async () => null,
@@ -256,7 +278,10 @@ export async function createE2E(opts: { recipe: string; policy?: string; mergeMo
 
   const { ctx } = base;
   const [team] = await ctx.db.insert(teams).values({ name: "acme" }).returning();
-  const [alice] = await ctx.db.insert(users).values({ ghLogin: "alice", email: "alice@acme.test" }).returning();
+  const [alice] = await ctx.db
+    .insert(users)
+    .values({ ghLogin: "alice", email: "alice@acme.test" })
+    .returning();
   const [bob] = await ctx.db.insert(users).values({ ghLogin: "bob", email: "bob@acme.test" }).returning();
   await ctx.db.insert(memberships).values([
     { teamId: team!.id, userId: alice!.id, role: "admin" },
@@ -333,7 +358,11 @@ export async function createE2E(opts: { recipe: string; policy?: string; mergeMo
   return e2e;
 }
 
-export async function waitFor<T>(fn: () => Promise<T | null | undefined | false>, what: string, ms = 20_000): Promise<T> {
+export async function waitFor<T>(
+  fn: () => Promise<T | null | undefined | false>,
+  what: string,
+  ms = 20_000,
+): Promise<T> {
   const end = Date.now() + ms;
   for (;;) {
     const v = await fn();

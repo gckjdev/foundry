@@ -8,7 +8,11 @@ const ERRORS: Record<string, string> = {
   Default: "Sign-in failed. Try again.",
 };
 
-export default async function SignIn({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+export default async function SignIn({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const sp = await searchParams;
   const code = typeof sp.error === "string" ? sp.error : undefined;
   const message = code ? (ERRORS[code] ?? ERRORS.Default) : null;
@@ -20,8 +24,8 @@ export default async function SignIn({ searchParams }: { searchParams: Promise<R
         </div>
         <h1>Tickets in. Merged PRs out.</h1>
         <p className="dim">
-          Label a GitHub issue <code>foundry</code>. An agent picks it up on one of your team&apos;s machines, asks when it
-          is unsure, proves its work, and opens the PR.
+          Label a GitHub issue <code>foundry</code>. An agent picks it up on one of your team&apos;s machines,
+          asks when it is unsure, proves its work, and opens the PR.
         </p>
         {message ? (
           <div className="notice" data-tone="bad">

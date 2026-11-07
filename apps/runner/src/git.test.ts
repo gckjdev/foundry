@@ -1,6 +1,6 @@
 import { gitProxyArgs, httpProxyEnv } from "@foundry/shared/proxy";
 import { describe, expect, it } from "vitest";
-import { authArgs } from "./git";
+import { authArgs, gitRemoteUsesHttpProxy } from "./git";
 
 describe("git proxy", () => {
   it("auth header does not put the token on the argv the user sees in errors", () => {
@@ -24,5 +24,11 @@ describe("git proxy", () => {
       "-c",
       "http.version=HTTP/1.1",
     ]);
+  });
+
+  it("does not proxy file:// git remotes used in tests", () => {
+    expect(gitRemoteUsesHttpProxy("file:///tmp/foundry-git")).toBe(false);
+    expect(gitRemoteUsesHttpProxy("https://github.com")).toBe(true);
+    expect(gitRemoteUsesHttpProxy(undefined)).toBe(true);
   });
 });

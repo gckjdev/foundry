@@ -39,9 +39,19 @@ export interface OnboardingResult {
 export interface ControlPlane {
   heartbeat(req: HeartbeatRequest): Promise<HeartbeatResponse>;
   claim(): Promise<ClaimedJob | null>;
-  readiness(req: { repoId: string; recipeSha: string | null; ready: boolean; reason: string | null }): Promise<void>;
+  readiness(req: {
+    repoId: string;
+    recipeSha: string | null;
+    ready: boolean;
+    reason: string | null;
+  }): Promise<void>;
   gitToken(repoId: string): Promise<{ token: string; expiresAt: string }>;
-  uploadArtifact(jobId: string, name: string, contentType: string, bytes: Uint8Array): Promise<{ artifactId: string; url: string }>;
+  uploadArtifact(
+    jobId: string,
+    name: string,
+    contentType: string,
+    bytes: Uint8Array,
+  ): Promise<{ artifactId: string; url: string }>;
   events(jobId: string, events: FoundryEvent[]): Promise<void>;
   stage(jobId: string, req: StageRequest): Promise<{ status: string }>;
   ask(jobId: string, prompt: string, options: string[]): Promise<{ questionId: string }>;
@@ -71,7 +81,13 @@ export class ApiError extends Error {
 
 async function request<T>(
   url: string,
-  init: { method?: string; token?: string; body?: unknown; raw?: Uint8Array; headers?: Record<string, string> },
+  init: {
+    method?: string;
+    token?: string;
+    body?: unknown;
+    raw?: Uint8Array;
+    headers?: Record<string, string>;
+  },
   schema?: z.ZodType<T>,
 ): Promise<T> {
   const headers: Record<string, string> = { ...init.headers };
@@ -82,7 +98,12 @@ async function request<T>(
     headers["content-type"] = "application/json";
     body = JSON.stringify(init.body);
   }
-  const res = await fetch(url, { method: init.method ?? "POST", headers, body, signal: AbortSignal.timeout(60_000) });
+  const res = await fetch(url, {
+    method: init.method ?? "POST",
+    headers,
+    body,
+    signal: AbortSignal.timeout(60_000),
+  });
   const text = await res.text();
   const data = text ? (JSON.parse(text) as unknown) : {};
   if (!res.ok) {
@@ -130,7 +151,11 @@ export class HttpControlPlane implements ControlPlane {
   uploadArtifact(jobId: string, name: string, contentType: string, bytes: Uint8Array) {
     return request(
       `${this.base}/artifacts`,
-      { token: this.token, raw: bytes, headers: { "content-type": contentType, "x-foundry-job": jobId, "x-foundry-name": name } },
+      {
+        token: this.token,
+        raw: bytes,
+        headers: { "content-type": contentType, "x-foundry-job": jobId, "x-foundry-name": name },
+      },
       z.object({ artifactId: z.string(), url: z.string() }),
     );
   }
@@ -140,7 +165,8 @@ export class HttpControlPlane implements ControlPlane {
   }
 
   async events(jobId: string, events: FoundryEvent[]) {
-    for (let i = 0; i < events.length; i += 200) await this.job(jobId, "events", { events: events.slice(i, i + 200) });
+    for (let i = 0; i < events.length; i += 200)
+      await this.job(jobId, "events", { events: events.slice(i, i + 200) });
   }
 
   stage(jobId: string, req: StageRequest) {
@@ -167,7 +193,10 @@ export class HttpControlPlane implements ControlPlane {
     await this.job(jobId, "checkpoint", req);
   }
 
-  openPr(jobId: string, req: { title: string; summary: string; headSha: string; uiChanged: boolean; changedLines: number }) {
+  openPr(
+    jobId: string,
+    req: { title: string; summary: string; headSha: string; uiChanged: boolean; changedLines: number },
+  ) {
     return this.job(jobId, "pr", req, OpenPrResponseSchema);
   }
 
@@ -176,7 +205,12 @@ export class HttpControlPlane implements ControlPlane {
   }
 
   async inputs(jobId: string) {
-    const res = await this.job(jobId, "inputs", { take: true }, z.object({ inputs: z.array(PendingInputSchema) }));
+    const res = await this.job(
+      jobId,
+      "inputs",
+      { take: true },
+      z.object({ inputs: z.array(PendingInputSchema) }),
+    );
     return res.inputs;
   }
 }

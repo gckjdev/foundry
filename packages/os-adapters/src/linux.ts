@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { arch, cpus, homedir, totalmem } from "node:os";
 import { join } from "node:path";
-import { dfFreeMb, exec as defaultExec, which } from "./exec";
+import { exec as defaultExec, dfFreeMb, which } from "./exec";
 import { FileSecretStore } from "./file-secrets";
 import type { Exec, OsAdapter, ResourceLimits, SecretStore, ServiceInstall, ServiceSpec } from "./types";
 
@@ -77,7 +77,9 @@ export class SystemdCredsStore implements SecretStore {
 
   async set(key: string, value: string) {
     await this.run("mkdir", ["-p", "-m", "0700", this.dir]);
-    const r = await this.run("systemd-creds", ["encrypt", `--name=${key}`, "-", this.path(key)], { input: value });
+    const r = await this.run("systemd-creds", ["encrypt", `--name=${key}`, "-", this.path(key)], {
+      input: value,
+    });
     if (r.code !== 0) throw new Error(`systemd-creds encrypt failed: ${r.stderr.trim()}`);
   }
 
@@ -102,7 +104,13 @@ export class LinuxAdapter implements OsAdapter {
     } catch {
       // keep default
     }
-    return { os: this.os, osVersion: pretty, arch: arch(), cpu: cpus().length, memMb: Math.round(totalmem() / 1024 / 1024) };
+    return {
+      os: this.os,
+      osVersion: pretty,
+      arch: arch(),
+      cpu: cpus().length,
+      memMb: Math.round(totalmem() / 1024 / 1024),
+    };
   }
 
   diskFreeMb(path: string) {
@@ -118,7 +126,11 @@ export class LinuxAdapter implements OsAdapter {
     }
     const supplies = await Promise.all(
       names.map(async (n) => {
-        const read = (f: string) => readFile(join(this.sysRoot, n, f), "utf8").then((s) => s.trim(), () => undefined);
+        const read = (f: string) =>
+          readFile(join(this.sysRoot, n, f), "utf8").then(
+            (s) => s.trim(),
+            () => undefined,
+          );
         return { type: (await read("type")) ?? "", online: await read("online") };
       }),
     );
@@ -145,7 +157,9 @@ export class LinuxAdapter implements OsAdapter {
 
   service(spec: ServiceSpec): ServiceInstall {
     const system = spec.mode === "system";
-    const path = system ? `/etc/systemd/system/${SYSTEMD_UNIT}` : join(homedir(), ".config", "systemd", "user", SYSTEMD_UNIT);
+    const path = system
+      ? `/etc/systemd/system/${SYSTEMD_UNIT}`
+      : join(homedir(), ".config", "systemd", "user", SYSTEMD_UNIT);
     const ctl = system ? ["systemctl"] : ["systemctl", "--user"];
     return {
       path,
@@ -165,7 +179,8 @@ export class LinuxAdapter implements OsAdapter {
 
   async secrets(): Promise<SecretStore> {
     const isRoot = process.getuid?.() === 0;
-    if (isRoot && (await which(this.run, "systemd-creds"))) return new SystemdCredsStore("/var/lib/foundry/creds", this.run);
+    if (isRoot && (await which(this.run, "systemd-creds")))
+      return new SystemdCredsStore("/var/lib/foundry/creds", this.run);
     return new FileSecretStore(join(homedir(), ".config", "foundry"));
   }
 

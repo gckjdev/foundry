@@ -15,13 +15,23 @@ export function PushToggle() {
   const [state, setState] = useState<string>("");
   const enable = async () => {
     try {
-      if (!("serviceWorker" in navigator) || !("PushManager" in window)) return setState("Push is not supported here.");
-      const { publicKey } = (await (await fetch("/api/push/subscribe")).json()) as { publicKey: string | null };
+      if (!("serviceWorker" in navigator) || !("PushManager" in window))
+        return setState("Push is not supported here.");
+      const { publicKey } = (await (await fetch("/api/push/subscribe")).json()) as {
+        publicKey: string | null;
+      };
       if (!publicKey) return setState("The server has no VAPID keys configured.");
       if ((await Notification.requestPermission()) !== "granted") return setState("Permission denied.");
       const reg = await navigator.serviceWorker.register("/sw.js");
-      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
-      await fetch("/api/push/subscribe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(sub) });
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+      await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(sub),
+      });
       setState("Push enabled for this browser.");
     } catch (err) {
       setState(`Could not enable push: ${String(err)}`);

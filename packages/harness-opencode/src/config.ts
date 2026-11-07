@@ -6,7 +6,11 @@ import type { Config } from "@opencode-ai/sdk";
  * written into the worktree. Everything is allowed except the policy's denied commands, so a
  * headless run never stops on a permission prompt.
  */
-export function opencodeConfig(opts: { mcpServers: McpServerConfig[]; permissions: PermissionPolicy; model?: string }): Config {
+export function opencodeConfig(opts: {
+  mcpServers: McpServerConfig[];
+  permissions: PermissionPolicy;
+  model?: string;
+}): Config {
   const bash: Record<string, "allow" | "deny"> = { "*": "allow" };
   for (const d of opts.permissions.denyCommands) {
     const p = d.trim();
@@ -27,7 +31,13 @@ export function opencodeConfig(opts: { mcpServers: McpServerConfig[]; permission
     mcp: Object.fromEntries(
       opts.mcpServers.map((s) => [
         s.name,
-        { type: "local" as const, command: [s.command, ...s.args], environment: s.env ?? {}, enabled: true, timeout: 30_000 },
+        {
+          type: "local" as const,
+          command: [s.command, ...s.args],
+          environment: s.env ?? {},
+          enabled: true,
+          timeout: 30_000,
+        },
       ]),
     ),
   };

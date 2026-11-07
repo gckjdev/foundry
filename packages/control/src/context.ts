@@ -23,7 +23,11 @@ export function jobUrl(ctx: ControlContext, jobId: string): string {
 }
 
 /** Run a side effect (GitHub, notifications) without letting its failure break the caller. */
-export async function bestEffort(ctx: ControlContext, what: string, fn: () => Promise<unknown>): Promise<void> {
+export async function bestEffort(
+  ctx: ControlContext,
+  what: string,
+  fn: () => Promise<unknown>,
+): Promise<void> {
   try {
     await fn();
   } catch (err) {

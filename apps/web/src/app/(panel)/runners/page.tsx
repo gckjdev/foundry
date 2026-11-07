@@ -1,5 +1,5 @@
 import { runningJobsByRunner, teamRunners } from "@foundry/control";
-import { runnerRepoReadiness, repos } from "@foundry/db";
+import { repos, runnerRepoReadiness } from "@foundry/db";
 import { type HarnessInfo, isOnline } from "@foundry/shared";
 import { eq, inArray } from "drizzle-orm";
 import Link from "next/link";
@@ -56,8 +56,8 @@ export default async function Runners() {
       </div>
       {shared.length === 0 && list.length > 0 ? (
         <div className="notice" style={{ marginBottom: 14 }}>
-          Laptops-only team: jobs pause when every laptop sleeps and resume on the next one that wakes. A spare Mac mini or
-          Linux box as a shared runner keeps work moving overnight.
+          Laptops-only team: jobs pause when every laptop sleeps and resume on the next one that wakes. A
+          spare Mac mini or Linux box as a shared runner keeps work moving overnight.
         </div>
       ) : null}
 
@@ -88,8 +88,17 @@ export default async function Runners() {
                     </div>
                   </td>
                   <td>
-                    <span className="pill" data-tone={!up ? "bad" : r.status === "draining" ? "warn" : r.accepting ? "ok" : "warn"}>
-                      {!up ? "offline" : r.status === "draining" ? "draining" : r.accepting ? "accepting" : "paused"}
+                    <span
+                      className="pill"
+                      data-tone={!up ? "bad" : r.status === "draining" ? "warn" : r.accepting ? "ok" : "warn"}
+                    >
+                      {!up
+                        ? "offline"
+                        : r.status === "draining"
+                          ? "draining"
+                          : r.accepting
+                            ? "accepting"
+                            : "paused"}
                     </span>
                     <div className="faint small">
                       {up ? (r.notAcceptingReason ?? "") : `seen ${ago(r.lastSeenAt)}`}
@@ -98,21 +107,36 @@ export default async function Runners() {
                   <td className="small">
                     {r.os} {r.arch}
                     <div className="faint">
-                      {r.cpu} cpu · {Math.round((r.memMb ?? 0) / 1024)} GB · {Math.round((r.diskFreeMb ?? 0) / 1024)} GB free
+                      {r.cpu} cpu · {Math.round((r.memMb ?? 0) / 1024)} GB ·{" "}
+                      {Math.round((r.diskFreeMb ?? 0) / 1024)} GB free
                       {r.onAcPower === false ? " · on battery" : ""}
                     </div>
                   </td>
                   <td className="small">
                     {(r.harnesses as HarnessInfo[]).map((h) => (
-                      <div key={h.id} style={{ color: h.installed && h.authOk ? "var(--text)" : "var(--bad)" }}>
-                        {h.id} {h.version ?? ""} {!h.installed ? "(missing)" : !h.authOk ? "(not signed in)" : ""}
+                      <div
+                        key={h.id}
+                        style={{ color: h.installed && h.authOk ? "var(--text)" : "var(--bad)" }}
+                      >
+                        {h.id} {h.version ?? ""}{" "}
+                        {!h.installed ? "(missing)" : !h.authOk ? "(not signed in)" : ""}
                       </div>
                     ))}
                   </td>
                   <td className="small">
                     {ready.map((x) => (
-                      <div key={x.r.repoId} style={{ color: x.r.ready && x.r.recipeSha === x.repoSha ? "var(--ok)" : "var(--warn)" }}>
-                        {x.fullName.split("/")[1]} {x.r.ready ? (x.r.recipeSha === x.repoSha ? "" : "(stale recipe)") : `✖ ${x.r.reason ?? ""}`}
+                      <div
+                        key={x.r.repoId}
+                        style={{
+                          color: x.r.ready && x.r.recipeSha === x.repoSha ? "var(--ok)" : "var(--warn)",
+                        }}
+                      >
+                        {x.fullName.split("/")[1]}{" "}
+                        {x.r.ready
+                          ? x.r.recipeSha === x.repoSha
+                            ? ""
+                            : "(stale recipe)"
+                          : `✖ ${x.r.reason ?? ""}`}
                       </div>
                     ))}
                   </td>

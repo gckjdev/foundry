@@ -15,7 +15,9 @@ export function getGitHub(): GitHubClient {
     const appId = process.env.GITHUB_APP_ID;
     const privateKey =
       process.env.GITHUB_APP_PRIVATE_KEY?.replace(/\\n/g, "\n") ??
-      (process.env.GITHUB_APP_PRIVATE_KEY_PATH ? readFileSync(process.env.GITHUB_APP_PRIVATE_KEY_PATH, "utf8") : "");
+      (process.env.GITHUB_APP_PRIVATE_KEY_PATH
+        ? readFileSync(process.env.GITHUB_APP_PRIVATE_KEY_PATH, "utf8")
+        : "");
     if (!appId || !privateKey) throw new Error("GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY(_PATH) must be set");
     globalForGh.__foundryGitHub = new OctokitGitHubClient({ appId, privateKey });
   }

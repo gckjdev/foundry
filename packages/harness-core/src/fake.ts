@@ -16,7 +16,12 @@ import type {
  */
 export interface FakeTurn {
   events?: HarnessEvent[];
-  act?: (ctx: { cwd: string; prompt: string; env: Record<string, string>; sessionId: string }) => Promise<void>;
+  act?: (ctx: {
+    cwd: string;
+    prompt: string;
+    env: Record<string, string>;
+    sessionId: string;
+  }) => Promise<void>;
   result?: SessionResult["status"];
   costUsd?: number;
 }
@@ -75,7 +80,9 @@ export class FakeHarness implements HarnessAdapter {
   }
 
   private run(sessionId: string, prompt: string, opts: ResumeOpts): HarnessSession {
-    const turn = this.turns.shift() ?? { events: [{ kind: "message", role: "agent", text: "(no scripted turn)" }] };
+    const turn = this.turns.shift() ?? {
+      events: [{ kind: "message", role: "agent", text: "(no scripted turn)" }],
+    };
     const queue = new AsyncQueue<HarnessEvent>();
     const done = deferred<SessionResult>();
     const state = { stopped: false, stop: () => {} };
@@ -90,8 +97,10 @@ export class FakeHarness implements HarnessAdapter {
     void (async () => {
       try {
         for (const e of turn.events ?? []) queue.push(e);
-        if (turn.act) await Promise.race([turn.act({ cwd: opts.cwd, prompt, env: opts.env, sessionId }), stopped]);
-        if (turn.costUsd) queue.push({ kind: "usage", tokensIn: 1000, tokensOut: 200, costUsd: turn.costUsd });
+        if (turn.act)
+          await Promise.race([turn.act({ cwd: opts.cwd, prompt, env: opts.env, sessionId }), stopped]);
+        if (turn.costUsd)
+          queue.push({ kind: "usage", tokensIn: 1000, tokensOut: 200, costUsd: turn.costUsd });
         done.resolve({ status: state.stopped ? "stopped" : (turn.result ?? "ok"), costUsd: turn.costUsd });
       } catch (err) {
         queue.push({ kind: "error", message: String(err) });

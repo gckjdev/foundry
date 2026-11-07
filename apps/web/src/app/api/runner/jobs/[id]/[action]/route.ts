@@ -1,6 +1,6 @@
 import {
-  completeOnboarding,
   ConflictError,
+  completeOnboarding,
   openPullRequest,
   ownedJob,
   runnerAsk,
@@ -47,7 +47,9 @@ const actions = {
   confidence: runnerRoute(ConfidenceRequestSchema, ({ ctx, runner, body, params }) =>
     runnerConfidence(ctx, runner, params.id!, body),
   ),
-  plan: runnerRoute(PlanRequestSchema, ({ ctx, runner, body, params }) => runnerPlan(ctx, runner, params.id!, body.plan)),
+  plan: runnerRoute(PlanRequestSchema, ({ ctx, runner, body, params }) =>
+    runnerPlan(ctx, runner, params.id!, body.plan),
+  ),
   checkpoint: runnerRoute(CheckpointRequestSchema, ({ ctx, runner, body, params }) =>
     runnerCheckpoint(ctx, runner, params.id!, body),
   ),
@@ -59,9 +61,12 @@ const actions = {
     const job = await ownedJob(ctx, runner, params.id!);
     return { pr: await completeOnboarding(ctx, job, body) };
   }),
-  inputs: runnerRoute(z.object({ take: z.boolean().default(true) }), async ({ ctx, runner, body, params }) => ({
-    inputs: await runnerInputs(ctx, runner, params.id!, body.take),
-  })),
+  inputs: runnerRoute(
+    z.object({ take: z.boolean().default(true) }),
+    async ({ ctx, runner, body, params }) => ({
+      inputs: await runnerInputs(ctx, runner, params.id!, body.take),
+    }),
+  ),
 } as const;
 
 export async function POST(req: Request, route: { params: Promise<{ id: string; action: string }> }) {

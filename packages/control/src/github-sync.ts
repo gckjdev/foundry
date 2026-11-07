@@ -37,7 +37,9 @@ export async function syncJobToGitHub(ctx: ControlContext, job: Job, from: JobSt
   if (!repo) return;
   const ref = repoRef(repo);
   const status = job.status as JobStatus;
-  const runner = job.runnerId ? await ctx.db.query.runners.findFirst({ where: eq(runners.id, job.runnerId) }) : null;
+  const runner = job.runnerId
+    ? await ctx.db.query.runners.findFirst({ where: eq(runners.id, job.runnerId) })
+    : null;
   const body = renderStatusComment({
     jobId: job.id,
     status,
@@ -45,7 +47,10 @@ export async function syncJobToGitHub(ctx: ControlContext, job: Job, from: JobSt
     costUsd: job.costUsd,
     jobUrl: jobUrl(ctx, job.id),
     prUrl: job.prUrl,
-    note: job.failureReason && status === "failed" ? `Reason: ${job.failureReason}` : (STATUS_NOTES[status] ?? null),
+    note:
+      job.failureReason && status === "failed"
+        ? `Reason: ${job.failureReason}`
+        : (STATUS_NOTES[status] ?? null),
   });
   if (job.statusCommentId) {
     await ctx.gh.updateComment(ref, job.statusCommentId, body);

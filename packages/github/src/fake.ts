@@ -54,7 +54,14 @@ export class FakeGitHub implements GitHubClient {
   }
 
   addIssue(fullName: string, issue: Partial<GhIssue> & { number: number; title: string }): GhIssue {
-    const full: GhIssue = { nodeId: `I_${issue.number}`, body: "", author: "alice", labels: [], state: "open", ...issue };
+    const full: GhIssue = {
+      nodeId: `I_${issue.number}`,
+      body: "",
+      author: "alice",
+      labels: [],
+      state: "open",
+      ...issue,
+    };
     this.repo(fullName).issues.set(issue.number, full);
     return full;
   }
@@ -80,7 +87,11 @@ export class FakeGitHub implements GitHubClient {
 
   async listAppInstallations() {
     if (this.appInstallations.length > 0) return this.appInstallations;
-    return [...this.installations.keys()].map((id) => ({ id, accountLogin: "fake", accountType: "Organization" }));
+    return [...this.installations.keys()].map((id) => ({
+      id,
+      accountLogin: "fake",
+      accountType: "Organization",
+    }));
   }
 
   async listInstallationRepos(installationId: number) {

@@ -1,5 +1,11 @@
 import "server-only";
-import { ChannelNotifier, type ControlContext, defaultTransports, startWorker, type Transports } from "@foundry/control";
+import {
+  ChannelNotifier,
+  type ControlContext,
+  defaultTransports,
+  startWorker,
+  type Transports,
+} from "@foundry/control";
 import { getDatabase } from "@foundry/db";
 import { getGitHub } from "@foundry/github";
 

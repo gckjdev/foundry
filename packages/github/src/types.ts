@@ -87,5 +87,10 @@ export interface GitHubClient {
   ciState(repo: RepoRef, sha: string, requiredChecks?: string[]): Promise<CiState>;
 
   /** GitHub Projects (v2): set the single-select "Status" field of the item for `contentNodeId`. */
-  setProjectStatus(installationId: number, projectId: string, contentNodeId: string, status: string): Promise<void>;
+  setProjectStatus(
+    installationId: number,
+    projectId: string,
+    contentNodeId: string,
+    status: string,
+  ): Promise<void>;
 }

@@ -1,8 +1,14 @@
 import "server-only";
-import { ConflictError, ForbiddenError, NotFoundError, UnauthorizedError, authenticateRunner } from "@foundry/control";
+import type { ControlContext } from "@foundry/control";
+import {
+  authenticateRunner,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  UnauthorizedError,
+} from "@foundry/control";
 import type { Runner } from "@foundry/db";
 import { InvalidTransitionError } from "@foundry/shared";
-import type { ControlContext } from "@foundry/control";
 import { z } from "zod";
 import { getContext } from "./context";
 
@@ -15,12 +21,18 @@ export function errorResponse(err: unknown): Response {
   if (err instanceof UnauthorizedError) return json({ error: err.message }, 401);
   if (err instanceof ForbiddenError) return json({ error: err.message }, 403);
   if (err instanceof NotFoundError) return json({ error: err.message }, 404);
-  if (err instanceof ConflictError || err instanceof InvalidTransitionError) return json({ error: err.message }, 409);
+  if (err instanceof ConflictError || err instanceof InvalidTransitionError)
+    return json({ error: err.message }, 409);
   console.error(err);
   return json({ error: "internal error" }, 500);
 }
 
-type RunnerHandler<T> = (args: { ctx: ControlContext; runner: Runner; body: T; params: Record<string, string> }) => Promise<unknown>;
+type RunnerHandler<T> = (args: {
+  ctx: ControlContext;
+  runner: Runner;
+  body: T;
+  params: Record<string, string>;
+}) => Promise<unknown>;
 
 /** Route helper for the runner API: bearer-token auth, zod-validated JSON body, typed errors. */
 export function runnerRoute<S extends z.ZodType>(schema: S | null, handler: RunnerHandler<z.infer<S>>) {

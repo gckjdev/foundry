@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { RepoPlaybookFiles } from "@foundry/playbooks";
-import { DEFAULT_POLICY, parsePolicyYaml, parseRecipeYaml, type Policy, type Recipe } from "@foundry/shared";
+import { DEFAULT_POLICY, type Policy, parsePolicyYaml, parseRecipeYaml, type Recipe } from "@foundry/shared";
 
 export const RECIPE_FILE = ".foundry/recipe.yaml";
 export const POLICY_FILE = ".foundry/policy.yaml";

@@ -29,19 +29,28 @@ export async function openPullRequest(ctx: ControlContext, job: Job, input: Open
     issueNumber: job.issueNumber,
     summary: input.summary,
     plan: job.plan,
-    evidence: ev.filter((e) => e.kind === "check").map((e) => ({ name: e.name, status: e.status, command: e.command })),
+    evidence: ev
+      .filter((e) => e.kind === "check")
+      .map((e) => ({ name: e.name, status: e.status, command: e.command })),
     confidence,
     jobUrl: jobUrl(ctx, job.id),
     screenshots: ev
       .filter((e) => e.kind === "screenshot" && e.artifactId)
       .map((e) => ({ name: e.name, url: artifactUrl(ctx, e.artifactId!) })),
   });
-  const existing = job.prNumber ? await ctx.gh.getPullRequest(ref, job.prNumber) : await ctx.gh.findPullRequest(ref, job.branch);
+  const existing = job.prNumber
+    ? await ctx.gh.getPullRequest(ref, job.prNumber)
+    : await ctx.gh.findPullRequest(ref, job.branch);
   let pr = existing && existing.state === "open" ? existing : null;
   if (pr) {
     await ctx.gh.updatePullRequest(ref, pr.number, { title: input.title, body });
   } else {
-    pr = await ctx.gh.createPullRequest(ref, { head: job.branch, base: repo.defaultBranch, title: input.title, body });
+    pr = await ctx.gh.createPullRequest(ref, {
+      head: job.branch,
+      base: repo.defaultBranch,
+      title: input.title,
+      body,
+    });
   }
   await ctx.db
     .update(jobs)

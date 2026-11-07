@@ -1,5 +1,11 @@
 import { jobs, runners } from "@foundry/db";
-import { HEARTBEAT_TIMEOUT_MS, isRunnerStage, nextRunnerStage, RUNNING_STATUSES, STICKY_WINDOW_MS } from "@foundry/shared";
+import {
+  HEARTBEAT_TIMEOUT_MS,
+  isRunnerStage,
+  nextRunnerStage,
+  RUNNING_STATUSES,
+  STICKY_WINDOW_MS,
+} from "@foundry/shared";
 import { and, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import type { ControlContext } from "./context";
 import { recordEvents, transitionJob } from "./jobs";
@@ -25,9 +31,14 @@ export async function requeueLostJobs(ctx: ControlContext): Promise<string[]> {
   for (const { job, runner } of lost) {
     const last = job.lastCompletedStage;
     const after = last && isRunnerStage(last) ? nextRunnerStage(last) : null;
-    const resumeStage = after && after !== "pr_ci" ? after : isRunnerStage(job.status) ? job.status : "triage";
+    const resumeStage =
+      after && after !== "pr_ci" ? after : isRunnerStage(job.status) ? job.status : "triage";
     await recordEvents(ctx, job, [
-      { kind: "log", level: "warn", message: `Runner ${runner?.name ?? "unknown"} went offline during ${job.status}` },
+      {
+        kind: "log",
+        level: "warn",
+        message: `Runner ${runner?.name ?? "unknown"} went offline during ${job.status}`,
+      },
     ]);
     const moved = await transitionJob(ctx, job.id, "queued", {
       reason: `runner ${runner?.name ?? "unknown"} offline`,

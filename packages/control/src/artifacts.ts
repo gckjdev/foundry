@@ -46,6 +46,8 @@ export async function readArtifact(ctx: ControlContext, artifactId: string, toke
   if (!claims || claims.a !== artifactId) return null;
   const row = await ctx.db.query.artifacts.findFirst({ where: eq(artifacts.id, artifactId) });
   if (!row?.storageKey) return null;
-  const bytes = await readFile(/* turbopackIgnore: true */ join(/* turbopackIgnore: true */ artifactsDir(), row.storageKey));
+  const bytes = await readFile(
+    /* turbopackIgnore: true */ join(/* turbopackIgnore: true */ artifactsDir(), row.storageKey),
+  );
   return { row, bytes };
 }

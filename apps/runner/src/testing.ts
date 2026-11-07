@@ -3,8 +3,8 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ClaimedJob, HeartbeatResponse, PendingInput } from "@foundry/shared";
 import { socketBridge } from "@foundry/mcp-foundry";
+import type { ClaimedJob, HeartbeatResponse, PendingInput } from "@foundry/shared";
 import type { CheckpointInput, ControlPlane, OnboardingResult } from "./api";
 
 export interface RecordedCall {
@@ -48,7 +48,10 @@ export class RecordingControlPlane implements ControlPlane {
   }
   async gitToken(repoId: string) {
     this.rec("gitToken", undefined, { repoId });
-    return { token: "ghs_testtokentesttokentesttoken", expiresAt: new Date(Date.now() + 3_600_000).toISOString() };
+    return {
+      token: "ghs_testtokentesttokentesttoken",
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    };
   }
   async uploadArtifact(jobId: string, name: string, contentType: string, bytes: Uint8Array) {
     this.rec("uploadArtifact", jobId, { name, contentType, size: bytes.byteLength });
@@ -95,7 +98,13 @@ function sh(cwd: string, ...args: string[]) {
   execFileSync("git", args, {
     cwd,
     stdio: "pipe",
-    env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" },
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@t",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@t",
+    },
   });
 }
 
@@ -135,7 +144,8 @@ export function testSocketPath(): string {
 /** The agent side of the MCP bridge, for FakeHarness turns. */
 export function agentTools(env: Record<string, string>) {
   const bridge = socketBridge(env.FOUNDRY_MCP_SOCKET!, env.FOUNDRY_JOB_ID!, env.FOUNDRY_MCP_TOKEN!);
-  return (tool: Parameters<typeof bridge.call>[0], args: Record<string, unknown> = {}) => bridge.call(tool, args);
+  return (tool: Parameters<typeof bridge.call>[0], args: Record<string, unknown> = {}) =>
+    bridge.call(tool, args);
 }
 
 export function claimedJob(overrides: Partial<ClaimedJob> = {}): ClaimedJob {

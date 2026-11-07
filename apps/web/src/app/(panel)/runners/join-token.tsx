@@ -9,7 +9,12 @@ export function JoinToken() {
   return (
     <div className="stack" style={{ marginTop: 12 }}>
       <div>
-        <button className="primary" type="button" disabled={pending} onClick={() => start(async () => setToken(await createJoinTokenAction()))}>
+        <button
+          className="primary"
+          type="button"
+          disabled={pending}
+          onClick={() => start(async () => setToken(await createJoinTokenAction()))}
+        >
           {pending ? "Creating…" : "Create join token"}
         </button>
       </div>

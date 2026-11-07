@@ -2,7 +2,9 @@ import type { Recipe } from "@foundry/shared";
 import postgres from "postgres";
 
 export function jobDatabaseName(jobId: string, name: string): string {
-  return `foundry_${jobId.replace(/-/g, "").slice(0, 12)}_${name.replace(/\W+/g, "_")}`.toLowerCase().slice(0, 63);
+  return `foundry_${jobId.replace(/-/g, "").slice(0, 12)}_${name.replace(/\W+/g, "_")}`
+    .toLowerCase()
+    .slice(0, 63);
 }
 
 function withDatabase(url: string, db: string): string {
@@ -22,7 +24,8 @@ export async function provisionServices(
 ): Promise<Record<string, string>> {
   const pg = recipe?.services.postgres;
   if (!pg) return {};
-  if (!adminUrl) throw new Error("the recipe needs Postgres but FOUNDRY_POSTGRES_URL is not set on this runner");
+  if (!adminUrl)
+    throw new Error("the recipe needs Postgres but FOUNDRY_POSTGRES_URL is not set on this runner");
   const name = jobDatabaseName(jobId, pg.database);
   const sql = postgres(adminUrl, { max: 1, onnotice: () => {} });
   try {
@@ -35,7 +38,11 @@ export async function provisionServices(
   return { DATABASE_URL: url, FOUNDRY_DATABASE_URL: url };
 }
 
-export async function dropServices(jobId: string, recipe: Recipe | null, adminUrl: string | undefined): Promise<void> {
+export async function dropServices(
+  jobId: string,
+  recipe: Recipe | null,
+  adminUrl: string | undefined,
+): Promise<void> {
   const pg = recipe?.services.postgres;
   if (!pg || !adminUrl) return;
   const sql = postgres(adminUrl, { max: 1, onnotice: () => {} });

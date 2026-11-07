@@ -26,7 +26,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (profile) {
         const { getContext } = await import("./server/context");
         const { upsertUser } = await import("@foundry/control");
-        const p = profile as unknown as { login: string; id: number; email?: string | null; name?: string | null; avatar_url?: string };
+        const p = profile as unknown as {
+          login: string;
+          id: number;
+          email?: string | null;
+          name?: string | null;
+          avatar_url?: string;
+        };
         const user = await upsertUser(await getContext(), {
           ghLogin: p.login,
           ghId: p.id,
