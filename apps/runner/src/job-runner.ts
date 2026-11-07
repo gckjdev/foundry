@@ -670,9 +670,10 @@ export class JobRunner {
     if (failures.length) {
       const retry = await this.retryOrGiveUp(failures);
       if (retry) return retry;
-      this.log(
-        "warn",
-        `Checks still failing after ${this.loop} verify loops; opening the PR for a human to take over`,
+      throw new FailJob(
+        `recipe checks still failing after ${this.loop} verify loops: ${failures
+          .map((f) => f.name)
+          .join(", ")}`,
       );
     }
     await this.deps.workspace.commitAll(

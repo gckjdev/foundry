@@ -166,6 +166,37 @@ describe("JobRunner", () => {
     expect(harness.calls.map((c) => c.kind)).toEqual(["start", "resume"]);
   });
 
+  it("fails the job instead of opening a PR when checks still fail after max verify loops", async () => {
+    const stuckTurn = (first: boolean): FakeTurn => ({
+      act: async ({ env }) => {
+        const call = agentTools(env);
+        if (first) {
+          await call("stage", { name: "investigating", summary: "ok" });
+          await call("stage", { name: "implementing", summary: "ok" });
+        }
+        await call("stage", { name: "verifying", summary: "still broken" });
+        await call("stage", { name: "done", summary: "done (not really)" });
+      },
+    });
+    // Default max_verify_loops is 3: the first verify plus three retries all fail.
+    const harness = new FakeHarness("claude-code", [
+      stuckTurn(true),
+      stuckTurn(false),
+      stuckTurn(false),
+      stuckTurn(false),
+    ]);
+    const outcome = await new JobRunner(
+      deps(harness),
+      claimedJob({ id: "88888888-0000-0000-0000-000000000000", branch: "foundry/8" }),
+    ).run();
+    expect(outcome).toBe("failed");
+    expect(api.named("openPr")).toHaveLength(0);
+    const last = api.named("stage").at(-1)!.body as { to: string; reason: string };
+    expect(last.to).toBe("failed");
+    expect(last.reason).toContain("marker");
+    expect(last.reason).toContain("3 verify loops");
+  });
+
   it("rejects out-of-order stages", async () => {
     let reply = "";
     const harness = new FakeHarness("claude-code", [
