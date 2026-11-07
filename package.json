@@ -16,11 +16,18 @@
     "format": "biome format --write .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:unit": "vitest run --project unit",
+    "test:api": "vitest run --project api",
+    "test:e2e": "playwright test",
+    "test:coverage": "vitest run --coverage",
+    "test:report": "vitest run --coverage && node scripts/coverage-report.mjs",
     "db:migrate": "pnpm --filter @foundry/db migrate"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.0",
+    "@playwright/test": "^1.48.2",
     "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "^4.1.12",
     "smee-client": "^2.0.4",
     "turbo": "^2.6.0",
     "typescript": "^5.9.0",

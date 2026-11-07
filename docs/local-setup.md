@@ -171,14 +171,16 @@ On **Runners**, you should see both names **accepting**. Stop each with Ctrl+C i
 
 ## 4. Daily commands
 
-| Command             | What                                               |
-| ------------------- | -------------------------------------------------- |
-| `pnpm dev`          | Control plane (web + realtime)                     |
-| `pnpm dev:webhooks` | Forward GitHub webhooks via smee                   |
-| `pnpm dev:runner`   | Runner daemon (after `runner join`)                |
-| `pnpm db:migrate`   | Apply Drizzle migrations                           |
-| `pnpm test`         | Vitest (DB tests need `FOUNDRY_TEST_DATABASE_URL`) |
-| `pnpm typecheck`    | `tsc` across the workspace                         |
+| Command             | What                                                                           |
+| ------------------- | ------------------------------------------------------------------------------ |
+| `pnpm dev`          | Control plane (web + realtime)                                                 |
+| `pnpm dev:webhooks` | Forward GitHub webhooks via smee                                               |
+| `pnpm dev:runner`   | Runner daemon (after `runner join`)                                            |
+| `pnpm db:migrate`   | Apply Drizzle migrations                                                       |
+| `pnpm test`         | Vitest unit + API + in-process e2e (DB tests need `FOUNDRY_TEST_DATABASE_URL`) |
+| `pnpm test:e2e`     | Playwright against `/signin` (`pnpm exec playwright install chromium` once)    |
+| `pnpm test:report`  | Coverage snapshot → `docs/testing-report.md`                                   |
+| `pnpm typecheck`    | `tsc` across the workspace                                                     |
 
 ### Restart `pnpm dev`
 

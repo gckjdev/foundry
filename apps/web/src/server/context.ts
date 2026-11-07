@@ -12,6 +12,7 @@ import { getGitHub } from "@foundry/github";
 const g = globalThis as unknown as {
   __foundryCtx?: Promise<{ ctx: ControlContext; transports: Transports }>;
   __foundryWorker?: () => void;
+  __foundryTestCtx?: ControlContext;
 };
 
 function env(name: string, fallback?: string): string {
@@ -41,8 +42,14 @@ async function build() {
 }
 
 export async function getContext(): Promise<ControlContext> {
+  if (g.__foundryTestCtx) return g.__foundryTestCtx;
   g.__foundryCtx ??= build();
   return (await g.__foundryCtx).ctx;
+}
+
+/** Swap the control plane for in-process API tests. Pass `undefined` to restore. */
+export function setContextForTests(ctx: ControlContext | undefined): void {
+  g.__foundryTestCtx = ctx;
 }
 
 /** Started once per server process from instrumentation.ts. */

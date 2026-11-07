@@ -5,6 +5,10 @@ dist
 *.tsbuildinfo
 next-env.d.ts
 coverage
+playwright-report
+test-results
+blob-report
+apps/web/AGENTS.md
 *.log
 .env
 .env.local
