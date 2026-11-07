@@ -11,13 +11,25 @@ export const ONBOARDING_BRANCH_PREFIX = "foundry/onboarding";
  * Onboarding (spec 5.6): an agent job that writes `.foundry/recipe.yaml`, `policy.yaml` and the
  * issue form, proves every recipe command works on the runner, then opens the recipe PR.
  */
-export async function startOnboarding(ctx: ControlContext, repoId: string, byLogin: string): Promise<Job> {
+export async function startOnboarding(
+  ctx: ControlContext,
+  repoId: string,
+  byLogin: string,
+  opts: { restart?: boolean } = {},
+): Promise<Job> {
   const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, repoId) });
   if (!repo) throw new NotFoundError("repo not found");
   const active = await ctx.db.query.jobs.findFirst({
-    where: and(eq(jobs.repoId, repoId), eq(jobs.kind, "onboarding"), notInArray(jobs.status, ["merged", "cancelled", "failed"])),
+    where: and(
+      eq(jobs.repoId, repoId),
+      eq(jobs.kind, "onboarding"),
+      notInArray(jobs.status, ["merged", "cancelled", "failed"]),
+    ),
   });
-  if (active) return active;
+  if (active && !opts.restart) return active;
+  if (active && opts.restart) {
+    await transitionJob(ctx, active.id, "cancelled", { reason: `onboarding restarted by @${byLogin}` });
+  }
   const team = await ctx.db.query.teams.findFirst({ where: eq(teams.id, repo.teamId) });
   const id = randomUUID();
   const [job] = await ctx.db
@@ -38,7 +50,9 @@ export async function startOnboarding(ctx: ControlContext, repoId: string, byLog
     })
     .returning();
   await ctx.db.update(repos).set({ onboardingStatus: "running" }).where(eq(repos.id, repoId));
-  await recordEvents(ctx, job!, [{ kind: "stage_changed", from: null, to: "queued", reason: `onboarding started by @${byLogin}` }]);
+  await recordEvents(ctx, job!, [
+    { kind: "stage_changed", from: null, to: "queued", reason: `onboarding started by @${byLogin}` },
+  ]);
   return job!;
 }
 

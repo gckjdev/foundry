@@ -32,6 +32,8 @@ pnpm dev                        # web on :3000, realtime on :3001
 pnpm dev:webhooks               # forward GitHub webhooks via smee.io
 ```
 
+Restart the control plane: **Ctrl+C** in that terminal, then `pnpm dev` again. If ports 3000/3001 stay busy: `lsof -ti tcp:3000,3001 | xargs kill` then `pnpm dev`. The runner is separate — Ctrl+C in its terminal, then `pnpm dev:runner`. Details: `docs/local-setup.md` §4.
+
 The runner is a separate process (join a team first, then start it):
 
 ```bash

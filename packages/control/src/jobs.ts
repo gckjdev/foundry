@@ -30,9 +30,11 @@ export async function recordEvents(
   list: FoundryEvent[],
 ): Promise<void> {
   if (list.length === 0) return;
-  await ctx.db.insert(events).values(
-    list.map((e) => ({ jobId: job.id, teamId: job.teamId, kind: e.kind, stage: job.status, payload: e })),
-  );
+  await ctx.db
+    .insert(events)
+    .values(
+      list.map((e) => ({ jobId: job.id, teamId: job.teamId, kind: e.kind, stage: job.status, payload: e })),
+    );
   let cost = 0;
   let tokensIn = 0;
   let tokensOut = 0;
@@ -89,13 +91,18 @@ export async function transitionJob(
     const [updated] = await tx.update(jobs).set(patch).where(eq(jobs.id, jobId)).returning();
     if (from !== to) {
       const event: FoundryEvent = { kind: "stage_changed", from, to, reason: opts.reason };
-      await tx.insert(events).values({ jobId, teamId: current.teamId, kind: event.kind, stage: to, payload: event });
+      await tx
+        .insert(events)
+        .values({ jobId, teamId: current.teamId, kind: event.kind, stage: to, payload: event });
     }
     return { job: updated!, from };
   });
   if (!result) return null;
   if (result.from !== result.job.status) {
     await bestEffort(ctx, "github sync", () => syncJobToGitHub(ctx, result.job, result.from));
+    if (result.job.kind === "onboarding" && (to === "failed" || to === "cancelled")) {
+      await ctx.db.update(repos).set({ onboardingStatus: "failed" }).where(eq(repos.id, result.job.repoId));
+    }
   }
   return result.job;
 }
@@ -149,7 +156,9 @@ export async function createJobFromIssue(
     if (raced) return raced;
     throw new Error("failed to create job");
   }
-  await recordEvents(ctx, job, [{ kind: "stage_changed", from: null, to: "queued", reason: "issue labeled foundry" }]);
+  await recordEvents(ctx, job, [
+    { kind: "stage_changed", from: null, to: "queued", reason: "issue labeled foundry" },
+  ]);
   await bestEffort(ctx, "github sync", () => syncJobToGitHub(ctx, job, null));
   return job;
 }
@@ -196,7 +205,12 @@ export async function listPendingInputs(ctx: ControlContext, jobId: string) {
  * A human message for the agent (`/foundry ...`, a changes-requested review, or the panel).
  * Parked jobs go back to the queue at implementing; running jobs pick it up at the next stage.
  */
-export async function sendMessage(ctx: ControlContext, jobId: string, text: string, by: string): Promise<Job> {
+export async function sendMessage(
+  ctx: ControlContext,
+  jobId: string,
+  text: string,
+  by: string,
+): Promise<Job> {
   const job = await getJob(ctx, jobId);
   await addInput(ctx, job, { kind: "message", text, by });
   await recordEvents(ctx, job, [{ kind: "message", role: "human", text: `@${by}: ${text}` }]);

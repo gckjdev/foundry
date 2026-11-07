@@ -45,7 +45,11 @@ export default async function Repos({ searchParams }: { searchParams: Promise<Re
           ) : null}
         </div>
       </div>
-      {sp.installed ? <div className="notice" style={{ marginBottom: 14 }}>GitHub App installed. Repos synced.</div> : null}
+      {sp.installed ? (
+        <div className="notice" style={{ marginBottom: 14 }}>
+          GitHub App installed. Repos synced.
+        </div>
+      ) : null}
       {syncError ? (
         <div className="notice" data-tone="bad" style={{ marginBottom: 14 }}>
           Could not list GitHub App repos: {syncError}
@@ -53,7 +57,8 @@ export default async function Repos({ searchParams }: { searchParams: Promise<Re
       ) : null}
       {list.length === 0 ? (
         <div className="notice">
-          No repos yet. Install the Foundry GitHub App on your org or account and pick the repos Foundry may work on.
+          No repos yet. Install the Foundry GitHub App on your org or account and pick the repos Foundry may
+          work on.
         </div>
       ) : null}
       <div className="stack">
@@ -68,28 +73,36 @@ export default async function Repos({ searchParams }: { searchParams: Promise<Re
                     {ob.label}
                   </span>
                 </div>
-                {!repo.acceptsJobs && repo.onboardingStatus !== "running" ? (
+                {!repo.acceptsJobs && repo.onboardingStatus !== "pr_open" ? (
                   <form action={onboardAction}>
                     <input type="hidden" name="repoId" value={repo.id} />
+                    {repo.onboardingStatus === "running" || repo.onboardingStatus === "failed" ? (
+                      <input type="hidden" name="restart" value="1" />
+                    ) : null}
                     <button className="primary" type="submit">
-                      {repo.onboardingStatus === "failed" ? "Retry onboarding" : "Onboard repo"}
+                      {repo.onboardingStatus === "not_started" ? "Onboard repo" : "Retry onboarding"}
                     </button>
                   </form>
                 ) : null}
               </div>
               {repo.acceptsJobs ? (
                 <p className="dim small">
-                  Recipe {repo.recipeSha?.slice(0, 7)} on {repo.defaultBranch}. Label an issue <code>foundry</code> to start
-                  a job.
+                  Recipe {repo.recipeSha?.slice(0, 7)} on {repo.defaultBranch}. Label an issue{" "}
+                  <code>foundry</code> to start a job.
                 </p>
               ) : (
                 <p className="dim small">
-                  Onboarding runs an agent that writes <code>.foundry/recipe.yaml</code> and <code>policy.yaml</code>,
-                  proves every command on a runner, and opens a PR for you to review.
+                  Onboarding runs an agent that writes <code>.foundry/recipe.yaml</code> and{" "}
+                  <code>policy.yaml</code>, proves every command on a runner, and opens a PR for you to
+                  review.
                 </p>
               )}
               {role === "admin" ? (
-                <form action={repoSettingsAction} className="row" style={{ marginTop: 10, alignItems: "flex-end" }}>
+                <form
+                  action={repoSettingsAction}
+                  className="row"
+                  style={{ marginTop: 10, alignItems: "flex-end" }}
+                >
                   <input type="hidden" name="repoId" value={repo.id} />
                   <label>
                     Merge mode
@@ -111,7 +124,11 @@ export default async function Repos({ searchParams }: { searchParams: Promise<Re
                   </label>
                   <label>
                     Default model
-                    <input name="defaultModel" defaultValue={repo.defaultModel ?? ""} placeholder="team default" />
+                    <input
+                      name="defaultModel"
+                      defaultValue={repo.defaultModel ?? ""}
+                      placeholder="team default"
+                    />
                   </label>
                   <label>
                     GitHub Project ID (optional)

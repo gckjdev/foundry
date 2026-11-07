@@ -145,6 +145,42 @@ If **Repos** is empty after you installed the App, the Setup URL ran before you 
 | `pnpm test`         | Vitest (DB tests need `FOUNDRY_TEST_DATABASE_URL`) |
 | `pnpm typecheck`    | `tsc` across the workspace                         |
 
+### Restart `pnpm dev`
+
+Do this after changing `.env` (including `FOUNDRY_HTTP_PROXY`), after pulling code that touches the web or realtime apps, or if the panel looks stuck.
+
+`pnpm dev` is one process for **web** (`:3000`) and **realtime** (`:3001`). It does **not** start or restart the runner.
+
+1. Click the terminal that is running `pnpm dev`.
+2. Press **Ctrl+C** once and wait until it exits. If it hangs, press **Ctrl+C** again.
+3. From the repo root:
+
+```bash
+cd /Users/pipi/foundry
+pnpm dev
+```
+
+You should see Next on `http://localhost:3000` and realtime on `ws://localhost:3001`. If `FOUNDRY_HTTP_PROXY` is set, the web process logs `[foundry] HTTP proxy http://127.0.0.1:8118`.
+
+If Ctrl+C does not free the ports:
+
+```bash
+lsof -ti tcp:3000,3001 | xargs kill
+cd /Users/pipi/foundry
+pnpm dev
+```
+
+### Restart `pnpm dev:runner`
+
+In the **runner** terminal (a different process from `pnpm dev`): **Ctrl+C**, then from the repo root:
+
+```bash
+cd /Users/pipi/foundry
+pnpm dev:runner
+```
+
+The runner must already be joined (`foundry runner join`). After a proxy or git-related code change, restart the runner or jobs will keep using the old process.
+
 ## 5. Production deploy (Docker Compose)
 
 Use this when Docker is available and you have a public hostname. Update the GitHub App URLs to that host first.

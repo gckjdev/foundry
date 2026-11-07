@@ -83,7 +83,9 @@ async function teamJob(jobId: string) {
 export async function answerAction(form: FormData) {
   const { ctx, user, job } = await teamJob(str(form, "jobId"));
   const questionId = str(form, "questionId");
-  const q = await ctx.db.query.questions.findFirst({ where: and(eq(questions.id, questionId), eq(questions.jobId, job.id)) });
+  const q = await ctx.db.query.questions.findFirst({
+    where: and(eq(questions.id, questionId), eq(questions.jobId, job.id)),
+  });
   if (!q) return;
   const choice = str(form, "option");
   const free = str(form, "text");
@@ -91,7 +93,12 @@ export async function answerAction(form: FormData) {
   const idx = choice === "" ? null : Number(choice);
   const text = idx !== null && options[idx] ? options[idx]! : free;
   if (!text) return;
-  await answerQuestion(ctx, q.id, { text, optionIndex: idx !== null && options[idx] ? idx : null, by: user.login, via: "panel" });
+  await answerQuestion(ctx, q.id, {
+    text,
+    optionIndex: idx !== null && options[idx] ? idx : null,
+    by: user.login,
+    via: "panel",
+  });
   revalidatePath(`/jobs/${job.id}`);
 }
 
@@ -130,21 +137,27 @@ export async function runnerStatusAction(form: FormData) {
   const { ctx, team } = await requireAdmin();
   const runnerId = str(form, "runnerId");
   const status = str(form, "status") as "active" | "draining" | "removed";
-  const runner = await ctx.db.query.runners.findFirst({ where: and(eq(runners.id, runnerId), eq(runners.teamId, team.id)) });
-  if (runner && ["active", "draining", "removed"].includes(status)) await setRunnerStatus(ctx, runner.id, status);
+  const runner = await ctx.db.query.runners.findFirst({
+    where: and(eq(runners.id, runnerId), eq(runners.teamId, team.id)),
+  });
+  if (runner && ["active", "draining", "removed"].includes(status))
+    await setRunnerStatus(ctx, runner.id, status);
   revalidatePath("/runners");
 }
 
 async function teamRepo(repoId: string, admin = false) {
   const s = admin ? await requireAdmin() : await requireTeam();
-  const repo = await s.ctx.db.query.repos.findFirst({ where: and(eq(repos.id, repoId), eq(repos.teamId, s.team.id)) });
+  const repo = await s.ctx.db.query.repos.findFirst({
+    where: and(eq(repos.id, repoId), eq(repos.teamId, s.team.id)),
+  });
   if (!repo) throw new Error("not found");
   return { ...s, repo };
 }
 
 export async function onboardAction(form: FormData) {
   const { ctx, user, repo } = await teamRepo(str(form, "repoId"));
-  const job = await startOnboarding(ctx, repo.id, user.login);
+  const restart = str(form, "restart") === "1";
+  const job = await startOnboarding(ctx, repo.id, user.login, { restart });
   redirect(`/jobs/${job.id}`);
 }
 
