@@ -11,10 +11,12 @@ import { parseRecipeYaml, VERSION } from "@foundry/shared";
 import { applyHttpProxyEnv, loadHttpProxyFromEnvFile } from "@foundry/shared/proxy";
 import { HttpControlPlane, joinControlPlane } from "./api";
 import {
+  applyRunnerHome,
   applyScheduleArgs,
   dataDir,
   defaultSchedule,
   loadConfig,
+  notJoinedMessage,
   type RunnerConfig,
   saveConfig,
   TOKEN_SECRET_KEY,
@@ -26,11 +28,13 @@ import { checkRecipe } from "./readiness";
 const HELP = `foundry ${VERSION}: the Foundry runner
 
 Usage:
-  foundry runner join <fdj_token> --server <url> [--shared] [--name NAME] [--concurrency N] [--http-proxy URL]
-  foundry runner start                  Run the daemon in the foreground
-  foundry runner install-service [--system] [--user NAME]
-                                        Install a launchd/systemd service that starts on boot or login
-  foundry runner status                 Show the daemon's last reported state
+  foundry runner join <fdj_token> --server <url> [--shared] [--name NAME] [--home DIR] [--concurrency N] [--http-proxy URL]
+  foundry runner start [--home DIR]     Run the daemon in the foreground
+  foundry runner install-service [--home DIR] [--system] [--user NAME]
+                                        Install a launchd/systemd service for this home
+  foundry runner uninstall-service [--home DIR] [--system]
+                                        Remove that service. The other homes stay loaded
+  foundry runner status [--home DIR]    Show the daemon's last reported state
   foundry runner schedule [--ac-only[=false]] [--pause-when-active MIN] [--window HH:MM-HH:MM ...] [--weekends[=false]]
   foundry check [DIR]                   Check that this machine can run the repo's .foundry/recipe.yaml
   foundry doctor [--live]               Check harnesses, git, disk and power; --live runs a tiny real session
@@ -65,7 +69,7 @@ function loadNearbyProxyEnv(): void {
 
 async function requireConfig(): Promise<{ config: RunnerConfig; token: string }> {
   const config = loadConfig();
-  if (!config) fail(`not joined yet; run \`foundry runner join\` (config dir ${dataDir()})`);
+  if (!config) fail(notJoinedMessage());
   const token =
     process.env.FOUNDRY_RUNNER_TOKEN ?? (await (await currentOsAdapter().secrets()).get(TOKEN_SECRET_KEY));
   if (!token) fail("runner token missing from the secret store; join again");
@@ -145,19 +149,31 @@ async function start() {
   process.on("SIGTERM", () => void shutdown());
 }
 
+function serviceSpec(system: boolean, user: string) {
+  const config = loadConfig();
+  if (!config) fail(notJoinedMessage());
+  const dir = dataDir();
+  return {
+    spec: {
+      binaryPath: process.execPath,
+      args: selfCommand(["runner", "start", "--home", dir]).args,
+      mode: system ? ("system" as const) : ("user" as const),
+      user,
+      workDir: dir,
+      logDir: join(dir, "logs"),
+      name: config.name,
+      environment: { FOUNDRY_HOME: dir },
+    },
+    dir,
+  };
+}
+
 async function installService(values: Record<string, string | boolean | undefined>) {
   const os = currentOsAdapter();
   const system = !!values.system;
   const user = (values.user as string | undefined) ?? userInfo().username;
-  const dir = dataDir();
-  const install = os.service({
-    binaryPath: process.execPath,
-    args: selfCommand(["runner", "start"]).args,
-    mode: system ? "system" : "user",
-    user,
-    workDir: dir,
-    logDir: join(dir, "logs"),
-  });
+  const { spec, dir } = serviceSpec(system, user);
+  const install = os.service(spec);
   const { mkdirSync, writeFileSync } = await import("node:fs");
   const { dirname } = await import("node:path");
   if (system && process.getuid?.() !== 0) {
@@ -176,11 +192,32 @@ async function installService(values: Record<string, string | boolean | undefine
   console.log(`Installed ${install.path}. The runner starts on ${system ? "boot" : "login"}.`);
 }
 
+async function uninstallService(values: Record<string, string | boolean | undefined>) {
+  const os = currentOsAdapter();
+  const system = !!values.system;
+  const user = (values.user as string | undefined) ?? userInfo().username;
+  const { spec } = serviceSpec(system, user);
+  const install = os.service(spec);
+  if (system && process.getuid?.() !== 0) {
+    const commands = install.deactivate.map((cmd) => cmd.join(" ")).join("\n");
+    console.log(`Run with sudo:\n\n${commands}\nrm -f ${install.path}`);
+    return;
+  }
+  for (const cmd of install.deactivate) {
+    const r = spawnSync(cmd[0]!, cmd.slice(1), { stdio: "inherit" });
+    if (r.status !== 0) console.error(`foundry: \`${cmd.join(" ")}\` failed (continuing)`);
+  }
+  const { rmSync } = await import("node:fs");
+  rmSync(install.path, { force: true });
+  console.log(`Removed ${install.path}.`);
+}
+
 function status() {
   const file = join(dataDir(), "status.json");
   const config = loadConfig();
-  if (!config) fail("not joined yet");
+  if (!config) fail(notJoinedMessage());
   console.log(`runner ${config.name} (${config.kind}) → ${config.serverUrl}`);
+  console.log(`home: ${dataDir()}`);
   console.log(`schedule: ${JSON.stringify(config.schedule)}`);
   if (!existsSync(file)) return console.log("daemon: not running (no status yet)");
   const s = JSON.parse(readFileSync(file, "utf8")) as {
@@ -199,7 +236,7 @@ function status() {
 
 function schedule(values: Record<string, string | boolean | string[] | undefined>) {
   const config = loadConfig();
-  if (!config) fail("not joined yet");
+  if (!config) fail(notJoinedMessage());
   const defined = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined)) as Record<
     string,
     string | boolean | string[]
@@ -267,6 +304,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       server: { type: "string" },
       shared: { type: "boolean" },
       name: { type: "string" },
+      home: { type: "string" },
       kind: { type: "string" },
       concurrency: { type: "string" },
       system: { type: "boolean" },
@@ -283,6 +321,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     },
   });
   const [cmd, sub, ...rest] = positionals;
+  if (typeof values.home === "string") applyRunnerHome(values.home);
   loadNearbyProxyEnv();
   if (typeof values["http-proxy"] === "string" && values["http-proxy"].trim()) {
     process.env.FOUNDRY_HTTP_PROXY = values["http-proxy"].trim();
@@ -308,6 +347,8 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
         return start();
       case "install-service":
         return installService(v);
+      case "uninstall-service":
+        return uninstallService(v);
       case "status":
         return status();
       case "schedule":

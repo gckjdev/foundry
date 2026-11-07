@@ -36,6 +36,10 @@ export interface ServiceSpec {
   user: string;
   workDir: string;
   logDir: string;
+  /** Runner name. A name gets its own launchd label or systemd unit. */
+  name?: string;
+  /** Extra environment for the service process, such as `FOUNDRY_HOME`. */
+  environment?: Record<string, string>;
 }
 
 export interface ServiceInstall {

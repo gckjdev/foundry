@@ -3,10 +3,16 @@ import { arch, cpus, homedir, totalmem } from "node:os";
 import { join } from "node:path";
 import { exec as defaultExec, dfFreeMb } from "./exec";
 import { FileSecretStore } from "./file-secrets";
+import { customFoundryHome } from "./home";
+import { serviceSlug } from "./service-names";
 import type { Exec, OsAdapter, ResourceLimits, SecretStore, ServiceInstall, ServiceSpec } from "./types";
 
 export const LAUNCHD_LABEL = "dev.foundry.runner";
 const KEYCHAIN_SERVICE_PREFIX = "dev.foundry.";
+
+export function launchdLabel(name?: string): string {
+  return name ? `${LAUNCHD_LABEL}.${serviceSlug(name)}` : LAUNCHD_LABEL;
+}
 
 export function parsePmsetBatt(out: string): boolean | null {
   if (/AC Power/.test(out)) return true;
@@ -22,6 +28,16 @@ export function parseHidIdle(out: string): number | null {
 
 const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+function environmentDict(environment: Record<string, string> | undefined): string {
+  const entries: [string, string][] = [
+    ["PATH", "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"],
+    ...Object.entries(environment ?? {}),
+  ];
+  return entries
+    .map(([key, value]) => `    <key>${xml(key)}</key>\n    <string>${xml(value)}</string>`)
+    .join("\n");
+}
+
 export function launchdPlist(spec: ServiceSpec): string {
   const args = [spec.binaryPath, ...spec.args].map((a) => `    <string>${xml(a)}</string>`).join("\n");
   const user = spec.mode === "system" ? `  <key>UserName</key>\n  <string>${xml(spec.user)}</string>\n` : "";
@@ -30,7 +46,7 @@ export function launchdPlist(spec: ServiceSpec): string {
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>${LAUNCHD_LABEL}</string>
+  <string>${launchdLabel(spec.name)}</string>
   <key>ProgramArguments</key>
   <array>
 ${args}
@@ -49,8 +65,7 @@ ${user}  <key>WorkingDirectory</key>
   <string>${xml(join(spec.logDir, "runner.log"))}</string>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>PATH</key>
-    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+${environmentDict(spec.environment)}
   </dict>
 </dict>
 </plist>
@@ -140,16 +155,17 @@ export class MacOsAdapter implements OsAdapter {
   }
 
   service(spec: ServiceSpec): ServiceInstall {
+    const label = launchdLabel(spec.name);
     const path =
       spec.mode === "system"
-        ? `/Library/LaunchDaemons/${LAUNCHD_LABEL}.plist`
-        : join(homedir(), "Library", "LaunchAgents", `${LAUNCHD_LABEL}.plist`);
+        ? `/Library/LaunchDaemons/${label}.plist`
+        : join(homedir(), "Library", "LaunchAgents", `${label}.plist`);
     const domain = spec.mode === "system" ? "system" : `gui/${process.getuid?.() ?? 501}`;
     return {
       path,
       contents: launchdPlist(spec),
       activate: [["launchctl", "bootstrap", domain, path]],
-      deactivate: [["launchctl", "bootout", `${domain}/${LAUNCHD_LABEL}`]],
+      deactivate: [["launchctl", "bootout", `${domain}/${label}`]],
     };
   }
 
@@ -174,8 +190,9 @@ export class MacOsAdapter implements OsAdapter {
   }
 
   async secrets(): Promise<SecretStore> {
-    // A custom FOUNDRY_HOME is a second runner on this login; keep its token out of the shared Keychain.
-    if (process.env.FOUNDRY_HOME) return new FileSecretStore(join(process.env.FOUNDRY_HOME, "secrets"));
+    // A non-default home is a second runner on this login; keep its token out of the shared Keychain.
+    const home = customFoundryHome();
+    if (home) return new FileSecretStore(join(home, "secrets"));
     return new KeychainSecretStore(process.env.USER ?? "foundry", this.run);
   }
 

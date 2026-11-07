@@ -4,9 +4,15 @@ import { arch, cpus, homedir, totalmem } from "node:os";
 import { join } from "node:path";
 import { exec as defaultExec, dfFreeMb, which } from "./exec";
 import { FileSecretStore } from "./file-secrets";
+import { customFoundryHome } from "./home";
+import { serviceSlug } from "./service-names";
 import type { Exec, OsAdapter, ResourceLimits, SecretStore, ServiceInstall, ServiceSpec } from "./types";
 
 export const SYSTEMD_UNIT = "foundry-runner.service";
+
+export function systemdUnitName(name?: string): string {
+  return name ? `foundry-runner-${serviceSlug(name)}.service` : SYSTEMD_UNIT;
+}
 
 export function parseOsRelease(text: string): string {
   const m = /^PRETTY_NAME="?([^"\n]+)"?/m.exec(text);
@@ -34,17 +40,29 @@ export function parseLoginctlIdle(out: string, nowMs = Date.now()): number | nul
   return since > 0 ? Math.max(0, Math.floor((nowMs - since / 1000) / 1000)) : null;
 }
 
+function environmentLines(environment: Record<string, string> | undefined): string {
+  return Object.entries(environment ?? {})
+    .map(([key, value]) => {
+      const assignment = `${key}=${value}`;
+      return /[\s"]/.test(assignment)
+        ? `Environment="${assignment.replaceAll('"', '\\"')}"\n`
+        : `Environment=${assignment}\n`;
+    })
+    .join("");
+}
+
 export function systemdUnit(spec: ServiceSpec): string {
   const user = spec.mode === "system" ? `User=${spec.user}\nGroup=${spec.user}\n` : "";
+  const description = spec.name ? `Foundry runner (${spec.name.replace(/[\r\n]/g, " ")})` : "Foundry runner";
   return `[Unit]
-Description=Foundry runner
+Description=${description}
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 ${user}WorkingDirectory=${spec.workDir}
-ExecStart=${[spec.binaryPath, ...spec.args].join(" ")}
+${environmentLines(spec.environment)}ExecStart=${[spec.binaryPath, ...spec.args].join(" ")}
 Restart=always
 RestartSec=5
 KillMode=mixed
@@ -157,19 +175,18 @@ export class LinuxAdapter implements OsAdapter {
 
   service(spec: ServiceSpec): ServiceInstall {
     const system = spec.mode === "system";
-    const path = system
-      ? `/etc/systemd/system/${SYSTEMD_UNIT}`
-      : join(homedir(), ".config", "systemd", "user", SYSTEMD_UNIT);
+    const unit = systemdUnitName(spec.name);
+    const path = system ? `/etc/systemd/system/${unit}` : join(homedir(), ".config", "systemd", "user", unit);
     const ctl = system ? ["systemctl"] : ["systemctl", "--user"];
     return {
       path,
       contents: systemdUnit(spec),
       activate: [
         [...ctl, "daemon-reload"],
-        [...ctl, "enable", "--now", SYSTEMD_UNIT],
+        [...ctl, "enable", "--now", unit],
         ...(system ? [] : [["loginctl", "enable-linger", process.env.USER ?? ""]]),
       ],
-      deactivate: [[...ctl, "disable", "--now", SYSTEMD_UNIT]],
+      deactivate: [[...ctl, "disable", "--now", unit]],
     };
   }
 
@@ -178,7 +195,8 @@ export class LinuxAdapter implements OsAdapter {
   }
 
   async secrets(): Promise<SecretStore> {
-    if (process.env.FOUNDRY_HOME) return new FileSecretStore(join(process.env.FOUNDRY_HOME, "secrets"));
+    const home = customFoundryHome();
+    if (home) return new FileSecretStore(join(home, "secrets"));
     const isRoot = process.getuid?.() === 0;
     if (isRoot && (await which(this.run, "systemd-creds")))
       return new SystemdCredsStore("/var/lib/foundry/creds", this.run);

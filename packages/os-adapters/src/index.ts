@@ -4,8 +4,10 @@ import type { OsAdapter } from "./types";
 
 export * from "./exec";
 export * from "./file-secrets";
+export * from "./home";
 export * from "./linux";
 export * from "./macos";
+export * from "./service-names";
 export * from "./types";
 
 export function currentOsAdapter(): OsAdapter {

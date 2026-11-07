@@ -1,5 +1,5 @@
 import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -36,15 +36,46 @@ describe("current OS", () => {
 });
 
 describe("FOUNDRY_HOME secrets", () => {
+  const prev = process.env.FOUNDRY_HOME;
+  const restore = () => {
+    if (prev === undefined) delete process.env.FOUNDRY_HOME;
+    else process.env.FOUNDRY_HOME = prev;
+  };
+
   it("keeps a second runner's token out of the default macOS Keychain", async () => {
-    const prev = process.env.FOUNDRY_HOME;
     process.env.FOUNDRY_HOME = mkdtempSync(join(tmpdir(), "foundry-home-"));
     try {
       const store = await new MacOsAdapter().secrets();
       expect(store.kind).toBe("encrypted-file");
     } finally {
-      if (prev === undefined) delete process.env.FOUNDRY_HOME;
-      else process.env.FOUNDRY_HOME = prev;
+      restore();
+    }
+  });
+
+  it("keeps the default directory on the shared secret store", async () => {
+    process.env.FOUNDRY_HOME = join(homedir(), ".foundry");
+    try {
+      expect((await new MacOsAdapter().secrets()).kind).toBe("keychain");
+    } finally {
+      restore();
+    }
+  });
+
+  it("does not let a second home overwrite the first token", async () => {
+    const homeA = mkdtempSync(join(tmpdir(), "foundry-a-"));
+    const homeB = mkdtempSync(join(tmpdir(), "foundry-b-"));
+    const linux = new LinuxAdapter(async () => ({ code: 1, stdout: "", stderr: "" }));
+    try {
+      process.env.FOUNDRY_HOME = homeA;
+      await (await new MacOsAdapter().secrets()).set("runner-token", "token-a");
+      process.env.FOUNDRY_HOME = homeB;
+      await (await linux.secrets()).set("runner-token", "token-b");
+      process.env.FOUNDRY_HOME = homeA;
+      expect(await (await new MacOsAdapter().secrets()).get("runner-token")).toBe("token-a");
+      process.env.FOUNDRY_HOME = homeB;
+      expect(await (await linux.secrets()).get("runner-token")).toBe("token-b");
+    } finally {
+      restore();
     }
   });
 });
@@ -60,6 +91,20 @@ describe("macOS parsing", () => {
     expect(plist).toContain("<string>dev.foundry.runner</string>");
     expect(plist).toContain("<key>UserName</key>\n  <string>foundry</string>");
     expect(plist).toContain("<string>/usr/local/bin/foundry</string>\n    <string>runner</string>");
+  });
+  it("gives a named runner its own label and FOUNDRY_HOME", () => {
+    const named = {
+      ...spec,
+      name: "Pipi OpenCode",
+      environment: { FOUNDRY_HOME: "/tmp/foundry-b" },
+    };
+    const plist = launchdPlist(named);
+    expect(plist).toContain("<string>dev.foundry.runner.pipi-opencode</string>");
+    expect(plist).toContain("<key>FOUNDRY_HOME</key>\n    <string>/tmp/foundry-b</string>");
+    const install = new MacOsAdapter().service(named);
+    expect(install.path).toBe("/Library/LaunchDaemons/dev.foundry.runner.pipi-opencode.plist");
+    expect(install.deactivate.flat()).toContain("system/dev.foundry.runner.pipi-opencode");
+    expect(install.contents).toContain("<key>KeepAlive</key>");
   });
   it("uses the injected exec for power state", async () => {
     const run: Exec = async (cmd) => ({
@@ -85,6 +130,23 @@ describe("Linux parsing", () => {
     expect(unit).toContain("User=foundry");
     expect(unit).toContain("ExecStart=/usr/local/bin/foundry runner start");
     expect(unit).toContain("WantedBy=multi-user.target");
+    expect(unit).toContain("Restart=always");
+  });
+  it("gives a named runner its own unit and FOUNDRY_HOME", () => {
+    const named = {
+      ...spec,
+      mode: "user" as const,
+      name: "pipi-b",
+      environment: { FOUNDRY_HOME: "/tmp/foundry-b" },
+    };
+    const unit = systemdUnit(named);
+    expect(unit).toContain("Description=Foundry runner (pipi-b)");
+    expect(unit).toContain("Environment=FOUNDRY_HOME=/tmp/foundry-b");
+    expect(unit).toContain("Restart=always");
+    const install = new LinuxAdapter(async () => ({ code: 0, stdout: "", stderr: "" })).service(named);
+    expect(install.path).toContain("foundry-runner-pipi-b.service");
+    expect(install.activate.flat()).toContain("foundry-runner-pipi-b.service");
+    expect(install.deactivate.flat()).toContain("foundry-runner-pipi-b.service");
   });
   it("wraps job commands in a cgroup scope when user scopes work", async () => {
     const run: Exec = async () => ({ code: 0, stdout: "", stderr: "" });
