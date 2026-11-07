@@ -3,12 +3,22 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { hostname, userInfo } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { bridgeFromEnv, runStdioServer } from "@foundry/mcp-foundry";
 import { currentOsAdapter } from "@foundry/os-adapters";
 import { parseRecipeYaml, VERSION } from "@foundry/shared";
+import { applyHttpProxyEnv, loadHttpProxyFromEnvFile } from "@foundry/shared/proxy";
 import { HttpControlPlane, joinControlPlane } from "./api";
-import { applyScheduleArgs, dataDir, defaultSchedule, loadConfig, type RunnerConfig, saveConfig, TOKEN_SECRET_KEY } from "./config";
+import {
+  applyScheduleArgs,
+  dataDir,
+  defaultSchedule,
+  loadConfig,
+  type RunnerConfig,
+  saveConfig,
+  TOKEN_SECRET_KEY,
+} from "./config";
 import { Daemon } from "./daemon";
 import { defaultHarnesses } from "./harnesses";
 import { checkRecipe } from "./readiness";
@@ -16,7 +26,7 @@ import { checkRecipe } from "./readiness";
 const HELP = `foundry ${VERSION}: the Foundry runner
 
 Usage:
-  foundry runner join <fdj_token> --server <url> [--shared] [--name NAME] [--concurrency N]
+  foundry runner join <fdj_token> --server <url> [--shared] [--name NAME] [--concurrency N] [--http-proxy URL]
   foundry runner start                  Run the daemon in the foreground
   foundry runner install-service [--system] [--user NAME]
                                         Install a launchd/systemd service that starts on boot or login
@@ -41,15 +51,32 @@ function fail(message: string): never {
   process.exit(1);
 }
 
+function loadNearbyProxyEnv(): void {
+  const candidates = [
+    join(process.cwd(), ".env"),
+    join(fileURLToPath(new URL("../../../.env", import.meta.url))),
+  ];
+  for (const p of candidates) {
+    if (!existsSync(p)) continue;
+    loadHttpProxyFromEnvFile(readFileSync(p, "utf8"));
+    break;
+  }
+}
+
 async function requireConfig(): Promise<{ config: RunnerConfig; token: string }> {
   const config = loadConfig();
   if (!config) fail(`not joined yet; run \`foundry runner join\` (config dir ${dataDir()})`);
-  const token = process.env.FOUNDRY_RUNNER_TOKEN ?? (await (await currentOsAdapter().secrets()).get(TOKEN_SECRET_KEY));
+  const token =
+    process.env.FOUNDRY_RUNNER_TOKEN ?? (await (await currentOsAdapter().secrets()).get(TOKEN_SECRET_KEY));
   if (!token) fail("runner token missing from the secret store; join again");
   return { config, token };
 }
 
-async function join_(positionals: string[], values: Record<string, string | boolean | undefined>) {
+async function join_(
+  positionals: string[],
+  values: Record<string, string | boolean | undefined>,
+  configuredProxy?: string,
+) {
   const serverUrl = (values.server as string | undefined) ?? positionals.find((p) => /^https?:\/\//.test(p));
   const joinToken = (values.token as string | undefined) ?? positionals.find((p) => p.startsWith("fdj_"));
   if (!serverUrl || !joinToken) fail("usage: foundry runner join <fdj_token> --server <url> [--shared]");
@@ -83,8 +110,11 @@ async function join_(positionals: string[], values: Record<string, string | bool
     minFreeDiskMb: existing?.minFreeDiskMb ?? 10_000,
     postgresUrl: existing?.postgresUrl ?? process.env.FOUNDRY_POSTGRES_URL,
     limits: existing?.limits ?? {},
+    httpProxy: configuredProxy || existing?.httpProxy,
   });
-  console.log(`Joined as "${name}" (${kind}). Start it with \`foundry runner start\` or \`foundry runner install-service\`.`);
+  console.log(
+    `Joined as "${name}" (${kind}). Start it with \`foundry runner start\` or \`foundry runner install-service\`.`,
+  );
 }
 
 async function start() {
@@ -131,7 +161,9 @@ async function installService(values: Record<string, string | boolean | undefine
   const { mkdirSync, writeFileSync } = await import("node:fs");
   const { dirname } = await import("node:path");
   if (system && process.getuid?.() !== 0) {
-    console.log(`Run with sudo to install a system service, or write this file to ${install.path}:\n\n${install.contents}`);
+    console.log(
+      `Run with sudo to install a system service, or write this file to ${install.path}:\n\n${install.contents}`,
+    );
     return;
   }
   mkdirSync(dirname(install.path), { recursive: true });
@@ -158,7 +190,9 @@ function status() {
     running: { id: string; stage: string; title: string }[];
   };
   const age = Math.round((Date.now() - Date.parse(s.at)) / 1000);
-  console.log(`daemon: pid ${s.pid}, last heartbeat ${age}s ago${age > 60 ? " (stale: is it running?)" : ""}`);
+  console.log(
+    `daemon: pid ${s.pid}, last heartbeat ${age}s ago${age > 60 ? " (stale: is it running?)" : ""}`,
+  );
   console.log(`accepting jobs: ${s.accepting.ok ? "yes" : `no (${s.accepting.reason})`}`);
   for (const j of s.running) console.log(`  ${j.id.slice(0, 8)}  ${j.stage.padEnd(13)} ${j.title}`);
 }
@@ -166,7 +200,10 @@ function status() {
 function schedule(values: Record<string, string | boolean | string[] | undefined>) {
   const config = loadConfig();
   if (!config) fail("not joined yet");
-  const defined = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined)) as Record<string, string | boolean | string[]>;
+  const defined = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined)) as Record<
+    string,
+    string | boolean | string[]
+  >;
   config.schedule = applyScheduleArgs(config.schedule, defined);
   saveConfig(config);
   console.log(`schedule: ${JSON.stringify(config.schedule)} (restart the runner to apply)`);
@@ -177,7 +214,9 @@ async function check(dir: string) {
   if (!existsSync(path)) fail(`${path} not found`);
   const recipe = parseRecipeYaml(readFileSync(path, "utf8"));
   const os = currentOsAdapter();
-  const r = await checkRecipe(recipe, os.os, { postgresUrl: loadConfig()?.postgresUrl ?? process.env.FOUNDRY_POSTGRES_URL });
+  const r = await checkRecipe(recipe, os.os, {
+    postgresUrl: loadConfig()?.postgresUrl ?? process.env.FOUNDRY_POSTGRES_URL,
+  });
   console.log(r.ready ? "✓ this runner can run the recipe" : `✗ ${r.reason}`);
   if (!r.ready) process.exit(1);
 }
@@ -191,14 +230,22 @@ async function doctor(live: boolean) {
   rows.push(["git", gitV.status === 0, gitV.stdout.trim() || "not found"]);
   for (const [id, h] of Object.entries(defaultHarnesses())) {
     const d = await h!.detect();
-    rows.push([id, d.installed && d.authOk, d.installed ? `${d.version ?? "?"}${d.authOk ? "" : " (not signed in)"}` : "not installed"]);
+    rows.push([
+      id,
+      d.installed && d.authOk,
+      d.installed ? `${d.version ?? "?"}${d.authOk ? "" : " (not signed in)"}` : "not installed",
+    ]);
   }
   const disk = await os.diskFreeMb(dataDir()).catch(() => -1);
   rows.push(["disk", disk > (loadConfig()?.minFreeDiskMb ?? 10_000), `${disk} MB free in ${dataDir()}`]);
   const power = await os.onAcPower();
   rows.push(["power", power !== false, power === null ? "no battery" : power ? "on AC" : "on battery"]);
   const config = loadConfig();
-  rows.push(["joined", !!config, config ? `${config.name} → ${config.serverUrl}` : "run `foundry runner join`"]);
+  rows.push([
+    "joined",
+    !!config,
+    config ? `${config.name} → ${config.serverUrl}` : "run `foundry runner join`",
+  ]);
   for (const [name, ok, detail] of rows) console.log(`${ok ? "✓" : "✗"} ${name.padEnd(12)} ${detail}`);
   if (!live) return;
   const { smokeTest } = await import("./smoke");
@@ -229,12 +276,19 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       "ac-only": { type: "string" },
       "any-power": { type: "boolean" },
       weekends: { type: "string" },
+      "http-proxy": { type: "string" },
       version: { type: "boolean", short: "v" },
       live: { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
   });
   const [cmd, sub, ...rest] = positionals;
+  loadNearbyProxyEnv();
+  if (typeof values["http-proxy"] === "string" && values["http-proxy"].trim()) {
+    process.env.FOUNDRY_HTTP_PROXY = values["http-proxy"].trim();
+  }
+  const configuredProxy = process.env.FOUNDRY_HTTP_PROXY?.trim() || loadConfig()?.httpProxy;
+  applyHttpProxyEnv({ fallback: configuredProxy });
   if (values.version) return console.log(VERSION);
   if (values.help || !cmd) return console.log(HELP);
   const v = values as Record<string, string | boolean | undefined>;
@@ -249,7 +303,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   if (cmd === "runner") {
     switch (sub) {
       case "join":
-        return join_(rest, v);
+        return join_(rest, v, configuredProxy);
       case "start":
         return start();
       case "install-service":

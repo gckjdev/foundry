@@ -37,6 +37,10 @@ export interface StartOpts {
   permissions: PermissionPolicy;
   /** Leased port the harness may use for its own server (OpenCode). */
   harnessPort?: number;
+  /** Local file for the full agent request/response transcript. */
+  logFile?: string;
+  /** Strip secrets before anything is written to `logFile`. */
+  redact?: (text: string) => string;
 }
 
 export type ResumeOpts = Omit<StartOpts, "prompt">;
@@ -73,7 +77,10 @@ export interface HarnessAdapter {
 }
 
 export function permissionsFromPolicy(policy: Policy): PermissionPolicy {
-  return { denyCommands: policy.permissions.deny_commands, allowWebFetch: policy.permissions.allow_web_fetch };
+  return {
+    denyCommands: policy.permissions.deny_commands,
+    allowWebFetch: policy.permissions.allow_web_fetch,
+  };
 }
 
 /** True when a shell command starts with one of the denied prefixes. */
@@ -81,6 +88,8 @@ export function isDeniedCommand(command: string, deny: string[]): boolean {
   const c = command.trim().replace(/\s+/g, " ");
   return deny.some((d) => {
     const prefix = d.trim().replace(/\s+/g, " ");
-    return c === prefix || c.startsWith(`${prefix} `) || c.includes(`&& ${prefix}`) || c.includes(`; ${prefix}`);
+    return (
+      c === prefix || c.startsWith(`${prefix} `) || c.includes(`&& ${prefix}`) || c.includes(`; ${prefix}`)
+    );
   });
 }

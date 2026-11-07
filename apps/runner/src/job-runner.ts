@@ -1,10 +1,24 @@
 import { existsSync } from "node:fs";
 import { copyFile, readFile } from "node:fs/promises";
 import { extname, join, relative, resolve } from "node:path";
-import type { HarnessAdapter, HarnessEvent, HarnessSession, McpServerConfig, SessionResult } from "@foundry/harness-core";
-import { permissionsFromPolicy } from "@foundry/harness-core";
+import {
+  appendHarnessLog,
+  type HarnessAdapter,
+  type HarnessEvent,
+  type HarnessSession,
+  harnessLogJson,
+  type McpServerConfig,
+  permissionsFromPolicy,
+  type SessionResult,
+} from "@foundry/harness-core";
 import type { FoundryToolName, ToolReply } from "@foundry/mcp-foundry";
-import { assemblePrompt, NUDGE_MESSAGE, renderInputs, resumeMessage, verifyFailedMessage } from "@foundry/playbooks";
+import {
+  assemblePrompt,
+  NUDGE_MESSAGE,
+  renderInputs,
+  resumeMessage,
+  verifyFailedMessage,
+} from "@foundry/playbooks";
 import {
   briefRef,
   type ClaimedJob,
@@ -15,10 +29,11 @@ import {
   type PendingInput,
   type Policy,
   parseUnifiedDiff,
-  RUNNER_STAGES,
   type Recipe,
+  RUNNER_STAGES,
   type RunnerStage,
 } from "@foundry/shared";
+import { httpProxyEnv } from "@foundry/shared/proxy";
 import { type ControlPlane, JobRevokedError } from "./api";
 import { fetchBrief, pushBrief } from "./brief";
 import { runCommand, tail } from "./checks";
@@ -77,7 +92,12 @@ function previousStage(stage: RunnerStage): RunnerStage | null {
   return i > 0 ? RUNNER_STAGES[i - 1]! : null;
 }
 
-const IMAGE_TYPES: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp" };
+const IMAGE_TYPES: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+};
 
 /**
  * Drives one claimed job (spec 5.7–5.8): sets up the worktree, runs the harness through the
@@ -120,7 +140,8 @@ export class JobRunner {
     this.stage = job.resumeStage;
     this.lastCompleted = previousStage(job.resumeStage);
     this.loop = job.loopCount;
-    for (const i of job.pendingInputs) if (i.kind === "answer") this.qa.push({ question: i.questionPrompt ?? "", answer: i.text });
+    for (const i of job.pendingInputs)
+      if (i.kind === "answer") this.qa.push({ question: i.questionPrompt ?? "", answer: i.text });
   }
 
   get currentStage(): RunnerStage {
@@ -159,6 +180,10 @@ export class JobRunner {
   }
 
   // ---- setup ---------------------------------------------------------------------------------
+
+  private noteHarness(section: string, body: string): void {
+    appendHarnessLog(this.deps.localJobs.harnessLog(this.jobId), section, body, (t) => this.scrub(t));
+  }
 
   private async token(): Promise<string> {
     if (!this.gitToken || this.gitToken.expiresAt - Date.now() < 5 * 60_000) {
@@ -201,8 +226,10 @@ export class JobRunner {
     }
     this.policy = job.kind === "ticket" ? await loadPolicy(this.cwd) : DEFAULT_POLICY;
 
-    const services = job.kind === "ticket" ? await provisionServices(job.id, this.recipe, deps.postgresUrl) : {};
+    const services =
+      job.kind === "ticket" ? await provisionServices(job.id, this.recipe, deps.postgresUrl) : {};
     this.env = {
+      ...httpProxyEnv(),
       ...deps.baseEnv,
       ...services,
       FOUNDRY_JOB_ID: job.id,
@@ -211,6 +238,17 @@ export class JobRunner {
       FOUNDRY_BRANCH: job.branch,
     };
     this.secrets.push(...secretEnvValues(this.env));
+    this.deps.log("harness transcript", { file: this.deps.localJobs.harnessLog(job.id) });
+    this.noteHarness(
+      "JOB start",
+      harnessLogJson({
+        jobId: job.id,
+        harness: job.harness,
+        model: job.model,
+        kind: job.kind,
+        cwd: this.cwd,
+      }),
+    );
     if (this.recipe?.env_file) {
       const envPath = join(this.cwd, ".env");
       if (!(await deps.workspace.readWorktreeFile(this.cwd, ".env"))) {
@@ -222,8 +260,14 @@ export class JobRunner {
 
     if (job.kind === "ticket" && this.recipe?.install && job.resumeMode !== "sticky") {
       this.log("info", `Installing: ${this.recipe.install}`);
-      const r = await runCommand(this.recipe.install, { cwd: this.cwd, env: this.env, timeoutMs: 30 * 60_000, wrap: deps.wrap });
-      if (r.exitCode !== 0) throw new FailJob(`install failed (exit ${r.exitCode}): ${this.scrub(tail(r.output, 2000))}`);
+      const r = await runCommand(this.recipe.install, {
+        cwd: this.cwd,
+        env: this.env,
+        timeoutMs: 30 * 60_000,
+        wrap: deps.wrap,
+      });
+      if (r.exitCode !== 0)
+        throw new FailJob(`install failed (exit ${r.exitCode}): ${this.scrub(tail(r.output, 2000))}`);
     }
   }
 
@@ -246,7 +290,11 @@ export class JobRunner {
         name: "foundry",
         command: this.deps.mcpCommand.command,
         args: this.deps.mcpCommand.args,
-        env: { FOUNDRY_MCP_SOCKET: this.deps.tools.socketPath, FOUNDRY_JOB_ID: this.jobId, FOUNDRY_MCP_TOKEN: mcpToken },
+        env: {
+          FOUNDRY_MCP_SOCKET: this.deps.tools.socketPath,
+          FOUNDRY_JOB_ID: this.jobId,
+          FOUNDRY_MCP_TOKEN: mcpToken,
+        },
       },
     ];
   }
@@ -262,9 +310,12 @@ export class JobRunner {
       mcpServers,
       permissions: permissionsFromPolicy(this.policy),
       harnessPort: this.portBase + 9,
+      logFile: this.deps.localJobs.harnessLog(this.jobId),
+      redact: (text: string) => this.scrub(text),
     };
     const files = await loadPlaybookFiles(this.cwd, [job.playbook, job.harness]);
-    const brief = job.resumeMode === "portable" ? await fetchBrief(this.cwd, job.id, await this.token()) : null;
+    const brief =
+      job.resumeMode === "portable" ? await fetchBrief(this.cwd, job.id, await this.token()) : null;
     if (brief) {
       this.plan = brief.plan;
       this.findings = [...brief.findings];
@@ -292,8 +343,11 @@ export class JobRunner {
     let session: HarnessSession;
     if (job.resumeMode === "sticky" && job.sessionId) {
       this.sessionId = job.sessionId;
-      session = await this.adapter.resume(job.sessionId, resumeMessage(job.pendingInputs, this.stage), { ...opts, systemPrompt });
+      const message = resumeMessage(job.pendingInputs, this.stage);
+      this.noteHarness("REQUEST resume", `${systemPrompt}\n\n---\n\n${message}`);
+      session = await this.adapter.resume(job.sessionId, message, { ...opts, systemPrompt });
     } else {
+      this.noteHarness("REQUEST start", `${systemPrompt}\n\n---\n\n${prompt}`);
       session = await this.adapter.start({ ...opts, systemPrompt, prompt });
     }
     this.track(session);
@@ -306,6 +360,7 @@ export class JobRunner {
   private async resumeWith(message: string): Promise<HarnessSession> {
     const id = this.sessionId ?? (await this.session?.id);
     if (!id || !this.startOpts) throw new FailJob("cannot continue: the harness reported no session id");
+    this.noteHarness("REQUEST resume", message);
     const session = await this.adapter.resume(id, message, this.startOpts);
     this.track(session);
     return session;
@@ -324,7 +379,11 @@ export class JobRunner {
     let session = await this.startSession();
     let nudges = 0;
     const deadline = setTimeout(
-      () => void this.halt({ kind: "budget", reason: `job exceeded max_job_minutes (${this.policy.max_job_minutes})` }),
+      () =>
+        void this.halt({
+          kind: "budget",
+          reason: `job exceeded max_job_minutes (${this.policy.max_job_minutes})`,
+        }),
       this.policy.max_job_minutes * 60_000,
     );
     try {
@@ -332,16 +391,20 @@ export class JobRunner {
         const result = await this.consume(session);
         if (this.stopReason) return await this.onStopped(this.stopReason);
         if (this.asked) return await this.parkForAnswer();
-        if (result.status === "error" && !this.doneSummary) throw new FailJob(`harness error: ${result.error ?? "unknown"}`);
+        if (result.status === "error" && !this.doneSummary)
+          throw new FailJob(`harness error: ${result.error ?? "unknown"}`);
 
         const inputs = await this.deps.api.inputs(this.jobId);
         if (inputs.length) {
           this.recordAnswers(inputs);
-          session = await this.resumeWith(`${renderInputs(inputs)}\n\nTake this into account and continue with the playbook.`);
+          session = await this.resumeWith(
+            `${renderInputs(inputs)}\n\nTake this into account and continue with the playbook.`,
+          );
           continue;
         }
         if (this.doneSummary !== null) {
-          const next = this.job.kind === "onboarding" ? await this.finishOnboarding() : await this.finishTicket();
+          const next =
+            this.job.kind === "onboarding" ? await this.finishOnboarding() : await this.finishTicket();
           if (typeof next !== "string") {
             session = await this.resumeWith(next.retry);
             continue;
@@ -362,7 +425,8 @@ export class JobRunner {
   }
 
   private recordAnswers(inputs: PendingInput[]): void {
-    for (const i of inputs) if (i.kind === "answer") this.qa.push({ question: i.questionPrompt ?? "", answer: i.text });
+    for (const i of inputs)
+      if (i.kind === "answer") this.qa.push({ question: i.questionPrompt ?? "", answer: i.text });
   }
 
   /** Forward harness events until the turn ends; enforce the cost budget as usage arrives. */
@@ -381,6 +445,7 @@ export class JobRunner {
       }
     }
     const result = await session.done;
+    this.noteHarness("RESPONSE session", harnessLogJson(result));
     await this.flush();
     return result;
   }
@@ -389,21 +454,28 @@ export class JobRunner {
 
   private async onTool(tool: FoundryToolName, args: Record<string, unknown>): Promise<ToolReply> {
     try {
+      this.noteHarness("MCP request", `${tool} ${harnessLogJson(args)}`);
       this.push({ kind: "tool_call", tool: `foundry.${tool}` });
+      let reply: ToolReply;
       switch (tool) {
         case "stage":
-          return await this.toolStage(String(args.name), String(args.summary ?? ""));
+          reply = await this.toolStage(String(args.name), String(args.summary ?? ""));
+          break;
         case "plan":
           this.plan = String(args.plan);
           await this.flush();
           await this.deps.api.plan(this.jobId, this.plan);
-          return { text: "Plan recorded." };
+          reply = { text: "Plan recorded." };
+          break;
         case "ask":
-          return await this.toolAsk(String(args.question), (args.options as string[] | undefined) ?? []);
+          reply = await this.toolAsk(String(args.question), (args.options as string[] | undefined) ?? []);
+          break;
         case "evidence":
-          return await this.toolEvidence(args);
+          reply = await this.toolEvidence(args);
+          break;
         case "run_checks":
-          return await this.toolRunChecks((args.names as string[] | undefined) ?? undefined);
+          reply = await this.toolRunChecks((args.names as string[] | undefined) ?? undefined);
+          break;
         case "confidence": {
           const req = {
             level: args.level as "high" | "medium" | "low",
@@ -412,14 +484,19 @@ export class JobRunner {
           };
           this.uncertainties = req.uncertainties;
           await this.deps.api.confidence(this.jobId, req);
-          return { text: `Confidence recorded: ${req.level}.` };
+          reply = { text: `Confidence recorded: ${req.level}.` };
+          break;
         }
         default:
-          return { text: `Unknown tool ${tool}`, isError: true };
+          reply = { text: `Unknown tool ${tool}`, isError: true };
       }
+      this.noteHarness("MCP reply", harnessLogJson(reply));
+      return reply;
     } catch (err) {
       if (err instanceof JobRevokedError) void this.halt({ kind: "revoked" });
-      return { text: `Foundry could not record that: ${String(err)}`, isError: true };
+      const reply = { text: `Foundry could not record that: ${String(err)}`, isError: true as const };
+      this.noteHarness("MCP error", harnessLogJson(reply));
+      return reply;
     }
   }
 
@@ -437,11 +514,17 @@ export class JobRunner {
     if (summary) this.findings.push(`${this.stage}: ${summary}`);
     if (name === "done") {
       this.doneSummary = summary;
-      return { text: "Recorded. End your turn now: the runner runs the recipe checks and opens the pull request." };
+      return {
+        text: "Recorded. End your turn now: the runner runs the recipe checks and opens the pull request.",
+      };
     }
     const from = this.stage;
     await this.flush();
-    await this.deps.api.stage(this.jobId, { to: name as RunnerStage, lastCompletedStage: from, sessionId: this.sessionId });
+    await this.deps.api.stage(this.jobId, {
+      to: name as RunnerStage,
+      lastCompletedStage: from,
+      sessionId: this.sessionId,
+    });
     this.lastCompleted = from;
     this.stage = name as RunnerStage;
     await this.checkpoint();
@@ -449,8 +532,12 @@ export class JobRunner {
   }
 
   private async toolAsk(question: string, options: string[]): Promise<ToolReply> {
-    if (this.asked) return { text: "You already asked a question. End your turn and wait for the answer.", isError: true };
-    this.sessionId ??= await Promise.race([this.session?.id ?? Promise.resolve(null), new Promise<null>((r) => setTimeout(() => r(null), 2_000))]);
+    if (this.asked)
+      return { text: "You already asked a question. End your turn and wait for the answer.", isError: true };
+    this.sessionId ??= await Promise.race([
+      this.session?.id ?? Promise.resolve(null),
+      new Promise<null>((r) => setTimeout(() => r(null), 2_000)),
+    ]);
     await this.checkpoint();
     await this.flush();
     await this.deps.api.ask(this.jobId, question, options);
@@ -459,7 +546,9 @@ export class JobRunner {
     setTimeout(() => {
       if (this.session) void this.adapter.stop(this.session).catch(() => {});
     }, grace).unref?.();
-    return { text: "Question posted to the ticket author. End your turn now; you will be resumed with the answer." };
+    return {
+      text: "Question posted to the ticket author. End your turn now; you will be resumed with the answer.",
+    };
   }
 
   private async toolEvidence(args: Record<string, unknown>): Promise<ToolReply> {
@@ -467,12 +556,18 @@ export class JobRunner {
     const name = String(args.name);
     const status = (args.status as "passed" | "failed" | "skipped" | undefined) ?? "passed";
     if (kind === "note") {
-      await this.deps.api.evidence(this.jobId, { kind, name, status, outputTail: args.detail ? this.scrub(String(args.detail)) : null });
+      await this.deps.api.evidence(this.jobId, {
+        kind,
+        name,
+        status,
+        outputTail: args.detail ? this.scrub(String(args.detail)) : null,
+      });
       return { text: "Note recorded." };
     }
     if (!args.path) return { text: "A screenshot needs `path`.", isError: true };
     const path = resolve(this.cwd, String(args.path));
-    if (relative(this.cwd, path).startsWith("..")) return { text: "The screenshot must be inside the worktree.", isError: true };
+    if (relative(this.cwd, path).startsWith(".."))
+      return { text: "The screenshot must be inside the worktree.", isError: true };
     const type = IMAGE_TYPES[extname(path).toLowerCase()];
     if (!type) return { text: "Screenshots must be PNG, JPEG or WebP.", isError: true };
     const bytes = new Uint8Array(await readFile(path));
@@ -500,9 +595,16 @@ export class JobRunner {
     const tree = await this.treeFingerprint();
     const results: CheckRun[] = [];
     for (const check of checks) {
-      const r = await runCommand(check.run, { cwd: this.cwd, env: this.env, timeoutMs: check.timeout_sec * 1000, wrap: this.deps.wrap });
+      const r = await runCommand(check.run, {
+        cwd: this.cwd,
+        env: this.env,
+        timeoutMs: check.timeout_sec * 1000,
+        wrap: this.deps.wrap,
+      });
       const status = r.exitCode === 0 ? "passed" : "failed";
-      const output = this.scrub(r.timedOut ? `${r.output}\n[timed out after ${check.timeout_sec}s]` : r.output);
+      const output = this.scrub(
+        r.timedOut ? `${r.output}\n[timed out after ${check.timeout_sec}s]` : r.output,
+      );
       results.push({ name: check.name, command: check.run, status, exitCode: r.exitCode, output });
       await this.deps.api.evidence(this.jobId, {
         kind: "check",
@@ -522,10 +624,14 @@ export class JobRunner {
     const results = await this.runChecks(names);
     if (results.length === 0) return { text: "The recipe defines no checks." };
     const lines = results.map((r) =>
-      r.status === "passed" ? `✓ ${r.name}` : `✗ ${r.name} (exit ${r.exitCode})\n\`\`\`\n${tail(r.output, 3_000)}\n\`\`\``,
+      r.status === "passed"
+        ? `✓ ${r.name}`
+        : `✗ ${r.name} (exit ${r.exitCode})\n\`\`\`\n${tail(r.output, 3_000)}\n\`\`\``,
     );
     const failed = results.filter((r) => r.status === "failed").length;
-    return { text: `${failed ? `${failed} of ${results.length} checks failed.` : "All checks passed."}\n\n${lines.join("\n\n")}` };
+    return {
+      text: `${failed ? `${failed} of ${results.length} checks failed.` : "All checks passed."}\n\n${lines.join("\n\n")}`,
+    };
   }
 
   // ---- finishing -----------------------------------------------------------------------------
@@ -541,7 +647,11 @@ export class JobRunner {
     if (this.loop >= this.policy.max_verify_loops) return null;
     this.loop++;
     await this.flush();
-    await this.deps.api.stage(this.jobId, { to: "implementing", reason: `verify loop ${this.loop}: checks failed`, loopCount: this.loop });
+    await this.deps.api.stage(this.jobId, {
+      to: "implementing",
+      reason: `verify loop ${this.loop}: checks failed`,
+      loopCount: this.loop,
+    });
     this.stage = "implementing";
     this.lastCompleted = "investigating";
     this.doneSummary = null;
@@ -560,10 +670,18 @@ export class JobRunner {
     if (failures.length) {
       const retry = await this.retryOrGiveUp(failures);
       if (retry) return retry;
-      this.log("warn", `Checks still failing after ${this.loop} verify loops; opening the PR for a human to take over`);
+      this.log(
+        "warn",
+        `Checks still failing after ${this.loop} verify loops; opening the PR for a human to take over`,
+      );
     }
-    await this.deps.workspace.commitAll(this.cwd, `${this.job.title}${this.job.issueNumber ? ` (#${this.job.issueNumber})` : ""}`);
-    const diff = parseUnifiedDiff(await this.deps.workspace.diffAgainstBase(this.cwd, this.job.repo.defaultBranch));
+    await this.deps.workspace.commitAll(
+      this.cwd,
+      `${this.job.title}${this.job.issueNumber ? ` (#${this.job.issueNumber})` : ""}`,
+    );
+    const diff = parseUnifiedDiff(
+      await this.deps.workspace.diffAgainstBase(this.cwd, this.job.repo.defaultBranch),
+    );
     if (diff.files.length === 0) throw new FailJob("the agent finished without changing any files");
     const token = await this.token();
     await this.deps.workspace.push(this.cwd, this.job.branch, token);
@@ -583,19 +701,44 @@ export class JobRunner {
     const { recipe, error } = await loadRecipe(this.cwd);
     let failures: CheckRun[] = [];
     if (!recipe) {
-      failures = [{ name: "recipe", command: "parse .foundry/recipe.yaml", status: "failed", exitCode: null, output: error ?? "" }];
+      failures = [
+        {
+          name: "recipe",
+          command: "parse .foundry/recipe.yaml",
+          status: "failed",
+          exitCode: null,
+          output: error ?? "",
+        },
+      ];
     } else {
       if (recipe.install) {
-        const r = await runCommand(recipe.install, { cwd: this.cwd, env: this.env, timeoutMs: 30 * 60_000, wrap: this.deps.wrap });
+        const r = await runCommand(recipe.install, {
+          cwd: this.cwd,
+          env: this.env,
+          timeoutMs: 30 * 60_000,
+          wrap: this.deps.wrap,
+        });
         if (r.exitCode !== 0) {
-          failures.push({ name: "install", command: recipe.install, status: "failed", exitCode: r.exitCode, output: this.scrub(r.output) });
+          failures.push({
+            name: "install",
+            command: recipe.install,
+            status: "failed",
+            exitCode: r.exitCode,
+            output: this.scrub(r.output),
+          });
         }
       }
       if (!failures.length) {
         this.recipe = recipe;
         failures = (await this.verifiedChecks()).filter((r) => r.status === "failed");
         if (recipe.checks.length === 0) {
-          failures.push({ name: "checks", command: "recipe.checks", status: "failed", exitCode: null, output: "The recipe defines no checks." });
+          failures.push({
+            name: "checks",
+            command: "recipe.checks",
+            status: "failed",
+            exitCode: null,
+            output: "The recipe defines no checks.",
+          });
         }
       }
     }
@@ -615,7 +758,12 @@ export class JobRunner {
     await this.deps.workspace.push(this.cwd, this.job.branch, await this.token());
     const headSha = await this.deps.workspace.headSha(this.cwd);
     await this.flush();
-    await this.deps.api.onboarding(this.jobId, { ok: true, reason: null, headSha, summary: this.doneSummary ?? "" });
+    await this.deps.api.onboarding(this.jobId, {
+      ok: true,
+      reason: null,
+      headSha,
+      summary: this.doneSummary ?? "",
+    });
     return "onboarded";
   }
 
@@ -643,7 +791,10 @@ export class JobRunner {
     let headSha: string | null = null;
     try {
       const token = await this.token();
-      await this.deps.workspace.commitAll(this.cwd, `foundry: checkpoint after ${this.lastCompleted ?? "start"}`);
+      await this.deps.workspace.commitAll(
+        this.cwd,
+        `foundry: checkpoint after ${this.lastCompleted ?? "start"}`,
+      );
       await this.deps.workspace.push(this.cwd, this.job.branch, token);
       headSha = await this.deps.workspace.headSha(this.cwd);
       await pushBrief(this.cwd, this.brief(), token);
@@ -687,11 +838,16 @@ export class JobRunner {
   private async handleError(err: unknown): Promise<JobOutcome> {
     if (err instanceof JobRevokedError || this.stopReason?.kind === "revoked") return "revoked";
     const reason = err instanceof FailJob ? err.message : `runner error: ${String(err)}`;
+    this.noteHarness("JOB failed", reason);
     this.deps.log(`job ${this.jobId} failed: ${reason}`);
     try {
       this.push({ kind: "error", message: this.scrub(reason) });
       await this.flush();
-      await this.deps.api.stage(this.jobId, { to: "failed", reason: this.scrub(reason).slice(0, 2_000), loopCount: this.loop });
+      await this.deps.api.stage(this.jobId, {
+        to: "failed",
+        reason: this.scrub(reason).slice(0, 2_000),
+        loopCount: this.loop,
+      });
     } catch (e) {
       if (e instanceof JobRevokedError) return "revoked";
       this.deps.log(`could not report failure: ${String(e)}`);
@@ -706,7 +862,8 @@ export class JobRunner {
     await deps.workspace.removeWorktree(this.job.repo.fullName, this.jobId).catch(() => {});
     deps.ports.release(this.jobId);
     deps.localJobs.delete(this.jobId);
-    if (this.job.kind === "ticket") await dropServices(this.jobId, this.recipe, deps.postgresUrl).catch(() => {});
+    if (this.job.kind === "ticket")
+      await dropServices(this.jobId, this.recipe, deps.postgresUrl).catch(() => {});
   }
 
   // ---- events --------------------------------------------------------------------------------
@@ -741,23 +898,25 @@ export class JobRunner {
   private flushing: Promise<void> = Promise.resolve();
 
   private flush(): Promise<void> {
-    this.flushing = this.flushing.catch(() => {}).then(async () => {
-      if (!this.buffer.length || this.asked) {
-        if (this.asked) this.buffer = [];
-        return;
-      }
-      const batch = this.buffer.splice(0, this.buffer.length);
-      try {
-        await this.deps.api.events(this.jobId, batch);
-      } catch (err) {
-        if (err instanceof JobRevokedError) {
-          void this.halt({ kind: "revoked" });
+    this.flushing = this.flushing
+      .catch(() => {})
+      .then(async () => {
+        if (!this.buffer.length || this.asked) {
+          if (this.asked) this.buffer = [];
           return;
         }
-        this.buffer.unshift(...batch);
-        throw err;
-      }
-    });
+        const batch = this.buffer.splice(0, this.buffer.length);
+        try {
+          await this.deps.api.events(this.jobId, batch);
+        } catch (err) {
+          if (err instanceof JobRevokedError) {
+            void this.halt({ kind: "revoked" });
+            return;
+          }
+          this.buffer.unshift(...batch);
+          throw err;
+        }
+      });
     return this.flushing;
   }
 }

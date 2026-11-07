@@ -4,14 +4,14 @@ This is the runbook for the Foundry control plane on this machine, plus how to d
 
 ## What is running locally
 
-| Piece | How |
-|---|---|
-| Web panel | `http://localhost:3000` (`pnpm dev`) |
-| Realtime WebSocket | `ws://localhost:3001` |
-| Postgres | existing local instance on **54329** (Docker is not installed here) |
-| GitHub App | [gckjdevfoundryapp](https://github.com/settings/apps/gckjdevfoundryapp) |
-| Webhook tunnel | `pnpm dev:webhooks` → smee.io → `/api/webhooks/github` |
-| Runner | **not** started by `pnpm dev`; join a team first, then `pnpm dev:runner` |
+| Piece              | How                                                                      |
+| ------------------ | ------------------------------------------------------------------------ |
+| Web panel          | `http://localhost:3000` (`pnpm dev`)                                     |
+| Realtime WebSocket | `ws://localhost:3001`                                                    |
+| Postgres           | existing local instance on **54329** (Docker is not installed here)      |
+| GitHub App         | [gckjdevfoundryapp](https://github.com/settings/apps/gckjdevfoundryapp)  |
+| Webhook tunnel     | `pnpm dev:webhooks` → smee.io → `/api/webhooks/github`                   |
+| Runner             | **not** started by `pnpm dev`; join a team first, then `pnpm dev:runner` |
 
 Repo: `git@github.com:gckjdev/foundry.git`. Root `.env` is chmod 600. `apps/web/.env` and `apps/realtime/.env` are symlinks to `../../.env`.
 
@@ -21,7 +21,7 @@ Repo: `git@github.com:gckjdev/foundry.git`. Root `.env` is chmod 600. `apps/web/
 - Postgres 16+
 - Bun (runner / CLI only)
 - A GitHub App you admin, plus its private key `.pem`
-- Optional: macOS HTTPS proxy (the panel auto-detects it for GitHub API/OAuth)
+- Optional: `FOUNDRY_HTTP_PROXY` if this machine cannot reach GitHub or model APIs directly
 
 ## 1. GitHub App
 
@@ -31,12 +31,12 @@ Open **GitHub → Settings → Developer settings → GitHub Apps** (this instan
 
 Set these on the App, then change them when you deploy to a public host.
 
-| Field | Local value |
-|---|---|
-| Homepage URL | `http://localhost:3000` |
-| Callback URL | `http://localhost:3000/api/auth/callback/github` |
-| Setup URL | `http://localhost:3000/api/github/setup` |
-| Webhook URL | your smee channel, e.g. `https://smee.io/<id>` (must match `SMEE_URL`) |
+| Field        | Local value                                                            |
+| ------------ | ---------------------------------------------------------------------- |
+| Homepage URL | `http://localhost:3000`                                                |
+| Callback URL | `http://localhost:3000/api/auth/callback/github`                       |
+| Setup URL    | `http://localhost:3000/api/github/setup`                               |
+| Webhook URL  | your smee channel, e.g. `https://smee.io/<id>` (must match `SMEE_URL`) |
 
 Expire user authorization tokens can stay on. Identifying and authorizing users (OAuth) uses the App’s **Client ID** / **Client secret** as `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET`.
 
@@ -90,11 +90,14 @@ GITHUB_APP_SLUG=gckjdevfoundryapp
 GITHUB_APP_PRIVATE_KEY_PATH=/Users/pipi/foundry/github-app.pem
 AUTH_URL=http://localhost:3000
 AUTH_TRUST_HOST=true
+FOUNDRY_HTTP_PROXY=http://127.0.0.1:8118
 # AUTH_GITHUB_ID / AUTH_GITHUB_SECRET / AUTH_SECRET / FOUNDRY_SECRET /
 # GITHUB_WEBHOOK_SECRET / SMEE_URL / VAPID_*  → already in .env, do not commit
 ```
 
-Generate long random values for `FOUNDRY_SECRET` and `AUTH_SECRET` if you start from `.env.example`. Optional `HTTPS_PROXY=http://127.0.0.1:8118` if Sign in with GitHub hangs after Authorize; the web app also reads the macOS system proxy automatically.
+Generate long random values for `FOUNDRY_SECRET` and `AUTH_SECRET` if you start from `.env.example`.
+
+Set `FOUNDRY_HTTP_PROXY` (for example `http://127.0.0.1:8118`) so **every** outbound HTTP call — GitHub OAuth/API, outgoing webhooks, git fetch/push, OpenCode/Claude model APIs — uses that proxy. Localhost (the panel, realtime, `opencode serve`) is excluded via `FOUNDRY_NO_PROXY`. If this is unset, Foundry still honors `HTTPS_PROXY`/`HTTP_PROXY`, then the macOS system proxy. Restart `pnpm dev` and `pnpm dev:runner` after changing it. The runner also stores `httpProxy` in `~/.foundry/config.json` on join (`--http-proxy` or this env var).
 
 ## 3. Local install
 
@@ -127,20 +130,20 @@ pnpm dev:runner
 
 Then onboard the repo so it can accept jobs: `docs/onboarding.md`. After the recipe PR is merged, label an issue `foundry` to start work.
 
-If Authorize leaves you on GitHub’s “You are being redirected…” page, the Node process could not reach `github.com` (common when the browser uses a system proxy and Node does not). Retry after a restart of `pnpm dev`; the panel now sends GitHub OAuth/API calls through the detected macOS HTTPS proxy.
+If Authorize leaves you on GitHub’s “You are being redirected…” page, the Node process could not reach `github.com` (common when the browser uses a system proxy and Node does not). Set `FOUNDRY_HTTP_PROXY` in `.env` and restart `pnpm dev`.
 
 If **Repos** is empty after you installed the App, the Setup URL ran before you had a team (or the install cookie expired). Refresh `/repos` or click **Sync from GitHub** — Foundry lists the App’s installations and attaches any that are not already linked. Keep `pnpm dev:webhooks` running so later “add/remove repos” events stay in sync.
 
 ## 4. Daily commands
 
-| Command | What |
-|---|---|
-| `pnpm dev` | Control plane (web + realtime) |
-| `pnpm dev:webhooks` | Forward GitHub webhooks via smee |
-| `pnpm dev:runner` | Runner daemon (after `runner join`) |
-| `pnpm db:migrate` | Apply Drizzle migrations |
-| `pnpm test` | Vitest (DB tests need `FOUNDRY_TEST_DATABASE_URL`) |
-| `pnpm typecheck` | `tsc` across the workspace |
+| Command             | What                                               |
+| ------------------- | -------------------------------------------------- |
+| `pnpm dev`          | Control plane (web + realtime)                     |
+| `pnpm dev:webhooks` | Forward GitHub webhooks via smee                   |
+| `pnpm dev:runner`   | Runner daemon (after `runner join`)                |
+| `pnpm db:migrate`   | Apply Drizzle migrations                           |
+| `pnpm test`         | Vitest (DB tests need `FOUNDRY_TEST_DATABASE_URL`) |
+| `pnpm typecheck`    | `tsc` across the workspace                         |
 
 ## 5. Production deploy (Docker Compose)
 
@@ -173,5 +176,5 @@ See the root `README.md` for package layout. Control-plane source that matters f
 - Auth.js GitHub login: `apps/web/src/auth.ts`
 - App Setup URL: `apps/web/src/app/api/github/setup/route.ts`
 - Webhooks: `apps/web/src/app/api/webhooks/github/route.ts`
-- GitHub fetch / macOS proxy: `apps/web/src/server/retry-fetch.ts`
+- HTTP proxy (`FOUNDRY_HTTP_PROXY`): `packages/shared/src/proxy.ts`, `apps/web/src/server/retry-fetch.ts`
 - Compose stack: `deploy/compose.yaml`

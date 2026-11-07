@@ -1,7 +1,30 @@
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { AsyncQueue, FakeHarness, type HarnessEvent, isDeniedCommand } from "./index";
+import { AsyncQueue, appendHarnessLog, FakeHarness, type HarnessEvent, isDeniedCommand } from "./index";
 
-const opts = { cwd: "/tmp", model: "", systemPrompt: "", env: {}, mcpServers: [], permissions: { denyCommands: [], allowWebFetch: true } };
+const opts = {
+  cwd: "/tmp",
+  model: "",
+  systemPrompt: "",
+  env: {},
+  mcpServers: [],
+  permissions: { denyCommands: [], allowWebFetch: true },
+};
+
+describe("appendHarnessLog", () => {
+  it("writes a timestamped section and applies redact", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "foundry-hlog-")), "job.harness.log");
+    appendHarnessLog(file, "REQUEST prompt", "hello secret-token", (s) =>
+      s.replaceAll("secret-token", "[redacted]"),
+    );
+    const text = readFileSync(file, "utf8");
+    expect(text).toContain("REQUEST prompt");
+    expect(text).toContain("hello [redacted]");
+    expect(text).not.toContain("secret-token");
+  });
+});
 
 describe("AsyncQueue", () => {
   it("delivers pushed items in order and ends on close", async () => {

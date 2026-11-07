@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { gitProxyArgs, httpProxyEnv } from "@foundry/shared/proxy";
 
 export interface GitResult {
   code: number;
@@ -11,7 +12,9 @@ export class GitError extends Error {
     readonly args: string[],
     readonly result: GitResult,
   ) {
-    super(`git ${args.filter((a) => !a.startsWith("http.extraheader")).join(" ")} failed (${result.code}): ${result.stderr.trim()}`);
+    super(
+      `git ${args.filter((a) => !a.startsWith("http.extraheader")).join(" ")} failed (${result.code}): ${result.stderr.trim()}`,
+    );
   }
 }
 
@@ -30,13 +33,27 @@ export function authArgs(token: string | undefined): string[] {
   return ["-c", `http.extraheader=AUTHORIZATION: basic ${basic}`];
 }
 
-export function git(args: string[], opts: GitOpts): Promise<GitResult> {
-  const full = [...authArgs(opts.token), ...args];
+const NETWORK = new Set(["fetch", "push", "clone", "ls-remote"]);
+
+function isNetworkGit(args: string[]): boolean {
+  return NETWORK.has(args[0] ?? "");
+}
+
+function isTransientGitFailure(result: GitResult): boolean {
+  const s = result.stderr.toLowerCase();
+  return /empty reply|unable to access|timed out|timeout|connection reset|could not resolve|ssl|502|503|429|early eof/.test(
+    s,
+  );
+}
+
+function spawnGit(args: string[], opts: GitOpts): Promise<GitResult> {
+  const full = [...gitProxyArgs(), ...authArgs(opts.token), ...args];
   return new Promise((resolve, reject) => {
     const child = spawn("git", full, {
       cwd: opts.cwd,
       env: {
         ...process.env,
+        ...httpProxyEnv(),
         GIT_TERMINAL_PROMPT: "0",
         GIT_AUTHOR_NAME: process.env.GIT_AUTHOR_NAME ?? "Foundry",
         GIT_AUTHOR_EMAIL: process.env.GIT_AUTHOR_EMAIL ?? "foundry@users.noreply.github.com",
@@ -56,12 +73,23 @@ export function git(args: string[], opts: GitOpts): Promise<GitResult> {
     });
     child.on("error", reject);
     child.on("close", (code) => {
-      const result = { code: code ?? 1, stdout, stderr };
-      if (result.code !== 0 && !opts.allowFail) reject(new GitError(args, result));
-      else resolve(result);
+      resolve({ code: code ?? 1, stdout, stderr });
     });
     child.stdin.end(opts.input ?? "");
   });
+}
+
+export async function git(args: string[], opts: GitOpts): Promise<GitResult> {
+  const attempts = isNetworkGit(args) ? 5 : 1;
+  let last: GitResult | undefined;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const result = await spawnGit(args, opts);
+    if (result.code === 0 || opts.allowFail) return result;
+    last = result;
+    if (attempt === attempts || !isTransientGitFailure(result)) break;
+    await new Promise((r) => setTimeout(r, 400 * 2 ** (attempt - 1)));
+  }
+  throw new GitError(args, last!);
 }
 
 export async function gitOut(args: string[], opts: GitOpts): Promise<string> {

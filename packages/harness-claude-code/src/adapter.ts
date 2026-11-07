@@ -4,10 +4,12 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   AsyncQueue,
+  appendHarnessLog,
   deferred,
   type HarnessAdapter,
   type HarnessEvent,
   type HarnessSession,
+  harnessLogJson,
   isDeniedCommand,
   type ResumeOpts,
   type SessionResult,
@@ -30,8 +32,15 @@ export function disallowedTools(opts: Pick<StartOpts, "permissions">): string[] 
 /** Headless permission handler: allow everything the policy does not deny. */
 export function canUseTool(opts: Pick<StartOpts, "permissions">) {
   return async (toolName: string, input: Record<string, unknown>) => {
-    if (toolName === "Bash" && typeof input.command === "string" && isDeniedCommand(input.command, opts.permissions.denyCommands)) {
-      return { behavior: "deny" as const, message: `Foundry policy forbids \`${input.command}\` in jobs. The runner handles git push.` };
+    if (
+      toolName === "Bash" &&
+      typeof input.command === "string" &&
+      isDeniedCommand(input.command, opts.permissions.denyCommands)
+    ) {
+      return {
+        behavior: "deny" as const,
+        message: `Foundry policy forbids \`${input.command}\` in jobs. The runner handles git push.`,
+      };
     }
     if ((toolName === "WebFetch" || toolName === "WebSearch") && !opts.permissions.allowWebFetch) {
       return { behavior: "deny" as const, message: "Web access is disabled by this repo's policy." };
@@ -46,8 +55,12 @@ export function canUseTool(opts: Pick<StartOpts, "permissions">) {
  */
 export function userSettingsEnv(home = homedir()): Record<string, string> {
   try {
-    const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8")) as { env?: Record<string, unknown> };
-    return Object.fromEntries(Object.entries(settings.env ?? {}).filter((e): e is [string, string] => typeof e[1] === "string"));
+    const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8")) as {
+      env?: Record<string, unknown>;
+    };
+    return Object.fromEntries(
+      Object.entries(settings.env ?? {}).filter((e): e is [string, string] => typeof e[1] === "string"),
+    );
   } catch {
     return {};
   }
@@ -71,7 +84,9 @@ function claudeAuthPresent(env: NodeJS.ProcessEnv = { ...userSettingsEnv(), ...p
   if (env.CLAUDE_CODE_USE_BEDROCK || env.CLAUDE_CODE_USE_VERTEX) return true;
   if (existsSync(join(homedir(), ".claude", ".credentials.json"))) return true;
   if (process.platform === "darwin") {
-    const r = spawnSync("security", ["find-generic-password", "-s", "Claude Code-credentials"], { stdio: "ignore" });
+    const r = spawnSync("security", ["find-generic-password", "-s", "Claude Code-credentials"], {
+      stdio: "ignore",
+    });
     if (r.status === 0) return true;
   }
   return false;
@@ -122,6 +137,12 @@ export class ClaudeCodeAdapter implements HarnessAdapter {
     const done = deferred<SessionResult>();
     const state: NormalizeState = { reportedCostUsd: resume ? (this.costBySession.get(resume) ?? 0) : 0 };
 
+    const redact = opts.redact ?? ((s: string) => s);
+    const log = (section: string, body: string) => appendHarnessLog(opts.logFile, section, body, redact);
+    log(
+      "REQUEST query",
+      harnessLogJson({ prompt, resume, model: opts.model, cwd: opts.cwd, systemPrompt: opts.systemPrompt }),
+    );
     const executable = claudeExecutable();
     const q = query({
       prompt,
@@ -132,7 +153,10 @@ export class ClaudeCodeAdapter implements HarnessAdapter {
         systemPrompt: { type: "preset", preset: "claude_code", append: opts.systemPrompt },
         env: { ...userSettingsEnv(), ...process.env, ...opts.env },
         mcpServers: Object.fromEntries(
-          opts.mcpServers.map((s) => [s.name, { type: "stdio", command: s.command, args: s.args, env: s.env ?? {} }]),
+          opts.mcpServers.map((s) => [
+            s.name,
+            { type: "stdio", command: s.command, args: s.args, env: s.env ?? {} },
+          ]),
         ),
         permissionMode: "default",
         canUseTool: canUseTool(opts),
@@ -152,6 +176,7 @@ export class ClaudeCodeAdapter implements HarnessAdapter {
       try {
         for await (const raw of q) {
           const msg = raw as ClaudeMessage;
+          log("CLAUDE message", harnessLogJson(msg));
           if (msg.session_id && !sessionId) {
             sessionId = msg.session_id;
             id.resolve(sessionId);
@@ -163,11 +188,13 @@ export class ClaudeCodeAdapter implements HarnessAdapter {
         }
       } catch (err) {
         result = abort.signal.aborted ? { status: "stopped" } : { status: "error", error: String(err) };
+        log("CLAUDE error", String(err));
         if (result.status === "error") events.push({ kind: "error", message: String(err) });
       } finally {
         if (sessionId) this.costBySession.set(sessionId, state.reportedCostUsd);
         if (!sessionId) id.reject(new Error(result.error ?? "session ended before it started"));
         if (abort.signal.aborted) result = { ...result, status: "stopped" };
+        log("RESPONSE session", harnessLogJson(result));
         events.close();
         done.resolve({ ...result, costUsd: state.reportedCostUsd });
       }

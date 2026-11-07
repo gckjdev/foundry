@@ -18,8 +18,17 @@ export class LocalJobs {
     mkdirSync(dir, { recursive: true });
   }
 
+  private stem(jobId: string): string {
+    return jobId.replace(/[^\w-]/g, "");
+  }
+
   private file(jobId: string): string {
-    return join(this.dir, `${jobId.replace(/[^\w-]/g, "")}.json`);
+    return join(this.dir, `${this.stem(jobId)}.json`);
+  }
+
+  /** Full coding-agent request/response transcript for this job. */
+  harnessLog(jobId: string): string {
+    return join(this.dir, `${this.stem(jobId)}.harness.log`);
   }
 
   get(jobId: string): LocalJob | null {
@@ -33,7 +42,10 @@ export class LocalJobs {
   }
 
   put(job: Omit<LocalJob, "updatedAt">): void {
-    writeFileSync(this.file(job.jobId), JSON.stringify({ ...job, updatedAt: new Date().toISOString() }, null, 2));
+    writeFileSync(
+      this.file(job.jobId),
+      JSON.stringify({ ...job, updatedAt: new Date().toISOString() }, null, 2),
+    );
   }
 
   delete(jobId: string): void {

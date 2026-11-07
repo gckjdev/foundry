@@ -39,11 +39,11 @@ You can start onboarding before the runner is online; the job waits in **queued*
 
 ## 3. Watch it
 
-| Where | What you see |
-|---|---|
-| **Board** | Job in Queued, then Working |
-| **Job page** | Status, runner name, live log, waiting reason |
-| **Repos** | Pill: onboarding… → recipe PR open → accepting jobs |
+| Where        | What you see                                        |
+| ------------ | --------------------------------------------------- |
+| **Board**    | Job in Queued, then Working                         |
+| **Job page** | Status, runner name, live log, waiting reason       |
+| **Repos**    | Pill: onboarding… → recipe PR open → accepting jobs |
 
 Open the job from the board (or `/jobs/<id>`). While it is queued you may see **Waiting: no runners joined** or **no runner online**.
 
@@ -55,12 +55,12 @@ If the agent is unsure, the job moves to **Needs input**. Answer on the job page
 
 Onboarding is **not** done when the pill says onboarding…. That only means a job exists.
 
-| Repos pill | Job | What to do |
-|---|---|---|
-| onboarding… | queued / working | Wait, or join/start a runner |
-| onboarding failed | failed | Read the job’s failure reason; click **Retry onboarding** |
-| recipe PR open | has a **Pull request** link | Review and merge the PR |
-| accepting jobs | merged (after you merge) | Label issues `foundry` |
+| Repos pill        | Job                         | What to do                                                |
+| ----------------- | --------------------------- | --------------------------------------------------------- |
+| onboarding…       | queued / working            | Wait, or join/start a runner                              |
+| onboarding failed | failed                      | Read the job’s failure reason; click **Retry onboarding** |
+| recipe PR open    | has a **Pull request** link | Review and merge the PR                                   |
+| accepting jobs    | merged (after you merge)    | Label issues `foundry`                                    |
 
 The agent must not change application code. The PR should only add:
 
@@ -82,7 +82,9 @@ Do not label issues until the pill is **accepting jobs**. Ticket jobs wait with 
 
 **Harness missing / not signed in.** On **Runners**, the harness line is red. Sign in to Claude Code (or OpenCode) on that machine, keep the runner process running.
 
-**Job failed.** Open the job, read the failure text and log. **Retry onboarding** on **Repos** starts a new onboarding job.
+**Job failed.** Open the job, read the failure text and live log. The runner also writes the full coding-agent transcript (every prompt sent and every event/message back, including `opencode serve` stdout/stderr) to `~/.foundry/jobs/<job-id>.harness.log` (or `$FOUNDRY_HOME/jobs/` if set). Secrets are redacted. **Retry onboarding** on **Repos** starts a new onboarding job.
+
+**`git fetch` / Empty reply from server.** Git does not use the macOS system proxy. Set `FOUNDRY_HTTP_PROXY` in `.env` (or `foundry runner join --http-proxy …`). The runner applies it to git, the control-plane client, and coding-agent processes, and retries transient failures. Restart `pnpm dev:runner` and retry the job.
 
 **PR never appears.** The runner never reached verifying, or opening the PR failed (GitHub App permissions: contents + pull requests). Check the job log.
 

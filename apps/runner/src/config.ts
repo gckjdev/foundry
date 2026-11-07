@@ -24,7 +24,14 @@ export const RunnerConfigSchema = z.object({
   /** Admin URL of a local Postgres for per-job databases (`recipe.services.postgres`). */
   postgresUrl: z.string().optional(),
   /** Per-job resource limits applied with systemd-run (Linux). */
-  limits: z.object({ memMb: z.number().int().positive().optional(), cpuPercent: z.number().int().positive().optional() }).default({}),
+  limits: z
+    .object({
+      memMb: z.number().int().positive().optional(),
+      cpuPercent: z.number().int().positive().optional(),
+    })
+    .default({}),
+  /** Outbound HTTP proxy for git, coding-agent APIs, and the control plane when it is not localhost. */
+  httpProxy: z.string().min(1).optional(),
 });
 export type RunnerConfig = z.infer<typeof RunnerConfigSchema>;
 
@@ -56,12 +63,17 @@ export function defaultSchedule(kind: "shared" | "personal", onLaptop: boolean):
 }
 
 /** `foundry runner schedule` arguments, e.g. `--window 19:00-08:00 --ac-only --pause-when-active 10`. */
-export function applyScheduleArgs(s: LocalSchedule, args: Record<string, string | boolean | string[]>): LocalSchedule {
+export function applyScheduleArgs(
+  s: LocalSchedule,
+  args: Record<string, string | boolean | string[]>,
+): LocalSchedule {
   const next = { ...s, windows: [...s.windows] };
   if (args["ac-only"] !== undefined) next.acPowerOnly = args["ac-only"] !== "false";
   if (args["any-power"]) next.acPowerOnly = false;
-  if (args["pause-when-active"] !== undefined) next.pauseWhenActiveMinutes = Number(args["pause-when-active"]) || 0;
-  if (args.window !== undefined) next.windows = ([] as string[]).concat(args.window as string | string[]).filter((w) => w !== "any");
+  if (args["pause-when-active"] !== undefined)
+    next.pauseWhenActiveMinutes = Number(args["pause-when-active"]) || 0;
+  if (args.window !== undefined)
+    next.windows = ([] as string[]).concat(args.window as string | string[]).filter((w) => w !== "any");
   if (args.weekends !== undefined) next.weekends = args.weekends !== "false";
   return ScheduleSchema.parse(next);
 }

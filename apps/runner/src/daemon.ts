@@ -2,7 +2,14 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { HarnessAdapter } from "@foundry/harness-core";
 import type { OsAdapter, SleepInhibitor } from "@foundry/os-adapters";
-import { HEARTBEAT_INTERVAL_MS, type HarnessInfo, type LocalSchedule, scheduleAllows, VERSION } from "@foundry/shared";
+import {
+  type HarnessInfo,
+  HEARTBEAT_INTERVAL_MS,
+  type LocalSchedule,
+  scheduleAllows,
+  VERSION,
+} from "@foundry/shared";
+import { httpProxyEnv } from "@foundry/shared/proxy";
 import type { ControlPlane } from "./api";
 import { collectGarbage } from "./gc";
 import { JobRunner, type JobRunnerDeps } from "./job-runner";
@@ -27,7 +34,10 @@ export interface DaemonOptions {
   log?: (message: string, data?: Record<string, unknown>) => void;
   heartbeatMs?: number;
   /** Override for tests. */
-  createSocket?: (url: string, token: string) => { onmessage: ((e: { data: unknown }) => void) | null; close(): void; onclose: (() => void) | null };
+  createSocket?: (
+    url: string,
+    token: string,
+  ) => { onmessage: ((e: { data: unknown }) => void) | null; close(): void; onclose: (() => void) | null };
 }
 
 /**
@@ -60,14 +70,23 @@ export class Daemon {
     this.localJobs = new LocalJobs(join(opts.dataDir, "jobs"));
     this.tools = new ToolServer(opts.socketPath ?? join(opts.dataDir, "foundry.sock"));
     this.log = opts.log ?? ((m, d) => console.log(`[foundry] ${m}`, d ?? ""));
-    this.readiness = new ReadinessReporter(opts.api, this.workspace, opts.os.os, { postgresUrl: opts.postgresUrl, log: (m) => this.log(m) });
+    this.readiness = new ReadinessReporter(opts.api, this.workspace, opts.os.os, {
+      postgresUrl: opts.postgresUrl,
+      log: (m) => this.log(m),
+    });
   }
 
   async start(): Promise<void> {
     await this.tools.start();
     this.harnessInfo = await this.detectHarnesses();
-    if (this.opts.limits?.memMb || this.opts.limits?.cpuPercent) this.wrap = await this.opts.os.wrapWithLimits([], this.opts.limits);
-    await collectGarbage({ workspace: this.workspace, localJobs: this.localJobs, ports: this.ports, running: new Set() });
+    if (this.opts.limits?.memMb || this.opts.limits?.cpuPercent)
+      this.wrap = await this.opts.os.wrapWithLimits([], this.opts.limits);
+    await collectGarbage({
+      workspace: this.workspace,
+      localJobs: this.localJobs,
+      ports: this.ports,
+      running: new Set(),
+    });
     await this.tick();
     this.heartbeatTimer = setInterval(() => void this.tick(), this.opts.heartbeatMs ?? HEARTBEAT_INTERVAL_MS);
     this.gcTimer = setInterval(() => void this.gc(), 3600_000);
@@ -79,10 +98,12 @@ export class Daemon {
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     if (this.gcTimer) clearInterval(this.gcTimer);
     this.socket?.close();
-    await Promise.all([...this.running.values()].map(async (r) => {
-      await r.runner.pause();
-      await r.done;
-    }));
+    await Promise.all(
+      [...this.running.values()].map(async (r) => {
+        await r.runner.pause();
+        await r.done;
+      }),
+    );
     this.inhibitor?.release();
     await this.tools.close();
   }
@@ -92,7 +113,12 @@ export class Daemon {
     for (const [id, h] of Object.entries(this.opts.harnesses)) {
       if (!h) continue;
       const d = await h.detect().catch(() => ({ installed: false, authOk: false }) as const);
-      out.push({ id, installed: d.installed, authOk: d.authOk, ...("version" in d && d.version ? { version: d.version } : {}) });
+      out.push({
+        id,
+        installed: d.installed,
+        authOk: d.authOk,
+        ...("version" in d && d.version ? { version: d.version } : {}),
+      });
     }
     return out;
   }
@@ -111,10 +137,15 @@ export class Daemon {
     }
   }
 
-  private async evaluateAccepting(diskFreeMb: number, onAcPower: boolean | null): Promise<{ ok: boolean; reason?: string }> {
+  private async evaluateAccepting(
+    diskFreeMb: number,
+    onAcPower: boolean | null,
+  ): Promise<{ ok: boolean; reason?: string }> {
     if (this.draining) return { ok: false, reason: "draining" };
-    if (diskFreeMb < this.opts.minFreeDiskMb) return { ok: false, reason: `low disk (${diskFreeMb} MB free)` };
-    const idleSeconds = this.opts.schedule.pauseWhenActiveMinutes > 0 ? await this.opts.os.idleSeconds() : null;
+    if (diskFreeMb < this.opts.minFreeDiskMb)
+      return { ok: false, reason: `low disk (${diskFreeMb} MB free)` };
+    const idleSeconds =
+      this.opts.schedule.pauseWhenActiveMinutes > 0 ? await this.opts.os.idleSeconds() : null;
     return scheduleAllows(this.opts.schedule, { onAcPower, idleSeconds }, new Date());
   }
 
@@ -169,7 +200,9 @@ export class Daemon {
     try {
       const ws = this.opts.createSocket
         ? this.opts.createSocket(url, token)
-        : (new WebSocket(`${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`) as unknown as {
+        : (new WebSocket(
+            `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`,
+          ) as unknown as {
             onmessage: ((e: { data: unknown }) => void) | null;
             onclose: (() => void) | null;
             close(): void;
@@ -233,6 +266,7 @@ export class Daemon {
       log: this.log,
       postgresUrl: this.opts.postgresUrl,
       wrap: this.wrap,
+      baseEnv: httpProxyEnv(),
     };
   }
 
@@ -253,7 +287,10 @@ export class Daemon {
 
   private writeStatus(): void {
     try {
-      writeFileSync(join(this.opts.dataDir, "status.json"), JSON.stringify({ ...this.status(), pid: process.pid, at: new Date().toISOString() }, null, 2));
+      writeFileSync(
+        join(this.opts.dataDir, "status.json"),
+        JSON.stringify({ ...this.status(), pid: process.pid, at: new Date().toISOString() }, null, 2),
+      );
     } catch {}
   }
 
@@ -261,7 +298,11 @@ export class Daemon {
     return {
       accepting: this.accepting,
       draining: this.draining,
-      running: [...this.running.values()].map((r) => ({ id: r.runner.jobId, stage: r.runner.currentStage, title: r.runner.job.title })),
+      running: [...this.running.values()].map((r) => ({
+        id: r.runner.jobId,
+        stage: r.runner.currentStage,
+        title: r.runner.job.title,
+      })),
     };
   }
 }

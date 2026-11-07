@@ -4,10 +4,12 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   AsyncQueue,
+  appendHarnessLog,
   deferred,
   type HarnessAdapter,
   type HarnessEvent,
   type HarnessSession,
+  harnessLogJson,
   type ResumeOpts,
   type SessionResult,
   type StartOpts,
@@ -51,6 +53,7 @@ export function startOpencodeServer(opts: {
   env: Record<string, string>;
   config: object;
   timeoutMs?: number;
+  onLog?: (stream: "stdout" | "stderr", chunk: string) => void;
 }): Promise<{ url: string; proc: ChildProcess }> {
   const proc = spawn(opencodeBinary(), ["serve", "--hostname=127.0.0.1", `--port=${opts.port}`], {
     cwd: opts.cwd,
@@ -60,30 +63,35 @@ export function startOpencodeServer(opts: {
   });
   return new Promise((resolve, reject) => {
     let output = "";
+    let started = false;
     const timer = setTimeout(() => {
       kill(proc);
-      reject(new Error(`opencode serve did not start within ${opts.timeoutMs ?? 30_000}ms: ${output.slice(-500)}`));
+      reject(
+        new Error(`opencode serve did not start within ${opts.timeoutMs ?? 30_000}ms: ${output.slice(-500)}`),
+      );
     }, opts.timeoutMs ?? 30_000);
-    const onData = (chunk: Buffer) => {
-      output += chunk.toString();
+    const onChunk = (stream: "stdout" | "stderr") => (chunk: Buffer) => {
+      const s = chunk.toString();
+      output += s;
+      opts.onLog?.(stream, s);
+      if (started) return;
       const m = /listening on\s+(https?:\/\/\S+)/.exec(output);
       if (m) {
+        started = true;
         clearTimeout(timer);
-        proc.stdout?.off("data", onData);
         resolve({ url: m[1]!, proc });
       }
     };
-    proc.stdout?.on("data", onData);
-    proc.stderr?.on("data", (c: Buffer) => {
-      output += c.toString();
-    });
+    proc.stdout?.on("data", onChunk("stdout"));
+    proc.stderr?.on("data", onChunk("stderr"));
     proc.once("error", (err) => {
       clearTimeout(timer);
       reject(err);
     });
-    proc.once("exit", (code) => {
+    proc.once("exit", (code, signal) => {
+      if (started) return;
       clearTimeout(timer);
-      reject(new Error(`opencode serve exited with ${code}: ${output.slice(-500)}`));
+      reject(new Error(`opencode serve exited with ${code ?? signal}: ${output.slice(-500)}`));
     });
   });
 }
@@ -104,7 +112,10 @@ function kill(proc: ChildProcess): void {
 export class OpencodeAdapter implements HarnessAdapter {
   readonly id = "opencode" as const;
   private readonly servers = new Map<string, RunningServer>();
-  private readonly running = new WeakMap<HarnessSession, { client: OpencodeClient; sessionId: string; cwd: string; finish: () => void }>();
+  private readonly running = new WeakMap<
+    HarnessSession,
+    { client: OpencodeClient; sessionId: string; cwd: string; finish: () => void }
+  >();
 
   async detect() {
     const r = spawnSync(opencodeBinary(), ["--version"], { encoding: "utf8", timeout: 15_000 });
@@ -137,13 +148,24 @@ export class OpencodeAdapter implements HarnessAdapter {
   }
 
   private async server(opts: ResumeOpts): Promise<RunningServer> {
-    const config = opencodeConfig({ mcpServers: opts.mcpServers, permissions: opts.permissions, model: opts.model || undefined });
+    const config = opencodeConfig({
+      mcpServers: opts.mcpServers,
+      permissions: opts.permissions,
+      model: opts.model || undefined,
+    });
     const configKey = JSON.stringify(config);
     const existing = this.servers.get(opts.cwd);
     if (existing && existing.proc.exitCode === null && existing.configKey === configKey) return existing;
     if (existing) await this.release(opts.cwd);
     if (!opts.harnessPort) throw new Error("the OpenCode harness needs a leased port (harnessPort)");
-    const { url, proc } = await startOpencodeServer({ cwd: opts.cwd, port: opts.harnessPort, env: opts.env, config });
+    const redact = opts.redact ?? ((s: string) => s);
+    const { url, proc } = await startOpencodeServer({
+      cwd: opts.cwd,
+      port: opts.harnessPort,
+      env: opts.env,
+      config,
+      onLog: (stream, chunk) => appendHarnessLog(opts.logFile, `OPENCODE ${stream}`, chunk, redact),
+    });
     const client = createOpencodeClient({ baseUrl: url, directory: opts.cwd });
     const s: RunningServer = { url, proc, client, configKey };
     proc.once("exit", () => {
@@ -154,13 +176,17 @@ export class OpencodeAdapter implements HarnessAdapter {
   }
 
   private async run(opts: ResumeOpts, resume: string | null, text: string): Promise<HarnessSession> {
+    const redact = opts.redact ?? ((s: string) => s);
+    const log = (section: string, body: string) => appendHarnessLog(opts.logFile, section, body, redact);
     const srv = await this.server(opts);
     const { client } = srv;
     let sessionId = resume;
     if (!sessionId) {
       const created = await client.session.create({ body: { title: "Foundry job" } });
-      if (!created.data) throw new Error(`OpenCode could not create a session: ${JSON.stringify(created.error)}`);
+      if (!created.data)
+        throw new Error(`OpenCode could not create a session: ${JSON.stringify(created.error)}`);
       sessionId = created.data.id;
+      log("OPENCODE session.create", sessionId);
     }
     const events = new AsyncQueue<HarnessEvent>();
     const done = deferred<SessionResult>();
@@ -176,13 +202,19 @@ export class OpencodeAdapter implements HarnessAdapter {
       done.resolve(result ?? { status: "stopped" });
     };
     const session: HarnessSession = { id: Promise.resolve(sessionId), events, done: done.promise };
-    this.running.set(session, { client, sessionId, cwd: opts.cwd, finish: () => finish({ status: "stopped" }) });
+    this.running.set(session, {
+      client,
+      sessionId,
+      cwd: opts.cwd,
+      finish: () => finish({ status: "stopped" }),
+    });
 
     // Subscribe before prompting so the turn's first events are not missed.
     const sub = await client.event.subscribe({ signal: abort.signal });
     void (async () => {
       try {
         for await (const raw of sub.stream as AsyncIterable<OpencodeEvent>) {
+          log("OPENCODE event", harnessLogJson(raw));
           const r = mapper.map(raw);
           for (const e of r.events) events.push(e);
           if (r.error) {
@@ -196,17 +228,31 @@ export class OpencodeAdapter implements HarnessAdapter {
         }
         finish(error ? { status: "error", error } : { status: "stopped" });
       } catch (err) {
+        log("OPENCODE subscribe error", String(err));
         finish(finished ? undefined : { status: "error", error: String(err) });
       }
     })();
-    srv.proc.once("exit", (code) => finish({ status: "error", error: `opencode serve exited (${code})` }));
+    srv.proc.once("exit", (code, signal) => {
+      const msg = `opencode serve exited (code=${code} signal=${signal})`;
+      log("OPENCODE serve exit", msg);
+      finish({ status: "error", error: msg });
+    });
 
     const model = splitModel(opts.model);
+    const body = {
+      system: opts.systemPrompt,
+      parts: [{ type: "text" as const, text }],
+      ...(model ? { model } : {}),
+    };
+    log("REQUEST promptAsync", harnessLogJson({ sessionId, resume, model: opts.model, body }));
     const sent = await client.session.promptAsync({
       path: { id: sessionId },
-      body: { system: opts.systemPrompt, parts: [{ type: "text", text }], ...(model ? { model } : {}) },
+      body,
     });
-    if (sent.error) finish({ status: "error", error: `OpenCode rejected the prompt: ${JSON.stringify(sent.error)}` });
+    if (sent.error) {
+      log("RESPONSE promptAsync error", harnessLogJson(sent.error));
+      finish({ status: "error", error: `OpenCode rejected the prompt: ${JSON.stringify(sent.error)}` });
+    }
     return session;
   }
 }
