@@ -74,6 +74,27 @@ export class Workspace {
     return path;
   }
 
+  /**
+   * Check out a throwaway detached worktree of `origin/<branch>` (readiness checks). It shares
+   * the repo mirror with job worktrees but has no branch, so it can never collide with a job.
+   */
+  async createDetachedWorktree(opts: {
+    fullName: string;
+    branch: string;
+    id: string;
+    token?: string;
+  }): Promise<string> {
+    const mirror = await this.ensureMirror(opts.fullName, opts.token);
+    const path = this.worktreePath(opts.id);
+    if (existsSync(path)) await this.removeWorktree(opts.fullName, opts.id);
+    await mkdir(join(this.root, "worktrees"), { recursive: true });
+    await git(["worktree", "prune"], { cwd: mirror });
+    await git(["worktree", "add", "--force", "--detach", path, `origin/${opts.branch}`], {
+      cwd: mirror,
+    });
+    return path;
+  }
+
   async removeWorktree(fullName: string, jobId: string): Promise<void> {
     const mirror = this.mirrorPath(fullName);
     const path = this.worktreePath(jobId);
