@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@foundry/harness-core": "workspace:*",
+    "@foundry/os-adapters": "workspace:*",
     "@foundry/shared": "workspace:*",
     "@anthropic-ai/claude-agent-sdk": "^0.3.0"
   }

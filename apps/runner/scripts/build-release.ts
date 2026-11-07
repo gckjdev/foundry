@@ -16,7 +16,7 @@ import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { DEFAULT_RELEASE_URL, installScript, VERSION } from "@foundry/shared";
 
-const ALL_TARGETS = ["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"] as const;
+const ALL_TARGETS = ["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64", "windows-x64"] as const;
 type Target = (typeof ALL_TARGETS)[number];
 
 const { values } = parseArgs({
@@ -49,6 +49,7 @@ const sums: Record<string, string> = {};
 for (const target of targets) {
   const dir = join(out, target);
   mkdirSync(dir, { recursive: true });
+  const binName = target.startsWith("windows-") ? "foundry.exe" : "foundry";
   run("bun", [
     "build",
     "src/cli.ts",
@@ -56,10 +57,10 @@ for (const target of targets) {
     "--minify",
     `--target=bun-${target}`,
     "--outfile",
-    join(dir, "foundry"),
+    join(dir, binName),
   ]);
   const tarball = `foundry-${target}.tar.gz`;
-  run("tar", ["-czf", join(out, tarball), "-C", dir, "foundry"]);
+  run("tar", ["-czf", join(out, tarball), "-C", dir, binName]);
   sums[tarball] = sha256(join(out, tarball));
 }
 

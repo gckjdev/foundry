@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@foundry/harness-core": "workspace:*",
+    "@foundry/os-adapters": "workspace:*",
     "@foundry/shared": "workspace:*",
     "@opencode-ai/sdk": "^1.19.0"
   }
