@@ -6,6 +6,7 @@ const heartbeat = {
   realtimeToken: "rt",
   draining: false,
   revokedJobIds: [],
+  keepJobIds: [],
   repos: [],
 };
 

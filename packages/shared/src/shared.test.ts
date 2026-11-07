@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { HeartbeatResponseSchema } from "./api";
 import { parseBrief, renderBrief } from "./brief";
 import {
   findMarker,
@@ -131,6 +132,20 @@ describe("tickets", () => {
     expect(jobBranchName("0123456789ab", "Mark recipes as Favorites!")).toBe(
       "foundry/01234567-mark-recipes-as-favorites",
     );
+  });
+});
+
+describe("heartbeat response", () => {
+  it("parses keepJobIds", () => {
+    const res = HeartbeatResponseSchema.parse({
+      realtimeUrl: "ws://x",
+      realtimeToken: "t",
+      draining: false,
+      revokedJobIds: ["a"],
+      keepJobIds: ["b"],
+      repos: [],
+    });
+    expect(res.keepJobIds).toEqual(["b"]);
   });
 });
 

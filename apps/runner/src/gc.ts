@@ -5,7 +5,7 @@ import type { LocalJobs } from "./state";
 import type { Workspace } from "./workspace";
 
 /** Parked worktrees older than this are dropped; the job resumes portably from the brief. */
-export const PARKED_TTL_MS = 3 * 24 * 3600_000;
+export const PARKED_TTL_MS = 7 * 24 * 3600_000;
 
 /**
  * Remove worktrees nobody needs (spec 5.9): orphans with no local record, jobs the control plane

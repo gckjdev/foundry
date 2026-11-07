@@ -24,6 +24,7 @@ export class RecordingControlPlane implements ControlPlane {
     realtimeToken: "",
     draining: false,
     revokedJobIds: [],
+    keepJobIds: [],
     repos: [],
   };
 
