@@ -105,18 +105,18 @@ Runner stages in order: `triage` → `investigating` → `implementing` → `ver
 
 ## Where to look
 
-| Change                               | Start here                                                                                                                      |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| Job lifecycle / claim / fail / retry | `packages/control/src/jobs.ts`, `claim.ts`, `onboarding.ts`                                                                     |
-| GitHub webhooks → jobs               | `packages/control/src/ingest.ts`, `apps/web/src/app/api/webhooks/github`                                                        |
-| Sign-in / App install                | `apps/web/src/auth.ts`, `apps/web/src/server/retry-fetch.ts`                                                                    |
-| Merge gate                           | `packages/control/src/merge-gate.ts`, `packages/shared/src/gate.ts`                                                             |
-| Panel pages                          | `apps/web/src/app/(panel)/`                                                                                                     |
-| Runner loop                          | `apps/runner/src/daemon.ts`, `job-runner.ts`, `git.ts`                                                                          |
-| Harness                              | `packages/harness-core`, `harness-claude-code`, `harness-opencode`                                                              |
-| Recipe / policy schemas              | `packages/shared/src/recipe.ts`, `policy.ts`                                                                                    |
-| Outbound proxy                       | `packages/shared/src/proxy.ts`                                                                                                  |
-| Tests (unit / API / e2e)             | `docs/testing.md`, `tests/helpers.ts`, `tests/api`, `tests/e2e`, `tests/playwright`                                             |
+| Change                               | Start here                                                                          |
+| ------------------------------------ | ----------------------------------------------------------------------------------- |
+| Job lifecycle / claim / fail / retry | `packages/control/src/jobs.ts`, `claim.ts`, `onboarding.ts`                         |
+| GitHub webhooks → jobs               | `packages/control/src/ingest.ts`, `apps/web/src/app/api/webhooks/github`            |
+| Sign-in / App install                | `apps/web/src/auth.ts`, `apps/web/src/server/retry-fetch.ts`                        |
+| Merge gate                           | `packages/control/src/merge-gate.ts`, `packages/shared/src/gate.ts`                 |
+| Panel pages                          | `apps/web/src/app/(panel)/`                                                         |
+| Runner loop                          | `apps/runner/src/daemon.ts`, `job-runner.ts`, `git.ts`                              |
+| Harness                              | `packages/harness-core`, `harness-claude-code`, `harness-opencode`                  |
+| Recipe / policy schemas              | `packages/shared/src/recipe.ts`, `policy.ts`                                        |
+| Outbound proxy                       | `packages/shared/src/proxy.ts`                                                      |
+| Tests (unit / API / e2e)             | `docs/testing.md`, `tests/helpers.ts`, `tests/api`, `tests/e2e`, `tests/playwright` |
 
 ## Do not
 

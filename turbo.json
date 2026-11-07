@@ -6,7 +6,8 @@
     "FOUNDRY_GIT_BASE",
     "AUTH_SECRET",
     "AUTH_GITHUB_ID",
-    "AUTH_GITHUB_SECRET"
+    "AUTH_GITHUB_SECRET",
+    "SMEE_URL"
   ],
   "tasks": {
     "build": {
