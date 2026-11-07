@@ -7,14 +7,23 @@ export interface GitResult {
   stderr: string;
 }
 
+/** Extra hint when GitHub's error is true but not actionable on its own. */
+export function gitFailureHint(stderr: string): string | null {
+  if (/without `workflows` permission/i.test(stderr) || /without workflows permission/i.test(stderr)) {
+    return "GitHub App cannot push files under .github/workflows until the installation grants Workflows: Read and write. Set that on the App, accept the updated permissions on the installation, then retry the job.";
+  }
+  return null;
+}
+
 export class GitError extends Error {
   constructor(
     readonly args: string[],
     readonly result: GitResult,
   ) {
-    super(
-      `git ${args.filter((a) => !a.startsWith("http.extraheader")).join(" ")} failed (${result.code}): ${result.stderr.trim()}`,
-    );
+    const cmd = args.filter((a) => !a.startsWith("http.extraheader")).join(" ");
+    const detail = result.stderr.trim();
+    const hint = gitFailureHint(detail);
+    super(`git ${cmd} failed (${result.code}): ${detail}${hint ? ` — ${hint}` : ""}`);
   }
 }
 

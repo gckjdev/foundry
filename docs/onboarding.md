@@ -88,6 +88,8 @@ Do not label issues until the pill is **accepting jobs**. Ticket jobs wait with 
 
 **Issue labeled `foundry` but not on the board.** Foundry only creates a job from the `issues.labeled` webhook (or a catch-up poll). Restart `pnpm dev:webhooks` so it reads `SMEE_URL` from `.env`, then refresh **Board**. If smee was started without that URL, GitHub events never arrived.
 
-**PR never appears.** The runner never reached verifying, or opening the PR failed (GitHub App permissions: contents + pull requests). Check the job log.
+**`git push` refused: workflows permission.** The job edited `.github/workflows/`. The GitHub App already requests **Workflows: Read and write**, but each installation must accept that permission. Open [the installation](https://github.com/settings/installations/179251611), accept the updated permissions, then **Retry** the job from **Implementing** (the failed push never created the branch, and the local worktree is removed). If there is no Review request, open the [App permissions](https://github.com/settings/apps/gckjdevfoundryapp/permissions), confirm Workflows is Read and write, Save, and accept again.
+
+**PR never appears.** The runner never reached verifying, or opening the PR failed (GitHub App permissions: contents + pull requests + workflows if the diff touches CI). Check the job log.
 
 **Merged but still not accepting jobs.** `.foundry/recipe.yaml` is missing or invalid on `main`, or Foundry did not see the push. Run `pnpm dev:webhooks` with `SMEE_URL` matching the GitHub App webhook URL, then push an empty commit or click **Sync from GitHub**.

@@ -50,6 +50,9 @@ Repository:
 - **Pull requests** — Read and write
 - **Checks** — Read (needed for the merge gate)
 - **Commit statuses** — Read
+- **Workflows** — Read and write (required to push changes under `.github/workflows/`; without it GitHub rejects the job branch)
+
+After you add or change permissions, open the App's installation on the account (for this machine: [installation 179251611](https://github.com/settings/installations/179251611)) and **accept the new permissions**. Until you accept, tokens keep the old set and workflow-file pushes still fail.
 
 Account:
 

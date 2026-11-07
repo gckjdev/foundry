@@ -1,6 +1,6 @@
 import { gitProxyArgs, httpProxyEnv } from "@foundry/shared/proxy";
 import { describe, expect, it } from "vitest";
-import { authArgs, git, gitRemoteUsesHttpProxy } from "./git";
+import { authArgs, GitError, git, gitRemoteUsesHttpProxy } from "./git";
 
 describe("git proxy", () => {
   it("auth header does not put the token on the argv the user sees in errors", () => {
@@ -38,5 +38,18 @@ describe("git proxy", () => {
     expect(gitRemoteUsesHttpProxy("file:///tmp/foundry-git")).toBe(false);
     expect(gitRemoteUsesHttpProxy("https://github.com")).toBe(true);
     expect(gitRemoteUsesHttpProxy(undefined)).toBe(true);
+  });
+});
+
+describe("GitError", () => {
+  it("explains GitHub App workflow-file rejections", () => {
+    const err = new GitError(["push", "--quiet", "origin", "HEAD:refs/heads/foundry/x"], {
+      code: 1,
+      stdout: "",
+      stderr:
+        "remote rejected HEAD -> foundry/x (refusing to allow a GitHub App to create or update workflow `.github/workflows/ci.yml` without `workflows` permission)",
+    });
+    expect(err.message).toContain("Workflows: Read and write");
+    expect(err.message).toMatch(/accept the updated permissions on the installation/i);
   });
 });
