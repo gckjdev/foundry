@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FakeHarness, type FakeTurn } from "@foundry/harness-core";
@@ -18,6 +18,23 @@ import {
 import { ToolServer } from "./tool-server";
 import { Workspace } from "./workspace";
 
+const UI_RECIPE = `checks:
+  - name: marker
+    run: test -f done.txt
+dev_server:
+  run: |
+    node -e 'require("node:http").createServer((req, res) => { res.statusCode = 200; res.end("ok"); }).listen(Number(process.env.FOUNDRY_PORT), "127.0.0.1")'
+  ready_path: /
+  timeout_sec: 30
+ui_paths: ["**/*.tsx"]
+`;
+
+/** A 1x1 transparent PNG: enough for the evidence path, which only checks the file type. */
+const TINY_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+
 const fixture = createGitFixture();
 let tools: ToolServer;
 let api: RecordingControlPlane;
@@ -28,6 +45,7 @@ beforeAll(async () => {
   prevBase = process.env.FOUNDRY_GIT_BASE;
   process.env.FOUNDRY_GIT_BASE = fixture.base;
   fixture.seedRepo("acme/app", { ".foundry/recipe.yaml": TEST_RECIPE, "README.md": "# app\n" });
+  fixture.seedRepo("acme/ui", { ".foundry/recipe.yaml": UI_RECIPE, "README.md": "# ui\n" });
   fixture.seedRepo("acme/fresh", { "package.json": "{}\n" });
   tools = new ToolServer(testSocketPath());
   await tools.start();
@@ -46,7 +64,10 @@ beforeEach(() => {
 
 afterEach(() => {});
 
-function deps(harness: FakeHarness): JobRunnerDeps {
+function deps(
+  harness: FakeHarness,
+  screenshot?: (url: string, path: string) => Promise<void>,
+): JobRunnerDeps {
   return {
     api,
     harnesses: { [harness.id]: harness },
@@ -58,6 +79,7 @@ function deps(harness: FakeHarness): JobRunnerDeps {
     log: () => {},
     eventFlushMs: 50,
     askGraceMs: 200,
+    screenshot,
   };
 }
 
@@ -303,6 +325,114 @@ describe("JobRunner", () => {
     ).run();
     expect(outcome).toBe("failed");
     expect((api.named("stage").at(-1)!.body as { reason: string }).reason).toContain("max_cost_per_job_usd");
+  });
+
+  it("captures a screenshot when a UI change has none", async () => {
+    const harness = new FakeHarness("claude-code", [
+      {
+        act: async ({ cwd, env }) => {
+          const call = agentTools(env);
+          await call("stage", { name: "investigating", summary: "ui change" });
+          await call("stage", { name: "implementing", summary: "add a page" });
+          mkdirSync(join(cwd, "apps/web/src/app"), { recursive: true });
+          writeFileSync(join(cwd, "apps/web/src/app/page.tsx"), "export default () => null;\n");
+          writeFileSync(join(cwd, "done.txt"), "done\n");
+          await call("stage", { name: "verifying", summary: "page added" });
+          expect((await call("run_checks")).text).toContain("All checks passed");
+          await call("confidence", { level: "high" });
+          await call("stage", { name: "done", summary: "Adds a page" });
+        },
+      },
+    ]);
+    let shot: { url: string; path: string } | null = null;
+    const outcome = await new JobRunner(
+      deps(harness, async (url, path) => {
+        shot = { url, path };
+        writeFileSync(path, TINY_PNG);
+      }),
+      claimedJob({
+        id: "99999999-0000-0000-0000-000000000000",
+        branch: "foundry/9",
+        repo: { id: "repo-ui", fullName: "acme/ui", defaultBranch: "main" },
+      }),
+    ).run();
+
+    expect(outcome).toBe("pr_opened");
+    expect(shot!.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+    expect(shot!.path.endsWith(".foundry-local/verify.png")).toBe(true);
+    const evidence = api.named("evidence").map((c) => c.body as { kind: string; status: string });
+    expect(evidence.some((e) => e.kind === "screenshot" && e.status === "passed")).toBe(true);
+    expect(api.named("uploadArtifact")).toHaveLength(1);
+    expect((api.named("openPr")[0]!.body as { uiChanged: boolean }).uiChanged).toBe(true);
+  });
+
+  it("does not start the dev server when the agent already attached a screenshot", async () => {
+    const harness = new FakeHarness("claude-code", [
+      {
+        act: async ({ cwd, env }) => {
+          const call = agentTools(env);
+          await call("stage", { name: "investigating", summary: "ui change" });
+          await call("stage", { name: "implementing", summary: "add a page" });
+          mkdirSync(join(cwd, "apps/web/src/app"), { recursive: true });
+          writeFileSync(join(cwd, "apps/web/src/app/page.tsx"), "export default () => null;\n");
+          writeFileSync(join(cwd, "done.txt"), "done\n");
+          writeFileSync(join(cwd, "page.png"), TINY_PNG);
+          await call("evidence", { kind: "screenshot", name: "page", path: "page.png" });
+          await call("stage", { name: "verifying", summary: "page added" });
+          await call("confidence", { level: "high" });
+          await call("stage", { name: "done", summary: "Adds a page" });
+        },
+      },
+    ]);
+    let captures = 0;
+    const outcome = await new JobRunner(
+      deps(harness, async (_url, path) => {
+        captures++;
+        writeFileSync(path, TINY_PNG);
+      }),
+      claimedJob({
+        id: "bbbbbbbb-0000-0000-0000-000000000000",
+        branch: "foundry/b",
+        repo: { id: "repo-ui", fullName: "acme/ui", defaultBranch: "main" },
+      }),
+    ).run();
+
+    expect(outcome).toBe("pr_opened");
+    expect(captures).toBe(0);
+    const screenshots = api
+      .named("evidence")
+      .map((c) => c.body as { kind: string; name: string })
+      .filter((e) => e.kind === "screenshot");
+    expect(screenshots).toEqual([
+      { kind: "screenshot", name: "page", status: "passed", artifactId: "art-page.png" },
+    ]);
+  });
+
+  it("fails a UI change when the recipe has no dev_server", async () => {
+    const harness = new FakeHarness("claude-code", [
+      {
+        act: async ({ cwd, env }) => {
+          const call = agentTools(env);
+          await call("stage", { name: "investigating", summary: "ui change" });
+          await call("stage", { name: "implementing", summary: "add a page" });
+          mkdirSync(join(cwd, "apps/web/src/app"), { recursive: true });
+          writeFileSync(join(cwd, "apps/web/src/app/page.tsx"), "export default () => null;\n");
+          writeFileSync(join(cwd, "done.txt"), "done\n");
+          await call("stage", { name: "verifying", summary: "page added" });
+          await call("stage", { name: "done", summary: "Adds a page" });
+        },
+      },
+    ]);
+    const outcome = await new JobRunner(
+      deps(harness),
+      claimedJob({ id: "aaaaaaaa-0000-0000-0000-000000000000", branch: "foundry/a" }),
+    ).run();
+
+    expect(outcome).toBe("failed");
+    expect(api.named("openPr")).toHaveLength(0);
+    const last = api.named("stage").at(-1)!.body as { to: string; reason: string };
+    expect(last.to).toBe("failed");
+    expect(last.reason).toContain("recipe has no dev_server; UI change needs a screenshot");
   });
 
   it("onboards a repo: the agent writes the recipe, the runner proves it and reports", async () => {

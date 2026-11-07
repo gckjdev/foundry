@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
-import { copyFile, readFile } from "node:fs/promises";
-import { extname, join, relative, resolve } from "node:path";
+import { copyFile, mkdir, readFile } from "node:fs/promises";
+import { dirname, extname, join, relative, resolve } from "node:path";
 import {
   appendHarnessLog,
   type HarnessAdapter,
@@ -23,6 +23,7 @@ import {
   briefRef,
   type ClaimedJob,
   DEFAULT_POLICY,
+  expandRecipeVars,
   type FoundryEvent,
   type HandoffBrief,
   isUiChange,
@@ -36,7 +37,7 @@ import {
 import { httpProxyEnv } from "@foundry/shared/proxy";
 import { type ControlPlane, JobRevokedError } from "./api";
 import { fetchBrief, pushBrief } from "./brief";
-import { runCommand, tail } from "./checks";
+import { type RunningCommand, runCommand, startCommand, tail } from "./checks";
 import { gitOut } from "./git";
 import type { PortLeases } from "./ports";
 import { loadPlaybookFiles, loadPolicy, loadRecipe } from "./repo-files";
@@ -65,6 +66,8 @@ export interface JobRunnerDeps {
   /** Seconds to wait after `ask` for the agent to end its turn before stopping it. */
   askGraceMs?: number;
   maxNudges?: number;
+  /** Capture a screenshot of `url` into `path`. Defaults to `npx playwright screenshot`. */
+  screenshot?: (url: string, path: string) => Promise<void>;
 }
 
 export type JobOutcome = "pr_opened" | "onboarded" | "needs_input" | "paused" | "failed" | "revoked";
@@ -99,6 +102,11 @@ const IMAGE_TYPES: Record<string, string> = {
   ".webp": "image/webp",
 };
 
+/** Quote a value for a `sh -c` command line. */
+function shQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 /**
  * Drives one claimed job (spec 5.7–5.8): sets up the worktree, runs the harness through the
  * playbook stages, answers the agent's Foundry tool calls, runs the trusted recipe checks, and
@@ -131,6 +139,8 @@ export class JobRunner {
   private lastChecks: { tree: string; results: CheckRun[] } | null = null;
   private secrets: string[] = [];
   private keepWorktree = false;
+  /** The agent already attached at least one screenshot via `evidence`. */
+  private screenshotAttached = false;
 
   constructor(
     private readonly deps: JobRunnerDeps,
@@ -573,7 +583,70 @@ export class JobRunner {
     const bytes = new Uint8Array(await readFile(path));
     const art = await this.deps.api.uploadArtifact(this.jobId, `${name}${extname(path)}`, type, bytes);
     await this.deps.api.evidence(this.jobId, { kind, name, status, artifactId: art.artifactId });
+    this.screenshotAttached = true;
     return { text: `Screenshot attached: ${art.url}` };
+  }
+
+  /**
+   * Spec 5.3/5.5 rule 3: a UI-affecting diff needs a screenshot. When the agent did not attach
+   * one, start the recipe's dev server and capture the app itself.
+   */
+  private async captureUiScreenshot(recipe: Recipe | null): Promise<void> {
+    if (this.screenshotAttached) return;
+    const dev = recipe?.dev_server;
+    if (!dev) throw new FailJob("recipe has no dev_server; UI change needs a screenshot");
+    const readyPath = dev.ready_path.startsWith("/") ? dev.ready_path : `/${dev.ready_path}`;
+    const url = `http://127.0.0.1:${this.portBase}${readyPath}`;
+    const command = expandRecipeVars(dev.run, this.env);
+    this.log("info", `Starting dev server for screenshot: ${command}`);
+    const server = startCommand(command, { cwd: this.cwd, env: this.env, wrap: this.deps.wrap });
+    try {
+      await this.waitForDevServer(url, server, dev.timeout_sec);
+      const file = join(this.cwd, ".foundry-local", "verify.png");
+      await mkdir(dirname(file), { recursive: true });
+      const capture = this.deps.screenshot ?? ((u, p) => this.playwrightScreenshot(u, p));
+      await capture(url, file);
+      const reply = await this.toolEvidence({
+        kind: "screenshot",
+        name: "verify",
+        status: "passed",
+        path: relative(this.cwd, file),
+      });
+      if (reply.isError) throw new FailJob(reply.text);
+    } finally {
+      server.stop();
+    }
+  }
+
+  private async waitForDevServer(url: string, server: RunningCommand, timeoutSec: number): Promise<void> {
+    const deadline = Date.now() + timeoutSec * 1000;
+    for (;;) {
+      if (server.exitCode !== null)
+        throw new FailJob(
+          `dev server exited before it became ready (exit ${server.exitCode}): ${this.scrub(tail(server.output(), 2_000))}`,
+        );
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(5_000) });
+        await res.body?.cancel();
+        if (res.ok) return;
+      } catch {}
+      if (Date.now() >= deadline)
+        throw new FailJob(
+          `dev server was not ready at ${url} within ${timeoutSec}s: ${this.scrub(tail(server.output(), 2_000))}`,
+        );
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }
+
+  private async playwrightScreenshot(url: string, path: string): Promise<void> {
+    const r = await runCommand(
+      `npx --yes playwright screenshot --wait-for-timeout 1000 ${shQuote(url)} ${shQuote(path)}`,
+      { cwd: this.cwd, env: this.env, timeoutMs: 180_000, wrap: this.deps.wrap },
+    );
+    if (r.exitCode !== 0)
+      throw new FailJob(
+        `playwright not installed; add it to recipe.warm / system_deps (npx exit ${r.exitCode}: ${this.scrub(tail(r.output, 2_000))})`,
+      );
   }
 
   private async currentRecipe(): Promise<{ recipe: Recipe | null; error: string | null }> {
@@ -684,6 +757,8 @@ export class JobRunner {
       await this.deps.workspace.diffAgainstBase(this.cwd, this.job.repo.defaultBranch),
     );
     if (diff.files.length === 0) throw new FailJob("the agent finished without changing any files");
+    const uiChanged = isUiChange(diff, this.recipe?.ui_paths ?? []);
+    if (uiChanged) await this.captureUiScreenshot(this.recipe);
     const token = await this.token();
     await this.deps.workspace.push(this.cwd, this.job.branch, token);
     const headSha = await this.deps.workspace.headSha(this.cwd);
@@ -692,7 +767,7 @@ export class JobRunner {
       title: this.job.title,
       summary: this.doneSummary ?? "",
       headSha,
-      uiChanged: isUiChange(diff, this.recipe?.ui_paths ?? []),
+      uiChanged,
       changedLines: diff.changedLines,
     });
     return "pr_opened";
@@ -755,7 +830,12 @@ export class JobRunner {
       });
       return "failed";
     }
+    if (!recipe) throw new FailJob(error ?? "no recipe");
     await this.deps.workspace.commitAll(this.cwd, "Set up Foundry");
+    const diff = parseUnifiedDiff(
+      await this.deps.workspace.diffAgainstBase(this.cwd, this.job.repo.defaultBranch),
+    );
+    if (isUiChange(diff, recipe.ui_paths)) await this.captureUiScreenshot(recipe);
     await this.deps.workspace.push(this.cwd, this.job.branch, await this.token());
     const headSha = await this.deps.workspace.headSha(this.cwd);
     await this.flush();
