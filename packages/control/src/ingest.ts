@@ -2,8 +2,8 @@ import { jobs, repos, users, webhookInbox } from "@foundry/db";
 import { findMarker, parseFoundryCommand, TRIGGER_LABEL } from "@foundry/shared";
 import { and, asc, eq, isNull, lt, notInArray, or } from "drizzle-orm";
 import type { ControlContext } from "./context";
-import { cancelJob, createJobFromIssue, retryJob, sendMessage, transitionJob } from "./jobs";
-import { evaluateJobGate, jobsForSha } from "./merge-gate";
+import { cancelJob, createJobFromIssue, retryJob, sendMessage } from "./jobs";
+import { evaluateJobGate, jobsForSha, markJobMerged } from "./merge-gate";
 import { answerFromCheckbox, answerFromReply } from "./questions";
 import { refreshRepoConfig } from "./repos";
 import { linkInstallation, membership, unlinkRepos } from "./teams";
@@ -193,8 +193,7 @@ async function dispatch(ctx: ControlContext, event: string, p: Payload): Promise
       }
       if (["merged", "cancelled"].includes(job.status)) return;
       if (p.pull_request.merged) {
-        const merged = await transitionJob(ctx, job.id, "merged", { reason: "pull request merged" });
-        if (merged) await ctx.notifier.notify(ctx, { event: "merged", job: merged, detail: "merged" });
+        await markJobMerged(ctx, job, "pull request merged");
       } else {
         await cancelJob(ctx, job.id, p.sender?.login ?? "github");
       }

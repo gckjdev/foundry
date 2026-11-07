@@ -2,6 +2,7 @@ import { events, evidence, type Job, jobs, questions, repos, runners, users } fr
 import { and, asc, desc, eq, gt, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
 import { diagnoseQueue } from "./claim";
 import type { ControlContext } from "./context";
+import { syncMergedPullRequest } from "./merge-gate";
 
 export interface BoardJob {
   job: Job;
@@ -31,13 +32,19 @@ export async function boardJobs(ctx: ControlContext, teamId: string): Promise<Bo
 }
 
 export async function jobDetail(ctx: ControlContext, teamId: string, jobId: string) {
-  const [row] = await ctx.db
+  const [found] = await ctx.db
     .select({ job: jobs, repo: repos, runnerName: runners.name })
     .from(jobs)
     .innerJoin(repos, eq(repos.id, jobs.repoId))
     .leftJoin(runners, eq(runners.id, jobs.runnerId))
     .where(and(eq(jobs.id, jobId), eq(jobs.teamId, teamId)));
-  if (!row) return null;
+  if (!found) return null;
+  let row = found;
+  const synced = await syncMergedPullRequest(ctx, row.job);
+  if (synced) {
+    const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, row.repo.id) });
+    row = { job: synced, repo: repo ?? row.repo, runnerName: row.runnerName };
+  }
   const [timeline, ev, qs] = await Promise.all([
     ctx.db.select().from(events).where(eq(events.jobId, jobId)).orderBy(asc(events.id)).limit(2000),
     ctx.db.select().from(evidence).where(eq(evidence.jobId, jobId)).orderBy(asc(evidence.createdAt)),

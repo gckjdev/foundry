@@ -1,5 +1,6 @@
 import type { ControlContext } from "./context";
 import { processPendingWebhooks } from "./ingest";
+import { reconcileOpenPullRequests } from "./merge-gate";
 import { sendDigests, type Transports } from "./notify";
 import { requeueLostJobs } from "./sweeper";
 
@@ -17,6 +18,8 @@ export function startWorker(ctx: ControlContext, transports: Transports, opts: {
     running = true;
     try {
       await processPendingWebhooks(ctx);
+      const merged = await reconcileOpenPullRequests(ctx);
+      if (merged.length) ctx.log("marked jobs merged from GitHub PRs", { jobs: merged });
       const requeued = await requeueLostJobs(ctx);
       if (requeued.length) ctx.log("re-queued jobs from offline runners", { jobs: requeued });
       const now = ctx.now();

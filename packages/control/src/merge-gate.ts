@@ -8,11 +8,11 @@ import {
   matchRiskRules,
   splitReviewers,
 } from "@foundry/shared";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { bestEffort, type ControlContext } from "./context";
 import { repoRef } from "./github-sync";
 import { getJob, recordEvents, transitionJob } from "./jobs";
-import { effectiveMergeMode, repoPolicy, repoRecipe } from "./repos";
+import { effectiveMergeMode, refreshRepoConfig, repoPolicy, repoRecipe } from "./repos";
 
 /** Latest evidence per (kind, name) for the job's current verify loop. */
 export async function latestEvidence(ctx: ControlContext, job: Pick<Job, "id" | "loopCount">) {
@@ -31,6 +31,61 @@ export async function latestEvidence(ctx: ControlContext, job: Pick<Job, "id" | 
 }
 
 /**
+ * A human (or GitHub) merged the PR. Move `pr_ci` / `waiting_on_you` to merged and, for onboarding,
+ * re-read `.foundry/` from the default branch so the repo starts accepting jobs.
+ */
+export async function markJobMerged(
+  ctx: ControlContext,
+  job: Pick<Job, "id" | "kind" | "repoId">,
+  reason: string,
+  notifyDetail = "merged",
+): Promise<Job | null> {
+  const merged = await transitionJob(ctx, job.id, "merged", {
+    reason,
+    from: ["pr_ci", "waiting_on_you"],
+  });
+  if (!merged) return null;
+  await ctx.notifier.notify(ctx, { event: "merged", job: merged, detail: notifyDetail });
+  if (merged.kind === "onboarding") {
+    const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, merged.repoId) });
+    if (repo) await refreshRepoConfig(ctx, repo);
+  }
+  return merged;
+}
+
+/** If GitHub already merged this job's PR (webhook missed), record it. */
+export async function syncMergedPullRequest(ctx: ControlContext, job: Job): Promise<Job | null> {
+  if (job.prNumber === null) return null;
+  if (job.status !== "pr_ci" && job.status !== "waiting_on_you") return null;
+  const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, job.repoId) });
+  if (!repo) return null;
+  try {
+    const pr = await ctx.gh.getPullRequest(repoRef(repo), job.prNumber);
+    if (!pr.merged) return null;
+  } catch {
+    return null;
+  }
+  return markJobMerged(ctx, job, "pull request merged");
+}
+
+/**
+ * Catch-up when smee/webhooks were down: any `pr_ci` / `waiting_on_you` job whose GitHub PR is
+ * already merged is marked merged. Called from the worker and when opening a job page.
+ */
+export async function reconcileOpenPullRequests(ctx: ControlContext): Promise<string[]> {
+  const open = await ctx.db
+    .select()
+    .from(jobs)
+    .where(inArray(jobs.status, ["pr_ci", "waiting_on_you"]));
+  const done: string[] = [];
+  for (const job of open) {
+    const merged = await syncMergedPullRequest(ctx, job);
+    if (merged) done.push(job.id);
+  }
+  return done;
+}
+
+/**
  * Evaluate the confidence gate (spec 5.5) for a job whose PR is open, then merge, hand over with
  * routed reviewers, or keep waiting for CI / AI review. Safe to call on every CI or review event.
  */
@@ -45,7 +100,7 @@ export async function evaluateJobGate(ctx: ControlContext, jobId: string): Promi
 
   const pr = await ctx.gh.getPullRequest(ref, job.prNumber);
   if (pr.merged) {
-    await transitionJob(ctx, job.id, "merged", { reason: "pull request merged", from: ["pr_ci"] });
+    await markJobMerged(ctx, job, "pull request merged");
     return null;
   }
   const [files, ci, reviews, ev] = await Promise.all([
@@ -90,11 +145,7 @@ export async function evaluateJobGate(ctx: ControlContext, jobId: string): Promi
 
   if (result.pass) {
     await ctx.gh.mergePullRequest(ref, job.prNumber, "squash");
-    const merged = await transitionJob(ctx, job.id, "merged", {
-      reason: "confidence gate passed",
-      from: ["pr_ci"],
-    });
-    if (merged) await ctx.notifier.notify(ctx, { event: "merged", job: merged, detail: "auto-merged" });
+    await markJobMerged(ctx, job, "confidence gate passed", "auto-merged");
     return result;
   }
 

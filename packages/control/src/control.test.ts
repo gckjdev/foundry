@@ -1,11 +1,12 @@
-import { teams } from "@foundry/db";
+import { jobs, repos, teams } from "@foundry/db";
 import { TEST_DATABASE_URL } from "@foundry/db/testing";
 import { stageLabel } from "@foundry/shared";
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { claimJob } from "./claim";
 import { processWebhook, storeWebhook } from "./ingest";
 import { getJob } from "./jobs";
-import { evaluateJobGate } from "./merge-gate";
+import { evaluateJobGate, reconcileOpenPullRequests } from "./merge-gate";
 import { openPullRequest } from "./prs";
 import { answerFromCheckbox } from "./questions";
 import { runnerAsk, runnerConfidence, runnerEvidence, runnerStage } from "./runner-api";
@@ -17,6 +18,7 @@ import {
   issueLabeledPayload,
   seedRunner,
   seedTeam,
+  TEST_RECIPE,
   type TestEnv,
   touchRunner,
 } from "./testing";
@@ -269,5 +271,47 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
     const [other] = await env.ctx.db.insert(teams).values({ name: "other" }).returning();
     const stolen = await syncUnlinkedInstallations(env.ctx, other!.id);
     expect(stolen).toEqual([]);
+  });
+
+  it("marks a handed-over job merged when GitHub already merged the PR, even without a webhook", async () => {
+    const { repo } = await seedTeam(env);
+    const [job] = await env.ctx.db
+      .insert(jobs)
+      .values({
+        teamId: repo.teamId,
+        repoId: repo.id,
+        kind: "onboarding",
+        title: "Set up Foundry for acme/app",
+        harness: "claude-code",
+        branch: "foundry/onboarding-x",
+        status: "waiting_on_you",
+        prNumber: 1,
+        prUrl: "https://github.com/acme/app/pull/1",
+        prTitle: "Set up Foundry",
+      })
+      .returning();
+    const gh = env.gh.repo("acme/app");
+    gh.prs.set(1, {
+      number: 1,
+      url: "https://github.com/acme/app/pull/1",
+      headSha: "sha-1",
+      state: "closed",
+      merged: true,
+      head: "foundry/onboarding-x",
+      base: "main",
+      title: "Set up Foundry",
+      body: "",
+    });
+    gh.files.set(".foundry/recipe.yaml", TEST_RECIPE);
+    gh.files.set(".foundry/policy.yaml", "merge: off\n");
+    await env.ctx.db
+      .update(repos)
+      .set({ acceptsJobs: false, onboardingStatus: "pr_open", recipeSha: null, recipeYaml: null })
+      .where(eq(repos.id, repo.id));
+
+    expect(await reconcileOpenPullRequests(env.ctx)).toEqual([job!.id]);
+    expect(await getJob(env.ctx, job!.id)).toMatchObject({ status: "merged" });
+    const updated = await env.ctx.db.query.repos.findFirst({ where: eq(repos.id, repo.id) });
+    expect(updated).toMatchObject({ acceptsJobs: true, onboardingStatus: "done" });
   });
 });
