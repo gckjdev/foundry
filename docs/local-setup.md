@@ -216,6 +216,31 @@ An older install used the single label `dev.foundry.runner` / `foundry-runner.se
 
 The token for `~/.foundry` stays in the macOS Keychain (or `~/.config/foundry` on Linux). Any other home stores its token in `<home>/secrets`, so a second join does not invalidate the first.
 
+### Windows runner
+
+A Windows 10/11 (x64) machine can join as a personal runner. Prerequisites:
+
+- **Git for Windows** (required for `git worktree`; the runner does not reimplement git).
+- **Node 22+** and **Bun** to run from source, or the compiled `foundry.exe`
+  (`foundry-windows-x64.tar.gz` from the release).
+- **Claude Code** and/or **OpenCode** Windows installers, signed in.
+
+```powershell
+foundry.exe runner join <token> --server http://<your-foundry>
+foundry.exe runner start
+```
+
+On Windows the runner runs recipe `install` / `checks` / `dev_server` / `warm` commands through
+PowerShell — it prefers `pwsh` (PowerShell 7) when on `PATH`, otherwise `powershell.exe`. POSIX `&&`
+and `;` also work in PowerShell 7, so recipes written for macOS/Linux usually run unchanged. Set
+`recipe.os: [windows]` for Windows-only commands; a repo with `os: [macos, linux]` is **not** claimed
+by a Windows runner, while a repo with no `os:` constraint can be. The per-job MCP bridge listens on
+`127.0.0.1:<port>` instead of a Unix socket.
+
+`foundry.exe runner install-service` writes a `.cmd` into the current user's **Startup** folder so the
+runner starts at login (there is no launchd/systemd equivalent to manage). Run
+`foundry.exe runner start` in a terminal to run in the foreground instead.
+
 ## 4. Daily commands
 
 | Command             | What                                                                           |

@@ -14,6 +14,7 @@ import {
   type SessionResult,
   type StartOpts,
 } from "@foundry/harness-core";
+import { killTree, platformExecutable } from "@foundry/os-adapters";
 import { createOpencodeClient, type OpencodeClient } from "@opencode-ai/sdk";
 import { opencodeConfig, splitModel } from "./config";
 import { type OpencodeEvent, OpencodeEventMapper } from "./events";
@@ -30,7 +31,7 @@ const PROVIDER_ENV_KEYS = [
 ];
 
 export function opencodeBinary(): string {
-  return process.env.FOUNDRY_OPENCODE_PATH ?? "opencode";
+  return process.env.FOUNDRY_OPENCODE_PATH ?? platformExecutable("opencode");
 }
 
 function opencodeAuthPresent(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -121,11 +122,8 @@ export function startOpencodeServer(opts: {
 }
 
 function kill(proc: ChildProcess): void {
-  try {
-    if (proc.pid) process.kill(-proc.pid, "SIGTERM");
-  } catch {
-    proc.kill("SIGTERM");
-  }
+  if (proc.pid) killTree(proc.pid, "SIGTERM");
+  else proc.kill("SIGTERM");
 }
 
 /**

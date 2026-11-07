@@ -15,6 +15,7 @@ import {
   type SessionResult,
   type StartOpts,
 } from "@foundry/harness-core";
+import { platformExecutable, windowsExecutablePath } from "@foundry/os-adapters";
 import { type ClaudeMessage, type NormalizeState, normalizeClaudeMessage } from "./normalize";
 
 type QueryFn = (params: { prompt: string; options?: Record<string, unknown> }) => AsyncIterable<unknown> & {
@@ -75,6 +76,7 @@ function isCompiledBinary(): boolean {
 export function claudeExecutable(): string | undefined {
   if (process.env.FOUNDRY_CLAUDE_PATH) return process.env.FOUNDRY_CLAUDE_PATH;
   if (!isCompiledBinary()) return undefined;
+  if (process.platform === "win32") return windowsExecutablePath("claude");
   const r = spawnSync("sh", ["-c", "command -v claude"], { encoding: "utf8" });
   return r.status === 0 ? r.stdout.trim() : undefined;
 }
@@ -104,7 +106,7 @@ export class ClaudeCodeAdapter implements HarnessAdapter {
   constructor(private readonly loadQuery: () => Promise<QueryFn> = defaultLoadQuery) {}
 
   async detect() {
-    const bin = process.env.FOUNDRY_CLAUDE_PATH ?? "claude";
+    const bin = process.env.FOUNDRY_CLAUDE_PATH ?? platformExecutable("claude");
     const r = spawnSync(bin, ["--version"], { encoding: "utf8", timeout: 15_000 });
     const version = r.status === 0 ? r.stdout.trim().split(/\s+/)[0] : undefined;
     // From source the SDK ships its own engine; a compiled runner needs the `claude` CLI.

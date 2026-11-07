@@ -24,14 +24,18 @@ export async function smokeTest(
 ): Promise<SmokeResult> {
   const cwd = mkdtempSync(join(tmpdir(), "foundry-smoke-"));
   execFileSync("git", ["init", "--quiet"], { cwd });
-  const tools = new ToolServer(`/tmp/fdr-smoke-${process.pid}.sock`);
+  const tools = new ToolServer(join(tmpdir(), `fdr-smoke-${process.pid}.sock`));
   await tools.start();
   let called = false;
   const token = tools.register("smoke", async (tool, args) => {
     if (tool === "confidence") called = true;
     return { text: `ok (${tool} ${JSON.stringify(args)})` };
   });
-  const env = { FOUNDRY_MCP_SOCKET: tools.socketPath, FOUNDRY_JOB_ID: "smoke", FOUNDRY_MCP_TOKEN: token };
+  const env = {
+    ...(tools.url ? { FOUNDRY_MCP_URL: tools.url } : { FOUNDRY_MCP_SOCKET: tools.socketPath }),
+    FOUNDRY_JOB_ID: "smoke",
+    FOUNDRY_MCP_TOKEN: token,
+  };
   let cost = 0;
   let lastText = "";
   try {

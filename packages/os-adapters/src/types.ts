@@ -1,4 +1,4 @@
-export type OsName = "macos" | "linux";
+export type OsName = "macos" | "linux" | "windows";
 
 export interface ExecResult {
   code: number;

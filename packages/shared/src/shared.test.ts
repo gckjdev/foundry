@@ -87,6 +87,11 @@ system_deps: [playwright-chromium]
     expect(r.checks[0]).toEqual({ name: "lint", run: "bun run lint", timeout_sec: 900 });
     expect(expandRecipeVars(r.dev_server!.run, { FOUNDRY_PORT: "41000" })).toBe("bun run dev --port 41000");
   });
+
+  it("parses a windows os constraint", () => {
+    expect(parseRecipeYaml("os: [windows]\nchecks: []").os).toEqual(["windows"]);
+    expect(parseRecipeYaml("os: [macos, linux]\nchecks: []").os).toEqual(["macos", "linux"]);
+  });
 });
 
 describe("questions", () => {

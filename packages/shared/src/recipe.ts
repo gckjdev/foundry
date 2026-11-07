@@ -1,7 +1,7 @@
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 
-export const OsSchema = z.enum(["macos", "linux"]);
+export const OsSchema = z.enum(["macos", "linux", "windows"]);
 export type Os = z.infer<typeof OsSchema>;
 
 export const DEFAULT_UI_PATHS = [

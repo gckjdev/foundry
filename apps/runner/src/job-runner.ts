@@ -295,16 +295,18 @@ export class JobRunner {
   // ---- the agent loop ------------------------------------------------------------------------
 
   private mcpServers(mcpToken: string): McpServerConfig[] {
+    const env: Record<string, string> = {
+      FOUNDRY_JOB_ID: this.jobId,
+      FOUNDRY_MCP_TOKEN: mcpToken,
+    };
+    if (this.deps.tools.url) env.FOUNDRY_MCP_URL = this.deps.tools.url;
+    else env.FOUNDRY_MCP_SOCKET = this.deps.tools.socketPath;
     return [
       {
         name: "foundry",
         command: this.deps.mcpCommand.command,
         args: this.deps.mcpCommand.args,
-        env: {
-          FOUNDRY_MCP_SOCKET: this.deps.tools.socketPath,
-          FOUNDRY_JOB_ID: this.jobId,
-          FOUNDRY_MCP_TOKEN: mcpToken,
-        },
+        env,
       },
     ];
   }
