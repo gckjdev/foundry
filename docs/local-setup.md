@@ -4,14 +4,14 @@ This is the runbook for the Foundry control plane on this machine, plus how to d
 
 ## What is running locally
 
-| Piece              | How                                                                      |
-| ------------------ | ------------------------------------------------------------------------ |
-| Web panel          | `http://localhost:3000` (`pnpm dev`)                                     |
-| Realtime WebSocket | `ws://localhost:3001`                                                    |
-| Postgres           | existing local instance on **54329** (Docker is not installed here)      |
-| GitHub App         | [gckjdevfoundryapp](https://github.com/settings/apps/gckjdevfoundryapp)  |
-| Webhook tunnel     | `pnpm dev:webhooks` → smee.io → `/api/webhooks/github`                   |
-| Runner             | **not** started by `pnpm dev`; join a team first, then `pnpm dev:runner` |
+| Piece              | How                                                                                            |
+| ------------------ | ---------------------------------------------------------------------------------------------- |
+| Web panel          | `http://localhost:3000` (`pnpm dev`)                                                           |
+| Realtime WebSocket | `ws://localhost:3001`                                                                          |
+| Postgres           | Anaconda PostgreSQL 17, data dir `~/pgdata`, port **54329** (not Docker; not started at login) |
+| GitHub App         | [gckjdevfoundryapp](https://github.com/settings/apps/gckjdevfoundryapp)                        |
+| Webhook tunnel     | `pnpm dev:webhooks` → smee.io → `/api/webhooks/github`                                         |
+| Runner             | **not** started by `pnpm dev`; join a team first, then `pnpm dev:runner`                       |
 
 Repo: `git@github.com:gckjdev/foundry.git`. Root `.env` is chmod 600. `apps/web/.env` and `apps/realtime/.env` are symlinks to `../../.env`.
 
@@ -103,6 +103,36 @@ Generate long random values for `FOUNDRY_SECRET` and `AUTH_SECRET` if you start 
 Set `FOUNDRY_HTTP_PROXY` (for example `http://127.0.0.1:8118`) so **every** outbound HTTP call — GitHub OAuth/API, outgoing webhooks, git fetch/push, OpenCode/Claude model APIs — uses that proxy. Localhost (the panel, realtime, `opencode serve`) is excluded via `FOUNDRY_NO_PROXY`. If this is unset, Foundry still honors `HTTPS_PROXY`/`HTTP_PROXY`, then the macOS system proxy. Restart `pnpm dev` and `pnpm dev:runner` after changing it. The runner also stores `httpProxy` in `~/.foundry/config.json` on join (`--http-proxy` or this env var).
 
 ## 3. Local install
+
+### Start Postgres
+
+This machine has no Docker and no launchd/Homebrew service. Postgres is the Anaconda 17 build, cluster at `~/pgdata`, listening on **54329** so it matches `DATABASE_URL`. It does not start at login.
+
+```bash
+/opt/anaconda3/bin/pg_ctl -D "$HOME/pgdata" -l "$HOME/pgdata/server.log" -o "-p 54329" start
+/opt/anaconda3/bin/pg_isready -h localhost -p 54329
+```
+
+Stop it with:
+
+```bash
+/opt/anaconda3/bin/pg_ctl -D "$HOME/pgdata" stop
+```
+
+The app role and database (already created on this machine):
+
+```bash
+/opt/anaconda3/bin/psql -h localhost -p 54329 -d postgres -c "CREATE ROLE postgres WITH LOGIN SUPERUSER;"
+/opt/anaconda3/bin/psql -h localhost -p 54329 -d postgres -c "CREATE DATABASE foundry OWNER postgres;"
+```
+
+`CREATE ROLE` / `CREATE DATABASE` fail with “already exists” once they are in place; that is fine. Tests need a URL that can `CREATE DATABASE`, on this server and **not** the `foundry` app database:
+
+```bash
+FOUNDRY_TEST_DATABASE_URL=postgres://postgres@localhost:54329/postgres pnpm test
+```
+
+Then install and start the control plane:
 
 ```bash
 pnpm install

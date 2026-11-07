@@ -46,13 +46,37 @@ function rate(covered, all) {
   return all === 0 ? "n/a" : ((100 * covered) / all).toFixed(1);
 }
 
+function markdownTable(headers, bodyRows) {
+  const widths = headers.map((header, index) =>
+    Math.max(header.length, ...bodyRows.map((row) => row[index].length)),
+  );
+  const render = (cells) => `| ${cells.map((cell, index) => cell.padEnd(widths[index])).join(" | ")} |`;
+  const rule = `| ${widths.map((width) => "-".repeat(width)).join(" | ")} |`;
+  return [render(headers), rule, ...bodyRows.map((row) => render(row))].join("\n");
+}
+
 const rows = [...groups.entries()]
   .sort(([a], [b]) => a.localeCompare(b))
-  .map(
-    ([name, g]) =>
-      `| \`${name}\` | ${rate(g.sc, g.s)}% | ${rate(g.bc, g.b)}% | ${rate(g.fc, g.f)}% | ${rate(g.lc, g.l)}% |`,
-  )
-  .join("\n");
+  .map(([name, g]) => [
+    `\`${name}\``,
+    `${rate(g.sc, g.s)}%`,
+    `${rate(g.bc, g.b)}%`,
+    `${rate(g.fc, g.f)}%`,
+    `${rate(g.lc, g.l)}%`,
+  ]);
+
+const overall = markdownTable(
+  ["Statements", "Branches", "Functions", "Lines"],
+  [
+    [
+      `${pct(total.statements)}%`,
+      `${pct(total.branches)}%`,
+      `${pct(total.functions)}%`,
+      `${pct(total.lines)}%`,
+    ],
+  ],
+);
+const byPackage = markdownTable(["Path", "Statements", "Branches", "Functions", "Lines"], rows);
 
 const md = `# Testing coverage report
 
@@ -68,15 +92,11 @@ HTML detail: \`coverage/index.html\` (gitignored). Architecture: \`docs/testing.
 
 ## Overall
 
-| Statements | Branches | Functions | Lines |
-| ---------- | -------- | --------- | ----- |
-| ${pct(total.statements)}% | ${pct(total.branches)}% | ${pct(total.functions)}% | ${pct(total.lines)}% |
+${overall}
 
 ## By package / app
 
-| Path | Statements | Branches | Functions | Lines |
-| ---- | ---------- | -------- | --------- | ----- |
-${rows}
+${byPackage}
 `;
 
 writeFileSync(join(process.cwd(), "docs/testing-report.md"), md);

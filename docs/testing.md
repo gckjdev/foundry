@@ -20,6 +20,19 @@ Colocated `*.test.ts` next to the code:
 
 No control-plane Postgres. Git tests set `FOUNDRY_GIT_BASE=file://…`.
 
+### GitHub HTTP — undici `MockAgent`
+
+Control-plane tests keep `FakeGitHub` (`setGitHub`). That stand-in does not run `OctokitGitHubClient`.
+
+Cover the real client with undici `MockAgent`, as in `packages/github/src/octokit.mock.test.ts`. `@foundry/github` depends on `undici` for this.
+
+- `OctokitGitHubClient` calls `globalThis.fetch`. `setGlobalDispatcher(agent)` makes Node’s fetch hit the mock. Save the previous dispatcher and restore it in `afterAll`.
+- `agent.disableNetConnect()` so a forgotten stub fails instead of calling `api.github.com`.
+- App auth signs the JWT locally. The HTTP call is `POST /app/installations/:id/access_tokens`. `persist()` that intercept; installation methods do not run without it.
+- Match the path with a function and ignore `?per_page=100`. Paginate stops when the response has no `Link` header.
+- Request bodies arrive as async iterables. Read them before branching (GraphQL is one `POST /graphql`).
+- Do not point a global `MockAgent` at `apps/web/src/server/retry-fetch.ts`. That helper calls `undici.fetch` with a `ProxyAgent` dispatcher, which skips the global mock.
+
 ## Layer 2 — component / API
 
 - **Component:** `packages/control/src/control.test.ts`, `packages/db/src/db.test.ts` — real schema, `FakeGitHub`, `createTestEnv()`.

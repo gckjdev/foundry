@@ -62,6 +62,8 @@ That URL must be allowed to `CREATE DATABASE`. Prefer the same Postgres as `.env
 
 Reuse `tests/helpers.ts` (`createTestEnv`, `FakeGitHub`, `FakeHarness`, `jsonRequest`). Inject the control plane into route tests with `setContextForTests`. Do not stand up a one-off database or GitHub fake.
 
+`FakeGitHub` does not exercise `OctokitGitHubClient`. Cover that HTTP client with undici `MockAgent` (`packages/github/src/octokit.mock.test.ts`): `setGlobalDispatcher`, `disableNetConnect()`, `persist()` the installation-token `POST`, then restore the previous dispatcher. Details in `docs/testing.md`. `retry-fetch.ts` sends through a `ProxyAgent`, so a global `MockAgent` does not see it.
+
 Coverage snapshot: `pnpm test:report` (writes `docs/testing-report.md`). Playwright needs Chromium once: `pnpm exec playwright install chromium`.
 
 Live OpenCode tests skip when `opencode` is not on PATH. They start a real `opencode serve` (slow; 60s startup budget).
@@ -103,18 +105,18 @@ Runner stages in order: `triage` → `investigating` → `implementing` → `ver
 
 ## Where to look
 
-| Change                               | Start here                                                                          |
-| ------------------------------------ | ----------------------------------------------------------------------------------- |
-| Job lifecycle / claim / fail / retry | `packages/control/src/jobs.ts`, `claim.ts`, `onboarding.ts`                         |
-| GitHub webhooks → jobs               | `packages/control/src/ingest.ts`, `apps/web/src/app/api/webhooks/github`            |
-| Sign-in / App install                | `apps/web/src/auth.ts`, `apps/web/src/server/retry-fetch.ts`                        |
-| Merge gate                           | `packages/control/src/merge-gate.ts`, `packages/shared/src/gate.ts`                 |
-| Panel pages                          | `apps/web/src/app/(panel)/`                                                         |
-| Runner loop                          | `apps/runner/src/daemon.ts`, `job-runner.ts`, `git.ts`                              |
-| Harness                              | `packages/harness-core`, `harness-claude-code`, `harness-opencode`                  |
-| Recipe / policy schemas              | `packages/shared/src/recipe.ts`, `policy.ts`                                        |
-| Outbound proxy                       | `packages/shared/src/proxy.ts`                                                      |
-| Tests (unit / API / e2e)             | `docs/testing.md`, `tests/helpers.ts`, `tests/api`, `tests/e2e`, `tests/playwright` |
+| Change                               | Start here                                                                                                                      |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| Job lifecycle / claim / fail / retry | `packages/control/src/jobs.ts`, `claim.ts`, `onboarding.ts`                                                                     |
+| GitHub webhooks → jobs               | `packages/control/src/ingest.ts`, `apps/web/src/app/api/webhooks/github`                                                        |
+| Sign-in / App install                | `apps/web/src/auth.ts`, `apps/web/src/server/retry-fetch.ts`                                                                    |
+| Merge gate                           | `packages/control/src/merge-gate.ts`, `packages/shared/src/gate.ts`                                                             |
+| Panel pages                          | `apps/web/src/app/(panel)/`                                                                                                     |
+| Runner loop                          | `apps/runner/src/daemon.ts`, `job-runner.ts`, `git.ts`                                                                          |
+| Harness                              | `packages/harness-core`, `harness-claude-code`, `harness-opencode`                                                              |
+| Recipe / policy schemas              | `packages/shared/src/recipe.ts`, `policy.ts`                                                                                    |
+| Outbound proxy                       | `packages/shared/src/proxy.ts`                                                                                                  |
+| Tests (unit / API / e2e)             | `docs/testing.md`, `tests/helpers.ts`, `tests/api`, `tests/e2e`, `tests/playwright`                                             |
 
 ## Do not
 

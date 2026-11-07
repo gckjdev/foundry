@@ -3,8 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  currentOsAdapter,
   type Exec,
   FileSecretStore,
+  KeychainSecretStore,
   LinuxAdapter,
   launchdPlist,
   MacOsAdapter,
@@ -13,6 +15,7 @@ import {
   parseOsRelease,
   parsePmsetBatt,
   powerFromSupplies,
+  SystemdCredsStore,
   systemdUnit,
 } from "./index";
 
@@ -24,6 +27,13 @@ const spec = {
   workDir: "/var/lib/foundry",
   logDir: "/var/log/foundry",
 };
+
+describe("current OS", () => {
+  it("returns the macOS adapter on darwin", () => {
+    if (process.platform !== "darwin") return;
+    expect(currentOsAdapter().os).toBe("macos");
+  });
+});
 
 describe("FOUNDRY_HOME secrets", () => {
   it("keeps a second runner's token out of the default macOS Keychain", async () => {
@@ -100,6 +110,33 @@ describe("Linux parsing", () => {
       "5",
       "x",
     ]);
+  });
+});
+
+const ok =
+  (stdout = "", code = 0): Exec =>
+  async () => ({ code, stdout, stderr: "no" });
+
+describe("secret stores with a fake exec", () => {
+  it("reads and writes the macOS keychain through the security CLI", async () => {
+    const store = new KeychainSecretStore("pipi", ok("s3cret\n"));
+    expect(await store.get("runner-token")).toBe("s3cret");
+    await store.set("runner-token", "next");
+    await store.delete("runner-token");
+    const failing = new KeychainSecretStore("pipi", ok("", 1));
+    expect(await failing.get("missing")).toBeNull();
+    await expect(failing.set("k", "v")).rejects.toThrow(/keychain write failed/);
+  });
+
+  it("reads and writes systemd credentials", async () => {
+    const store = new SystemdCredsStore("/var/lib/foundry/creds", ok("tok"));
+    expect(store.kind).toBe("systemd-creds");
+    expect(await store.get("runner-token")).toBe("tok");
+    await store.set("runner-token", "next");
+    await store.delete("runner-token");
+    const failing = new SystemdCredsStore("/tmp/creds", ok("", 1));
+    expect(await failing.get("missing")).toBeNull();
+    await expect(failing.set("k", "v")).rejects.toThrow(/systemd-creds encrypt failed/);
   });
 });
 

@@ -13,8 +13,11 @@
   },
   "dependencies": {
     "@foundry/shared": "workspace:*",
-    "@octokit/rest": "^22.0.0",
     "@octokit/auth-app": "^8.1.0",
+    "@octokit/rest": "^22.0.0",
     "@octokit/webhooks-methods": "^6.0.0"
+  },
+  "devDependencies": {
+    "undici": "8.12.4"
   }
 }
