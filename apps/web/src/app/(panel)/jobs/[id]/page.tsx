@@ -7,6 +7,7 @@ import {
   RUNNER_STAGES,
   STATUS_TITLES,
 } from "@foundry/shared";
+import { githubIssueUrl } from "@foundry/shared/github-host";
 import { notFound } from "next/navigation";
 import { ago, StatusPill, usd } from "@/components/status";
 import { requireTeam } from "@/server/session";
@@ -76,7 +77,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             {job.issueNumber ? (
               <>
                 {" · "}
-                <a href={`https://github.com/${repo.fullName}/issues/${job.issueNumber}`}>
+                <a href={githubIssueUrl(process.env.GITHUB_HOST, repo.fullName, job.issueNumber)}>
                   #{job.issueNumber}
                 </a>
               </>
