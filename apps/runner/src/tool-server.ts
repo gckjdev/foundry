@@ -1,23 +1,25 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, unlinkSync } from "node:fs";
-import { createServer, type Server } from "node:http";
-import type { FoundryToolName, ToolCallRequest, ToolReply } from "@foundry/mcp-foundry";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { type FoundryToolName, mcpUsesTcp, type ToolCallRequest, type ToolReply } from "@foundry/mcp-foundry";
 
 export type ToolHandler = (tool: FoundryToolName, args: Record<string, unknown>) => Promise<ToolReply>;
 
 /**
  * The runner side of the `foundry` MCP server: each job's `foundry mcp` process POSTs tool calls
- * to this Unix socket. A per-job token keeps one job's agent from reporting on another's job.
+ * to a Unix socket (POSIX) or a loopback TCP port (Windows). A per-job token keeps one job's agent
+ * from reporting on another's job.
  */
 export class ToolServer {
   private readonly handlers = new Map<string, { token: string; handler: ToolHandler }>();
   private server: Server | null = null;
+  /** TCP origin once `start()` binds on Windows; null while using the Unix socket. */
+  url: string | null = null;
 
   constructor(readonly socketPath: string) {}
 
   async start(): Promise<void> {
-    if (existsSync(this.socketPath)) unlinkSync(this.socketPath);
-    this.server = createServer((req, res) => {
+    this.server = createServer((req: IncomingMessage, res: ServerResponse) => {
       let body = "";
       req.setEncoding("utf8");
       req.on("data", (c) => {
@@ -39,10 +41,22 @@ export class ToolServer {
         }
       });
     });
-    await new Promise<void>((resolve, reject) => {
-      this.server!.once("error", reject);
-      this.server!.listen(this.socketPath, () => resolve());
-    });
+    if (mcpUsesTcp()) {
+      await new Promise<void>((resolve, reject) => {
+        this.server!.once("error", reject);
+        this.server!.listen(0, "127.0.0.1", () => {
+          const addr = this.server!.address();
+          if (addr && typeof addr === "object") this.url = `http://127.0.0.1:${addr.port}`;
+          resolve();
+        });
+      });
+    } else {
+      if (existsSync(this.socketPath)) unlinkSync(this.socketPath);
+      await new Promise<void>((resolve, reject) => {
+        this.server!.once("error", reject);
+        this.server!.listen(this.socketPath, () => resolve());
+      });
+    }
   }
 
   register(jobId: string, handler: ToolHandler): string {
@@ -57,6 +71,6 @@ export class ToolServer {
 
   async close(): Promise<void> {
     await new Promise<void>((resolve) => (this.server ? this.server.close(() => resolve()) : resolve()));
-    if (existsSync(this.socketPath)) unlinkSync(this.socketPath);
+    if (this.url === null && existsSync(this.socketPath)) unlinkSync(this.socketPath);
   }
 }

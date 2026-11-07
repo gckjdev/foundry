@@ -212,6 +212,9 @@ importers:
       '@foundry/harness-core':
         specifier: workspace:*
         version: link:../harness-core
+      '@foundry/os-adapters':
+        specifier: workspace:*
+        version: link:../os-adapters
       '@foundry/shared':
         specifier: workspace:*
         version: link:../shared
@@ -227,6 +230,9 @@ importers:
       '@foundry/harness-core':
         specifier: workspace:*
         version: link:../harness-core
+      '@foundry/os-adapters':
+        specifier: workspace:*
+        version: link:../os-adapters
       '@foundry/shared':
         specifier: workspace:*
         version: link:../shared
