@@ -4,14 +4,14 @@ This is the runbook for the Foundry control plane on this machine, plus how to d
 
 ## What is running locally
 
-| Piece              | How                                                                      |
-| ------------------ | ------------------------------------------------------------------------ |
-| Web panel          | `http://localhost:3000` (`pnpm dev`)                                     |
-| Realtime WebSocket | `ws://localhost:3001`                                                    |
-| Postgres           | existing local instance on **54329** (Docker is not installed here)      |
-| GitHub App         | [gckjdevfoundryapp](https://github.com/settings/apps/gckjdevfoundryapp)  |
-| Webhook tunnel     | `pnpm dev:webhooks` → smee.io → `/api/webhooks/github`                   |
-| Runner             | **not** started by `pnpm dev`; join a team first, then `pnpm dev:runner` |
+| Piece              | How                                                                                            |
+| ------------------ | ---------------------------------------------------------------------------------------------- |
+| Web panel          | `http://localhost:3000` (`pnpm dev`)                                                           |
+| Realtime WebSocket | `ws://localhost:3001`                                                                          |
+| Postgres           | Anaconda PostgreSQL 17, data dir `~/pgdata`, port **54329** (not Docker; not started at login) |
+| GitHub App         | [gckjdevfoundryapp](https://github.com/settings/apps/gckjdevfoundryapp)                        |
+| Webhook tunnel     | `pnpm dev:webhooks` → smee.io → `/api/webhooks/github`                                         |
+| Runner             | **not** started by `pnpm dev`; join a team first, then `pnpm dev:runner`                       |
 
 Repo: `git@github.com:gckjdev/foundry.git`. Root `.env` is chmod 600. `apps/web/.env` and `apps/realtime/.env` are symlinks to `../../.env`.
 
@@ -104,6 +104,36 @@ Set `FOUNDRY_HTTP_PROXY` (for example `http://127.0.0.1:8118`) so **every** outb
 
 ## 3. Local install
 
+### Start Postgres
+
+This machine has no Docker and no launchd/Homebrew service. Postgres is the Anaconda 17 build, cluster at `~/pgdata`, listening on **54329** so it matches `DATABASE_URL`. It does not start at login.
+
+```bash
+/opt/anaconda3/bin/pg_ctl -D "$HOME/pgdata" -l "$HOME/pgdata/server.log" -o "-p 54329" start
+/opt/anaconda3/bin/pg_isready -h localhost -p 54329
+```
+
+Stop it with:
+
+```bash
+/opt/anaconda3/bin/pg_ctl -D "$HOME/pgdata" stop
+```
+
+The app role and database (already created on this machine):
+
+```bash
+/opt/anaconda3/bin/psql -h localhost -p 54329 -d postgres -c "CREATE ROLE postgres WITH LOGIN SUPERUSER;"
+/opt/anaconda3/bin/psql -h localhost -p 54329 -d postgres -c "CREATE DATABASE foundry OWNER postgres;"
+```
+
+`CREATE ROLE` / `CREATE DATABASE` fail with “already exists” once they are in place; that is fine. Tests need a URL that can `CREATE DATABASE`, on this server and **not** the `foundry` app database:
+
+```bash
+FOUNDRY_TEST_DATABASE_URL=postgres://postgres@localhost:54329/postgres pnpm test
+```
+
+Then install and start the control plane:
+
 ```bash
 pnpm install
 pnpm db:migrate          # uses DATABASE_URL
@@ -171,14 +201,16 @@ On **Runners**, you should see both names **accepting**. Stop each with Ctrl+C i
 
 ## 4. Daily commands
 
-| Command             | What                                               |
-| ------------------- | -------------------------------------------------- |
-| `pnpm dev`          | Control plane (web + realtime)                     |
-| `pnpm dev:webhooks` | Forward GitHub webhooks via smee                   |
-| `pnpm dev:runner`   | Runner daemon (after `runner join`)                |
-| `pnpm db:migrate`   | Apply Drizzle migrations                           |
-| `pnpm test`         | Vitest (DB tests need `FOUNDRY_TEST_DATABASE_URL`) |
-| `pnpm typecheck`    | `tsc` across the workspace                         |
+| Command             | What                                                                           |
+| ------------------- | ------------------------------------------------------------------------------ |
+| `pnpm dev`          | Control plane (web + realtime)                                                 |
+| `pnpm dev:webhooks` | Forward GitHub webhooks via smee                                               |
+| `pnpm dev:runner`   | Runner daemon (after `runner join`)                                            |
+| `pnpm db:migrate`   | Apply Drizzle migrations                                                       |
+| `pnpm test`         | Vitest unit + API + in-process e2e (DB tests need `FOUNDRY_TEST_DATABASE_URL`) |
+| `pnpm test:e2e`     | Playwright against `/signin` (`pnpm exec playwright install chromium` once)    |
+| `pnpm test:report`  | Coverage snapshot → `docs/testing-report.md`                                   |
+| `pnpm typecheck`    | `tsc` across the workspace                                                     |
 
 ### Restart `pnpm dev`
 

@@ -21,7 +21,7 @@ if (existsSync(envFile)) {
   }
 }
 
-const url = process.env["SMEE_URL"]?.trim();
+const url = process.env.SMEE_URL?.trim();
 if (!url) {
   console.error("SMEE_URL is not set. Put it in .env (docs/local-setup.md) and re-run pnpm dev:webhooks.");
   process.exit(1);

@@ -7,6 +7,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const config: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: root,
+  // Playwright hits 127.0.0.1; Next 16 blocks that origin from /_next/* unless listed.
+  allowedDevOrigins: ["127.0.0.1"],
   // Workspace packages ship TypeScript source.
   transpilePackages: ["@foundry/control", "@foundry/db", "@foundry/github", "@foundry/shared"],
   serverExternalPackages: ["postgres", "web-push", "nodemailer", "undici"],

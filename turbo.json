@@ -1,5 +1,14 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": [
+    "FOUNDRY_TEST_DATABASE_URL",
+    "FOUNDRY_E2E_BASE_URL",
+    "FOUNDRY_GIT_BASE",
+    "AUTH_SECRET",
+    "AUTH_GITHUB_ID",
+    "AUTH_GITHUB_SECRET",
+    "SMEE_URL"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
