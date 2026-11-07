@@ -1,6 +1,6 @@
 import { gitProxyArgs, httpProxyEnv } from "@foundry/shared/proxy";
 import { describe, expect, it } from "vitest";
-import { authArgs, gitRemoteUsesHttpProxy } from "./git";
+import { authArgs, git, gitRemoteUsesHttpProxy } from "./git";
 
 describe("git proxy", () => {
   it("auth header does not put the token on the argv the user sees in errors", () => {
@@ -24,6 +24,14 @@ describe("git proxy", () => {
       "-c",
       "http.version=HTTP/1.1",
     ]);
+  });
+
+  it("does not fail when git exits before consuming stdin", async () => {
+    // `git version` reads no stdin, so a large write lands after the child closed the pipe.
+    // Without a stdin error handler this surfaces as an uncaught EPIPE.
+    const result = await git(["version"], { cwd: process.cwd(), input: "x".repeat(100_000) });
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("git version");
   });
 
   it("does not proxy file:// git remotes used in tests", () => {
