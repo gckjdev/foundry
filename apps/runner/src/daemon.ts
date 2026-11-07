@@ -73,6 +73,7 @@ export class Daemon {
     this.readiness = new ReadinessReporter(opts.api, this.workspace, opts.os.os, {
       postgresUrl: opts.postgresUrl,
       log: (m) => this.log(m),
+      wrap: () => this.wrap,
     });
   }
 

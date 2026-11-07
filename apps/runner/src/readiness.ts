@@ -1,12 +1,35 @@
 import { exec, which } from "@foundry/os-adapters";
 import { type Os, parseRecipeYaml, type Recipe } from "@foundry/shared";
+import { httpProxyEnv } from "@foundry/shared/proxy";
 import type { ControlPlane } from "./api";
-import { runCommand } from "./checks";
+import { type CommandResult, runCommand, tail } from "./checks";
+import { RECIPE_FILE } from "./repo-files";
+import { scrub, secretEnvValues } from "./scrub";
 import type { Workspace } from "./workspace";
 
 export interface ReadinessResult {
   ready: boolean;
   reason: string | null;
+}
+
+/** No readiness pass may hold the daemon longer than this, however wedged a command gets. */
+export const READINESS_TIMEOUT_MS = 20 * 60_000;
+
+const REASON_MAX = 300;
+const TAIL_CHARS = 200;
+
+interface ReadinessRepo {
+  id: string;
+  fullName: string;
+  defaultBranch: string;
+  recipeSha: string | null;
+}
+
+interface RecipeStep {
+  name: string;
+  run: string;
+  /** No per-step budget for warm/install; the overall deadline bounds them. */
+  timeoutMs?: number;
 }
 
 /** `node>=20` → `node`; `postgres` stays `postgres`. */
@@ -31,7 +54,8 @@ async function versionOf(bin: string): Promise<string | null> {
 
 /**
  * Can this runner run jobs for a repo (spec 5.6)? It checks the recipe's OS constraint and
- * `system_deps` (binaries on PATH, with an optional minimum version).
+ * `system_deps` (binaries on PATH, with an optional minimum version). Cheap on purpose: it runs
+ * before anything that touches the mirror or a worktree.
  */
 export async function checkRecipe(
   recipe: Recipe,
@@ -61,40 +85,148 @@ export async function checkRecipe(
   return { ready: true, reason: null };
 }
 
-/** Re-check every repo whose recipe changed since the last report and tell the control plane. */
+/** Warm, install, then checks — the order a job would use (spec 5.4). */
+function recipeSteps(recipe: Recipe): RecipeStep[] {
+  const steps: RecipeStep[] = recipe.warm.map((run, i) => ({
+    name: recipe.warm.length === 1 ? "warm" : `warm ${i + 1}`,
+    run,
+  }));
+  if (recipe.install) steps.push({ name: "install", run: recipe.install });
+  for (const check of recipe.checks)
+    steps.push({ name: check.name, run: check.run, timeoutMs: check.timeout_sec * 1000 });
+  return steps;
+}
+
+function failureReason(
+  step: RecipeStep,
+  result: CommandResult,
+  timeoutMs: number,
+  secrets: string[],
+): string {
+  const how = result.timedOut
+    ? `timed out after ${Math.round(timeoutMs / 1_000)}s`
+    : `exit ${result.exitCode}`;
+  const detail = scrub(tail(result.output.trim(), TAIL_CHARS), secrets);
+  return `${step.name} failed (${how}): ${detail}`.slice(0, REASON_MAX);
+}
+
+/** Run every recipe step in `cwd`, stopping at the first failure or when the deadline passes. */
+async function runRecipeSteps(opts: {
+  recipe: Recipe;
+  cwd: string;
+  env: Record<string, string>;
+  secrets: string[];
+  wrap?: string[];
+  deadline: number;
+}): Promise<ReadinessResult> {
+  for (const step of recipeSteps(opts.recipe)) {
+    const remaining = opts.deadline - Date.now();
+    if (remaining <= 0) {
+      return {
+        ready: false,
+        reason: `${step.name} failed: readiness checks exceeded ${READINESS_TIMEOUT_MS / 60_000} minutes`,
+      };
+    }
+    const timeoutMs = Math.min(step.timeoutMs ?? remaining, remaining);
+    const result = await runCommand(step.run, {
+      cwd: opts.cwd,
+      env: opts.env,
+      timeoutMs,
+      wrap: opts.wrap,
+    });
+    if (result.exitCode !== 0)
+      return { ready: false, reason: failureReason(step, result, timeoutMs, opts.secrets) };
+  }
+  return { ready: true, reason: null };
+}
+
+function readinessEnv(postgresUrl?: string): Record<string, string> {
+  const env = httpProxyEnv();
+  // Let checks that need a database use the runner's Postgres, as CI does.
+  if (postgresUrl) env.FOUNDRY_TEST_DATABASE_URL = postgresUrl;
+  return env;
+}
+
+function readinessWorktreeId(repoId: string): string {
+  return `readiness-${repoId.replace(/[^\w.-]+/g, "__")}`;
+}
+
+/**
+ * Re-check every repo whose recipe changed since the last report and tell the control plane.
+ * A pass clones the default branch into a temporary worktree and really runs the recipe, so a
+ * "ready" runner has proven the recipe on its machine (spec 5.4).
+ */
 export class ReadinessReporter {
   private readonly reported = new Map<string, string | null>();
+  private checking = false;
 
   constructor(
     private readonly api: ControlPlane,
     private readonly workspace: Workspace,
     private readonly os: Os,
-    private readonly opts: { postgresUrl?: string; log: (m: string) => void },
+    private readonly opts: {
+      postgresUrl?: string;
+      log: (m: string) => void;
+      /** Daemon resource-limit prefix; a getter because `start()` sets it after construction. */
+      wrap?: () => string[] | undefined;
+    },
   ) {}
 
-  async sync(
-    repos: { id: string; fullName: string; defaultBranch: string; recipeSha: string | null }[],
-  ): Promise<void> {
-    for (const repo of repos) {
-      if (!repo.recipeSha || this.reported.get(repo.id) === repo.recipeSha) continue;
-      let result: ReadinessResult;
-      try {
-        const token = (await this.api.gitToken(repo.id)).token;
-        const mirror = await this.workspace.ensureMirror(repo.fullName, token);
-        const file = await this.workspace.readFileAt(
-          mirror,
-          `origin/${repo.defaultBranch}`,
-          ".foundry/recipe.yaml",
-        );
-        result = file
-          ? await checkRecipe(parseRecipeYaml(file.content), this.os, this.opts)
-          : { ready: false, reason: "recipe not found on the default branch" };
-      } catch (err) {
-        result = { ready: false, reason: `readiness check failed: ${String(err).slice(0, 300)}` };
+  async sync(repos: ReadinessRepo[]): Promise<void> {
+    // A pass can take minutes while heartbeats keep firing. Later ticks still report the
+    // heartbeat and claim jobs, but must not start a second pass.
+    if (this.checking) return;
+    this.checking = true;
+    try {
+      for (const repo of repos) {
+        if (!repo.recipeSha || this.reported.get(repo.id) === repo.recipeSha) continue;
+        const result = await this.check(repo);
+        await this.api.readiness({ repoId: repo.id, recipeSha: repo.recipeSha, ...result });
+        this.reported.set(repo.id, repo.recipeSha);
+        this.opts.log(`readiness ${repo.fullName}: ${result.ready ? "ready" : result.reason}`);
       }
-      await this.api.readiness({ repoId: repo.id, recipeSha: repo.recipeSha, ...result });
-      this.reported.set(repo.id, repo.recipeSha);
-      this.opts.log(`readiness ${repo.fullName}: ${result.ready ? "ready" : result.reason}`);
+    } finally {
+      this.checking = false;
+    }
+  }
+
+  private async check(repo: ReadinessRepo): Promise<ReadinessResult> {
+    try {
+      const token = (await this.api.gitToken(repo.id)).token;
+      const mirror = await this.workspace.ensureMirror(repo.fullName, token);
+      const file = await this.workspace.readFileAt(mirror, `origin/${repo.defaultBranch}`, RECIPE_FILE);
+      if (!file) return { ready: false, reason: "recipe not found on the default branch" };
+      const recipe = parseRecipeYaml(file.content);
+      const cheap = await checkRecipe(recipe, this.os, this.opts);
+      if (!cheap.ready) return cheap;
+      return await this.runInWorktree(repo, recipe, token);
+    } catch (err) {
+      return { ready: false, reason: `readiness check failed: ${String(err).slice(0, REASON_MAX)}` };
+    }
+  }
+
+  private async runInWorktree(repo: ReadinessRepo, recipe: Recipe, token: string): Promise<ReadinessResult> {
+    const id = readinessWorktreeId(repo.id);
+    const cwd = await this.workspace.createDetachedWorktree({
+      fullName: repo.fullName,
+      branch: repo.defaultBranch,
+      id,
+      token,
+    });
+    try {
+      const env = readinessEnv(this.opts.postgresUrl);
+      return await runRecipeSteps({
+        recipe,
+        cwd,
+        env,
+        secrets: secretEnvValues({ ...process.env, ...env }),
+        wrap: this.opts.wrap?.(),
+        deadline: Date.now() + READINESS_TIMEOUT_MS,
+      });
+    } finally {
+      await this.workspace.removeWorktree(repo.fullName, id).catch((err) => {
+        this.opts.log(`readiness: could not remove ${repo.fullName} worktree: ${String(err)}`);
+      });
     }
   }
 }
