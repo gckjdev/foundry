@@ -1,0 +1,36 @@
+# How Foundry installs this repo and proves a change works.
+#
+# Node 22+ is required: vitest 4's rolldown binding imports `node:util.styleText`
+# (added in Node 20.12), and pnpm only links rolldown's native darwin binding when
+# install runs under Node 22.
+install: pnpm install --frozen-lockfile
+
+checks:
+  # Typecheck every package. apps/web is split out because its tsconfig sets
+  # `incremental: true`, and tsc rewrites the tracked apps/web/tsconfig.tsbuildinfo
+  # on every run; the runner commits with `git add -A`, so that churn would leak
+  # into every PR. `--incremental false` produces the same type errors without the file.
+  - name: typecheck
+    run: pnpm turbo run typecheck --filter='!@foundry/web' && pnpm --filter @foundry/web exec tsc -p tsconfig.json --incremental false
+    timeout_sec: 1200
+
+  # `--maxWorkers=1`: the live `opencode serve` test (fixed port, 30s timeout) and the
+  # runner daemon tests are timing-sensitive and flake when files run in parallel.
+  # Database tests (packages/db, packages/control) skip unless FOUNDRY_TEST_DATABASE_URL
+  # is exported on the runner; with it set the full suite is 100/100.
+  - name: test
+    run: pnpm vitest run --maxWorkers=1 --retry=2
+    timeout_sec: 900
+
+# The control panel. `next dev` needs .env (copied from .env.example) to boot.
+# Screenshots of signed-in pages also need a migrated Postgres and GitHub App env.
+dev_server:
+  run: pnpm --filter @foundry/web exec next dev --port $FOUNDRY_PORT
+  ready_path: /
+  timeout_sec: 180
+
+# Per-job .env so the dev server and any Next-aware tooling have values to read.
+env_file: .env.example
+
+system_deps: [node>=22, pnpm, bun]
+ui_paths: ["apps/web/src/**"]

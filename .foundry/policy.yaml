@@ -1,0 +1,60 @@
+# Conservative starting point for gckjdev/foundry. Tighten further or relax deliberately.
+merge: off
+require_ci_green: true
+max_verify_loops: 3
+max_cost_per_job_usd: 5
+max_diff_lines_for_automerge: 400
+
+risk_rules:
+  # Schema and migrations: a bad migration can destroy control-plane state.
+  - name: database
+    paths:
+      - "packages/db/migrations/**"
+      - "packages/db/src/**"
+    reviewers: []
+
+  # Authentication, sessions, and the tokens that sign realtime/artifact URLs.
+  - name: auth
+    paths:
+      - "apps/web/src/auth.ts"
+      - "apps/web/src/app/api/auth/**"
+      - "apps/web/src/server/session.ts"
+      - "packages/shared/src/tokens.ts"
+    reviewers: []
+
+  # GitHub App credentials, webhook verification, and the API client.
+  - name: github-integration
+    paths:
+      - "apps/web/src/app/api/webhooks/**"
+      - "apps/web/src/app/api/github/**"
+      - "packages/github/**"
+    reviewers: []
+
+  # Code that runs agents, git, and OS-level actions on people's machines.
+  - name: runner-execution
+    paths:
+      - "apps/runner/src/job-runner.ts"
+      - "apps/runner/src/workspace.ts"
+      - "apps/runner/src/git.ts"
+      - "apps/runner/src/services.ts"
+      - "apps/runner/src/repo-files.ts"
+      - "packages/os-adapters/**"
+      - "packages/harness-*/**"
+    reviewers: []
+
+  # Deploy, packaging, release pipelines, and dependency resolution.
+  - name: infrastructure
+    paths:
+      - ".github/workflows/**"
+      - "deploy/**"
+      - "packaging/**"
+      - "apps/*/Dockerfile"
+      - "pnpm-lock.yaml"
+    reviewers: []
+
+  # Outbound-proxy handling and the published install script.
+  - name: security
+    paths:
+      - "packages/shared/src/proxy.ts"
+      - "packages/shared/src/install-script.ts"
+    reviewers: []

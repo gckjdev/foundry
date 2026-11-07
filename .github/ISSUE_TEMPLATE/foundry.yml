@@ -1,0 +1,42 @@
+name: Foundry ticket
+description: Describe work for Foundry to pick up and turn into a verified pull request.
+labels: ["foundry"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should be true when this is done? One or two sentences, outcome-focused.
+      placeholder: Users can filter the board by repo, and the choice survives a reload.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: Concrete, checkable outcomes. The agent uses these to decide when it is done.
+      placeholder: |
+        - A repo filter appears on /board and updates the URL query string.
+        - Filtering with no matches shows an empty state.
+        - Covered by a test in packages/control or apps/web.
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: Files to avoid, compatibility requirements, API or schema rules, or steps that must not change.
+      placeholder: Do not change the jobs table schema. Keep the existing /board layout.
+    validations:
+      required: false
+
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: Work this ticket should explicitly not do.
+      placeholder: Saving the filter per user in the database.
+    validations:
+      required: false
