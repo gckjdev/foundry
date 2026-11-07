@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { resolveGitHubHostConfig } from "@foundry/shared/github-host";
 import { OctokitGitHubClient } from "./octokit";
 import type { GitHubClient } from "./types";
 
@@ -19,7 +20,11 @@ export function getGitHub(): GitHubClient {
         ? readFileSync(process.env.GITHUB_APP_PRIVATE_KEY_PATH, "utf8")
         : "");
     if (!appId || !privateKey) throw new Error("GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY(_PATH) must be set");
-    globalForGh.__foundryGitHub = new OctokitGitHubClient({ appId, privateKey });
+    globalForGh.__foundryGitHub = new OctokitGitHubClient({
+      appId,
+      privateKey,
+      baseUrl: resolveGitHubHostConfig().apiUrl,
+    });
   }
   return globalForGh.__foundryGitHub;
 }

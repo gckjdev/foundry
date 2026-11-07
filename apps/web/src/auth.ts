@@ -1,3 +1,4 @@
+import { GITHUB_DOT_COM, normalizeGitHubHost } from "@foundry/shared/github-host";
 import NextAuth, { customFetch } from "next-auth";
 import GitHub from "next-auth/providers/github";
 import { githubFetch } from "./server/retry-fetch";
@@ -8,6 +9,8 @@ declare module "next-auth" {
   }
 }
 
+const githubHost = normalizeGitHubHost(process.env.GITHUB_HOST);
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
   providers: [
@@ -16,6 +19,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientSecret: process.env.AUTH_GITHUB_SECRET,
       // GitHub Apps authorize with App permissions; keep profile + email for the panel user.
       authorization: { params: { scope: "read:user user:email" } },
+      // GitHub Enterprise Server: Auth.js derives authorize/token/userinfo from this base URL.
+      enterprise: githubHost === GITHUB_DOT_COM ? undefined : { baseUrl: githubHost },
       [customFetch]: githubFetch,
     }),
   ],

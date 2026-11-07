@@ -1,3 +1,4 @@
+import { githubApiUrl } from "@foundry/shared/github-host";
 import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
 import type { CiState, GhAppInstallation, GhIssue, GhPullRequest, GitHubClient, RepoRef } from "./types";
@@ -8,6 +9,8 @@ const liveFetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
 export interface GitHubAppConfig {
   appId: string | number;
   privateKey: string;
+  /** REST API base URL (e.g. `https://api.github.com` or `https://gh.example/api/v3`). */
+  baseUrl?: string;
 }
 
 function split(fullName: string): { owner: string; repo: string } {
@@ -92,9 +95,11 @@ export class OctokitGitHubClient implements GitHubClient {
   private readonly cache = new Map<number, { octokit: Octokit; expires: number }>();
 
   constructor(private readonly config: GitHubAppConfig) {
+    const baseUrl = (config.baseUrl ?? githubApiUrl(undefined)).replace(/\/+$/, "");
     this.app = new Octokit({
       authStrategy: createAppAuth,
       auth: { appId: config.appId, privateKey: config.privateKey },
+      baseUrl,
       request: { fetch: liveFetch },
     });
   }
@@ -102,9 +107,11 @@ export class OctokitGitHubClient implements GitHubClient {
   private kit(installationId: number): Octokit {
     const hit = this.cache.get(installationId);
     if (hit && hit.expires > Date.now()) return hit.octokit;
+    const baseUrl = (this.config.baseUrl ?? githubApiUrl(undefined)).replace(/\/+$/, "");
     const octokit = new Octokit({
       authStrategy: createAppAuth,
       auth: { appId: this.config.appId, privateKey: this.config.privateKey, installationId },
+      baseUrl,
       request: { fetch: liveFetch },
     });
     this.cache.set(installationId, { octokit, expires: Date.now() + 30 * 60_000 });

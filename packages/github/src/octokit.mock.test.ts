@@ -78,6 +78,7 @@ describe("OctokitGitHubClient via MockAgent", () => {
   let client: OctokitGitHubClient;
   let projectMode: ProjectMode = "ok";
   const calls: string[] = [];
+  const ghesCalls: string[] = [];
 
   beforeAll(() => {
     previous = getGlobalDispatcher();
@@ -88,6 +89,16 @@ describe("OctokitGitHubClient via MockAgent", () => {
       .get("https://api.github.com")
       .intercept({ path: () => true, method: () => true })
       .reply(async (opts) => reply(opts.method, opts.path, await text(opts.body)))
+      .persist();
+    agent
+      .get("https://github.example.com")
+      .intercept({ path: () => true, method: () => true })
+      .reply(async (opts) => {
+        const pathname = (opts.path.split("?")[0] ?? opts.path).replace(/\/$/, "");
+        ghesCalls.push(`${opts.method} ${pathname}`);
+        if (opts.method === "GET" && pathname === "/api/v3/app/installations") return json(200, []);
+        return json(500, { message: `unmocked ${opts.method} ${opts.path}` });
+      })
       .persist();
     client = new OctokitGitHubClient({ appId: 99, privateKey: privateKey() });
   });
@@ -237,6 +248,16 @@ describe("OctokitGitHubClient via MockAgent", () => {
       { id: 2, accountLogin: "", accountType: "Enterprise" },
       { id: 3, accountLogin: "", accountType: "" },
     ]);
+  });
+
+  it("passes a GHES baseUrl through to Octokit and app auth", async () => {
+    const ghes = new OctokitGitHubClient({
+      appId: 99,
+      privateKey: privateKey(),
+      baseUrl: "https://github.example.com/api/v3",
+    });
+    await expect(ghes.listAppInstallations()).resolves.toEqual([]);
+    expect(ghesCalls).toContain("GET /api/v3/app/installations");
   });
 
   it("mints an installation token and lists repos", async () => {
