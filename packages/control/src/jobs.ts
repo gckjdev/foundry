@@ -11,10 +11,11 @@ import {
   parseLabels,
   type RunnerStage,
   TERMINAL_STATUSES,
+  TRIGGER_LABEL,
 } from "@foundry/shared";
 import { and, asc, eq, isNull, notInArray, sql } from "drizzle-orm";
 import { bestEffort, type ControlContext } from "./context";
-import { syncJobToGitHub } from "./github-sync";
+import { repoRef, syncJobToGitHub } from "./github-sync";
 
 export class NotFoundError extends Error {}
 
@@ -161,6 +162,31 @@ export async function createJobFromIssue(
   ]);
   await bestEffort(ctx, "github sync", () => syncJobToGitHub(ctx, job, null));
   return job;
+}
+
+/**
+ * Catch-up when smee/webhooks were down: open issues labeled `foundry` on repos that accept jobs
+ * become ticket jobs. Idempotent per issue.
+ */
+export async function reconcileLabeledIssues(ctx: ControlContext): Promise<string[]> {
+  const ready = await ctx.db.select().from(repos).where(eq(repos.acceptsJobs, true));
+  const created: string[] = [];
+  for (const repo of ready) {
+    let issues: GhIssue[];
+    try {
+      issues = await ctx.gh.listIssues(repoRef(repo), { labels: [TRIGGER_LABEL], state: "open" });
+    } catch (err) {
+      ctx.log("list labeled issues failed", { repo: repo.fullName, error: String(err) });
+      continue;
+    }
+    for (const issue of issues) {
+      const existing = await activeJobForIssue(ctx, repo.id, issue.number);
+      if (existing) continue;
+      const job = await createJobFromIssue(ctx, repo.id, issue);
+      created.push(job.id);
+    }
+  }
+  return created;
 }
 
 export async function addInput(

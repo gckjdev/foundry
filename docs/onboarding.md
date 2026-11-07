@@ -86,6 +86,8 @@ Do not label issues until the pill is **accepting jobs**. Ticket jobs wait with 
 
 **`git fetch` / Empty reply from server.** Git does not use the macOS system proxy. Set `FOUNDRY_HTTP_PROXY` in `.env` (or `foundry runner join --http-proxy …`). The runner applies it to git, the control-plane client, and coding-agent processes, and retries transient failures. Restart both `pnpm dev` and `pnpm dev:runner` (Ctrl+C in each terminal, then start them again — see `docs/local-setup.md` §4) and retry the job.
 
+**Issue labeled `foundry` but not on the board.** Foundry only creates a job from the `issues.labeled` webhook (or a catch-up poll). Restart `pnpm dev:webhooks` so it reads `SMEE_URL` from `.env`, then refresh **Board**. If smee was started without that URL, GitHub events never arrived.
+
 **PR never appears.** The runner never reached verifying, or opening the PR failed (GitHub App permissions: contents + pull requests). Check the job log.
 
 **Merged but still not accepting jobs.** `.foundry/recipe.yaml` is missing or invalid on `main`, or Foundry did not see the push. Run `pnpm dev:webhooks` with `SMEE_URL` matching the GitHub App webhook URL, then push an empty commit or click **Sync from GitHub**.

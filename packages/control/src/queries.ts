@@ -2,6 +2,7 @@ import { events, evidence, type Job, jobs, questions, repos, runners, users } fr
 import { and, asc, desc, eq, gt, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
 import { diagnoseQueue } from "./claim";
 import type { ControlContext } from "./context";
+import { reconcileLabeledIssues } from "./jobs";
 import { syncMergedPullRequest } from "./merge-gate";
 
 export interface BoardJob {
@@ -13,6 +14,7 @@ export interface BoardJob {
 
 /** Jobs for the board: everything active plus the last week's finished work. */
 export async function boardJobs(ctx: ControlContext, teamId: string): Promise<BoardJob[]> {
+  await reconcileLabeledIssues(ctx);
   const weekAgo = new Date(ctx.now().getTime() - 7 * 24 * 3600_000);
   const rows = await ctx.db
     .select({ job: jobs, repoFullName: repos.fullName, runnerName: runners.name })
@@ -67,6 +69,7 @@ export async function eventsSince(ctx: ControlContext, teamId: string, jobId: st
  * in flight, and the unassigned lane of handovers nobody was routed to.
  */
 export async function inbox(ctx: ControlContext, teamId: string, userId: string) {
+  await reconcileLabeledIssues(ctx);
   const user = await ctx.db.query.users.findFirst({ where: eq(users.id, userId) });
   if (!user) return { questions: [], reviews: [], mine: [], unassigned: [] };
   const login = user.ghLogin;

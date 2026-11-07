@@ -63,6 +63,10 @@ export interface GitHubClient {
   listInstallationRepos(installationId: number): Promise<GhInstallationRepo[]>;
 
   getIssue(repo: RepoRef, number: number): Promise<GhIssue>;
+  listIssues(
+    repo: RepoRef,
+    opts?: { labels?: string[]; state?: "open" | "closed" | "all" },
+  ): Promise<GhIssue[]>;
   createComment(repo: RepoRef, issueNumber: number, body: string): Promise<GhComment>;
   updateComment(repo: RepoRef, commentId: number, body: string): Promise<void>;
   getComment(repo: RepoRef, commentId: number): Promise<GhComment>;

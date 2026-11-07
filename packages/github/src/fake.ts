@@ -102,6 +102,14 @@ export class FakeGitHub implements GitHubClient {
     return structuredClone(this.issue(ref, number));
   }
 
+  async listIssues(ref: RepoRef, opts: { labels?: string[]; state?: "open" | "closed" | "all" } = {}) {
+    const state = opts.state ?? "open";
+    const labels = opts.labels ?? [];
+    return [...this.repo(ref.fullName).issues.values()]
+      .filter((i) => (state === "all" || i.state === state) && labels.every((l) => i.labels.includes(l)))
+      .map((i) => structuredClone(i));
+  }
+
   async createComment(ref: RepoRef, issueNumber: number, body: string) {
     this.record("createComment", ref.fullName, issueNumber, body);
     const comment = { id: this.nextId++, body, author: "foundry[bot]", issueNumber };

@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { claimJob } from "./claim";
 import { processWebhook, storeWebhook } from "./ingest";
-import { getJob } from "./jobs";
+import { getJob, reconcileLabeledIssues } from "./jobs";
 import { evaluateJobGate, reconcileOpenPullRequests } from "./merge-gate";
 import { openPullRequest } from "./prs";
 import { answerFromCheckbox } from "./questions";
@@ -313,5 +313,25 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
     expect(await getJob(env.ctx, job!.id)).toMatchObject({ status: "merged" });
     const updated = await env.ctx.db.query.repos.findFirst({ where: eq(repos.id, repo.id) });
     expect(updated).toMatchObject({ acceptsJobs: true, onboardingStatus: "done" });
+  });
+
+  it("creates a ticket job for an open foundry-labeled issue when the webhook was missed", async () => {
+    const { repo } = await seedTeam(env);
+    env.gh.addIssue("acme/app", {
+      number: 2,
+      title: "Add pnpm lint",
+      body: "### Goal\n\nLint\n",
+      labels: ["foundry"],
+    });
+    expect(await reconcileLabeledIssues(env.ctx)).toHaveLength(1);
+    const rows = await env.ctx.db.query.jobs.findMany({ where: eq(jobs.repoId, repo.id) });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      kind: "ticket",
+      issueNumber: 2,
+      title: "Add pnpm lint",
+      status: "queued",
+    });
+    expect(await reconcileLabeledIssues(env.ctx)).toEqual([]);
   });
 });

@@ -1,6 +1,6 @@
 import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
-import type { CiState, GhAppInstallation, GhPullRequest, GitHubClient, RepoRef } from "./types";
+import type { CiState, GhAppInstallation, GhIssue, GhPullRequest, GitHubClient, RepoRef } from "./types";
 
 /** Resolve fetch at call time so the web app's GitHub proxy wrapper is used. */
 const liveFetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
@@ -36,6 +36,26 @@ function toPr(p: RawPr): GhPullRequest {
     headSha: p.head.sha,
     state: p.state === "open" ? "open" : "closed",
     merged: Boolean(p.merged ?? p.merged_at),
+  };
+}
+
+function toIssue(data: {
+  number: number;
+  node_id: string;
+  title: string;
+  body?: string | null;
+  user?: { login: string } | null;
+  labels: (string | { name?: string | null })[];
+  state: string;
+}): GhIssue {
+  return {
+    number: data.number,
+    nodeId: data.node_id,
+    title: data.title,
+    body: data.body ?? "",
+    author: data.user?.login ?? "",
+    labels: data.labels.map((l) => (typeof l === "string" ? l : (l.name ?? ""))).filter(Boolean),
+    state: data.state === "open" ? "open" : "closed",
   };
 }
 
@@ -118,15 +138,18 @@ export class OctokitGitHubClient implements GitHubClient {
       ...split(ref.fullName),
       issue_number: number,
     });
-    return {
-      number: data.number,
-      nodeId: data.node_id,
-      title: data.title,
-      body: data.body ?? "",
-      author: data.user?.login ?? "",
-      labels: data.labels.map((l) => (typeof l === "string" ? l : (l.name ?? ""))).filter(Boolean),
-      state: data.state === "open" ? ("open" as const) : ("closed" as const),
-    };
+    return toIssue(data);
+  }
+
+  async listIssues(ref: RepoRef, opts: { labels?: string[]; state?: "open" | "closed" | "all" } = {}) {
+    const kit = this.kit(ref.installationId);
+    const issues = await kit.paginate(kit.issues.listForRepo, {
+      ...split(ref.fullName),
+      state: opts.state ?? "open",
+      labels: opts.labels?.join(",") || undefined,
+      per_page: 100,
+    });
+    return issues.filter((i) => !("pull_request" in i && i.pull_request)).map(toIssue);
   }
 
   async createComment(ref: RepoRef, issueNumber: number, body: string) {

@@ -110,7 +110,7 @@ pnpm dev                 # web :3000 + realtime :3001 only
 In a second terminal, while developing against GitHub webhooks:
 
 ```bash
-pnpm dev:webhooks        # needs SMEE_URL in the environment
+pnpm dev:webhooks        # loads SMEE_URL from .env (must match the GitHub App webhook URL)
 ```
 
 Do **not** expect `pnpm dev` to start the runner. It will fail with `not joined yet` until you create a team and join.

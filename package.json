@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "turbo run dev --filter=@foundry/web --filter=@foundry/realtime",
     "dev:runner": "pnpm --filter @foundry/runner start",
-    "dev:webhooks": "smee --url \"$SMEE_URL\" --target http://localhost:3000/api/webhooks/github",
+    "dev:webhooks": "node scripts/dev-webhooks.mjs",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "lint": "biome check .",

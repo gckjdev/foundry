@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   bigserial,
   boolean,
   doublePrecision,
@@ -193,7 +194,7 @@ export const jobs = pgTable(
     confidence: jsonb("confidence"),
     gateResult: jsonb("gate_result"),
     assignedReviewers: jsonb("assigned_reviewers").notNull().default(sql`'[]'::jsonb`),
-    statusCommentId: integer("status_comment_id"),
+    statusCommentId: bigint("status_comment_id", { mode: "number" }),
     costUsd: doublePrecision("cost_usd").notNull().default(0),
     tokensIn: integer("tokens_in").notNull().default(0),
     tokensOut: integer("tokens_out").notNull().default(0),
@@ -246,7 +247,7 @@ export const questions = pgTable("questions", {
   answerOptionIndex: integer("answer_option_index"),
   answeredBy: text("answered_by"),
   answeredVia: text("answered_via"), // panel | gh_checkbox | gh_reply
-  ghCommentId: integer("gh_comment_id"),
+  ghCommentId: bigint("gh_comment_id", { mode: "number" }),
   helpful: boolean("helpful"),
   createdAt: createdAt(),
   answeredAt: ts("answered_at"),

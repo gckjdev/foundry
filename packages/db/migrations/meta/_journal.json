@@ -22,6 +22,13 @@
       "when": 1793949745379,
       "tag": "0002_metrics_views",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794028500000,
+      "tag": "0003_github_comment_ids",
+      "breakpoints": true
     }
   ]
 }
