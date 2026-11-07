@@ -27,6 +27,8 @@ Add `--shared` only for a always-on box (Mac mini, Linux). A laptop is personal;
 
 The runner should appear on **Runners** as **accepting**. `foundry doctor` (or `bun apps/runner/src/cli.ts doctor`) checks git, disk, and harness sign-in.
 
+To run **more than one daemon on this computer** (separate names or a personal plus a shared runner), use a distinct `--name` and `FOUNDRY_HOME` per process — see `docs/local-setup.md` §3 “Multiple runners on one computer”. For more parallel jobs on the *same* runner, re-join with `--concurrency N` instead.
+
 ## 2. Start onboarding
 
 Open **http://localhost:3000/repos**.

@@ -41,6 +41,8 @@ bun apps/runner/src/cli.ts runner join <token> --server http://localhost:3000
 pnpm dev:runner
 ```
 
+Several jobs on one daemon: re-join with `--concurrency N`. A second daemon on the same login needs its own `--name` and `FOUNDRY_HOME` (`docs/local-setup.md` §3).
+
 Tests: `pnpm test` (set `FOUNDRY_TEST_DATABASE_URL` to a Postgres you can create databases on, otherwise database tests are skipped).
 
 See `docs/local-setup.md` for GitHub App URLs, `.env` (including `FOUNDRY_HTTP_PROXY`), local Postgres, and Docker Compose deploy. Repo onboarding (join token, runner, recipe PR) is `docs/onboarding.md`.

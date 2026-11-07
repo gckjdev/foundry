@@ -137,6 +137,38 @@ If Authorize leaves you on GitHub’s “You are being redirected…” page, th
 
 If **Repos** is empty after you installed the App, the Setup URL ran before you had a team (or the install cookie expired). Refresh `/repos` or click **Sync from GitHub** — Foundry lists the App’s installations and attaches any that are not already linked. Keep `pnpm dev:webhooks` running so later “add/remove repos” events stay in sync.
 
+### Multiple runners on one computer
+
+One joined runner can already detect **both** Claude Code and OpenCode (whichever is installed) and can run several jobs at once with `--concurrency`. You only need extra daemons if you want **separate names** (for `runner:<name>` pins), a personal runner and a `--shared` runner on the same box, or isolated worktrees.
+
+**More jobs, same runner** (usual case):
+
+```bash
+bun apps/runner/src/cli.ts runner join <token> --server http://localhost:3000 --concurrency 2
+pnpm dev:runner
+```
+
+Re-joining with the **same** `--name` updates that runner (including concurrency). The default name is `<user>-<hostname>`.
+
+**Two daemons on one login:** each needs its own `--name` and `FOUNDRY_HOME`. They cannot share `~/.foundry` (that directory holds `config.json`, the MCP socket, port leases, and worktrees). Create one join token on **Runners** — it is a team token; you can join many machines with it.
+
+```bash
+# Terminal A — default home, default name
+bun apps/runner/src/cli.ts runner join <token> --server http://localhost:3000 --name pipi-claude
+pnpm dev:runner
+
+# Terminal B — second home and name (keep this FOUNDRY_HOME on every command for this runner)
+export FOUNDRY_HOME="$HOME/.foundry-opencode"
+bun apps/runner/src/cli.ts runner join <token> --server http://localhost:3000 --name pipi-opencode
+bun apps/runner/src/cli.ts runner start
+```
+
+`pnpm dev:runner` always uses `~/.foundry`. Extra runners must be started with `FOUNDRY_HOME=… bun apps/runner/src/cli.ts runner start` (same for `doctor`, `status`, `open`).
+
+Do **not** run `foundry runner install-service` twice on one user — launchd/systemd only have one unit name. Leave the second daemon in the foreground, or in its own terminal.
+
+On **Runners**, you should see both names **accepting**. Stop each with Ctrl+C in its terminal. After a restart, export the same `FOUNDRY_HOME` before `runner start` or the second process will look like “not joined yet”.
+
 ## 4. Daily commands
 
 | Command             | What                                               |

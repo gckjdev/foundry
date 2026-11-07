@@ -25,6 +25,20 @@ const spec = {
   logDir: "/var/log/foundry",
 };
 
+describe("FOUNDRY_HOME secrets", () => {
+  it("keeps a second runner's token out of the default macOS Keychain", async () => {
+    const prev = process.env.FOUNDRY_HOME;
+    process.env.FOUNDRY_HOME = mkdtempSync(join(tmpdir(), "foundry-home-"));
+    try {
+      const store = await new MacOsAdapter().secrets();
+      expect(store.kind).toBe("encrypted-file");
+    } finally {
+      if (prev === undefined) delete process.env.FOUNDRY_HOME;
+      else process.env.FOUNDRY_HOME = prev;
+    }
+  });
+});
+
 describe("macOS parsing", () => {
   it("reads pmset and ioreg", () => {
     expect(parsePmsetBatt("Now drawing from 'AC Power'\n -InternalBattery-0 100%")).toBe(true);

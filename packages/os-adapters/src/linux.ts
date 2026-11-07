@@ -178,6 +178,7 @@ export class LinuxAdapter implements OsAdapter {
   }
 
   async secrets(): Promise<SecretStore> {
+    if (process.env.FOUNDRY_HOME) return new FileSecretStore(join(process.env.FOUNDRY_HOME, "secrets"));
     const isRoot = process.getuid?.() === 0;
     if (isRoot && (await which(this.run, "systemd-creds")))
       return new SystemdCredsStore("/var/lib/foundry/creds", this.run);

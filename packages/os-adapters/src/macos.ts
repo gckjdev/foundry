@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { arch, cpus, homedir, totalmem } from "node:os";
 import { join } from "node:path";
 import { exec as defaultExec, dfFreeMb } from "./exec";
+import { FileSecretStore } from "./file-secrets";
 import type { Exec, OsAdapter, ResourceLimits, SecretStore, ServiceInstall, ServiceSpec } from "./types";
 
 export const LAUNCHD_LABEL = "dev.foundry.runner";
@@ -173,6 +174,8 @@ export class MacOsAdapter implements OsAdapter {
   }
 
   async secrets(): Promise<SecretStore> {
+    // A custom FOUNDRY_HOME is a second runner on this login; keep its token out of the shared Keychain.
+    if (process.env.FOUNDRY_HOME) return new FileSecretStore(join(process.env.FOUNDRY_HOME, "secrets"));
     return new KeychainSecretStore(process.env.USER ?? "foundry", this.run);
   }
 
