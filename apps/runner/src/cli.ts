@@ -8,6 +8,7 @@ import { parseArgs } from "node:util";
 import { bridgeFromEnv, runStdioServer } from "@foundry/mcp-foundry";
 import { currentOsAdapter } from "@foundry/os-adapters";
 import { parseRecipeYaml, VERSION } from "@foundry/shared";
+import { loadGitHubEnvFromFile } from "@foundry/shared/github-host";
 import { applyHttpProxyEnv, loadHttpProxyFromEnvFile } from "@foundry/shared/proxy";
 import { HttpControlPlane, joinControlPlane } from "./api";
 import {
@@ -55,14 +56,16 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-function loadNearbyProxyEnv(): void {
+function loadNearbyEnv(): void {
   const candidates = [
     join(process.cwd(), ".env"),
     join(fileURLToPath(new URL("../../../.env", import.meta.url))),
   ];
   for (const p of candidates) {
     if (!existsSync(p)) continue;
-    loadHttpProxyFromEnvFile(readFileSync(p, "utf8"));
+    const contents = readFileSync(p, "utf8");
+    loadHttpProxyFromEnvFile(contents);
+    loadGitHubEnvFromFile(contents);
     break;
   }
 }
@@ -322,7 +325,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   });
   const [cmd, sub, ...rest] = positionals;
   if (typeof values.home === "string") applyRunnerHome(values.home);
-  loadNearbyProxyEnv();
+  loadNearbyEnv();
   if (typeof values["http-proxy"] === "string" && values["http-proxy"].trim()) {
     process.env.FOUNDRY_HTTP_PROXY = values["http-proxy"].trim();
   }
