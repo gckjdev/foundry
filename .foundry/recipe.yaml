@@ -6,6 +6,12 @@
 install: pnpm install --frozen-lockfile
 
 checks:
+  # Biome lint + format check. Cheap, so it runs first: a job that fails here does
+  # not spend minutes on typecheck and the full test suite before failing anyway.
+  - name: lint
+    run: pnpm lint
+    timeout_sec: 300
+
   # Typecheck every package. apps/web is split out because its tsconfig sets
   # `incremental: true`, and tsc rewrites the tracked apps/web/tsconfig.tsbuildinfo
   # on every run; the runner commits with `git add -A`, so that churn would leak
