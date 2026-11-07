@@ -86,7 +86,7 @@ describe("HttpControlPlane", () => {
     expect(await api.stage("job", { to: "investigating" })).toEqual({ status: "investigating" });
     expect(await api.ask("job", "?", [])).toEqual({ questionId: "q1" });
     expect(await api.evidence("job", { kind: "note", name: "n", status: "passed" })).toEqual({ id: "e1" });
-    await api.confidence("job", { level: "high", reasons: ["ok"] });
+    await api.confidence("job", { level: "high", reasons: ["ok"], uncertainties: [] });
     await api.plan("job", "1. done");
     await api.checkpoint("job", { stage: "implementing", sessionId: null, briefRef: "b", headSha: null });
     expect(
