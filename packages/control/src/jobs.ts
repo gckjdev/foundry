@@ -13,7 +13,7 @@ import {
   TERMINAL_STATUSES,
   TRIGGER_LABEL,
 } from "@foundry/shared";
-import { and, asc, eq, isNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, notInArray, sql } from "drizzle-orm";
 import { bestEffort, type ControlContext } from "./context";
 import { repoRef, syncJobToGitHub } from "./github-sync";
 
@@ -156,21 +156,44 @@ export async function activeJobForIssue(ctx: ControlContext, repoId: string, iss
   });
 }
 
-/** Any job for an issue, finished or not. The `foundry` trigger label outlives a cancelled job. */
+/** Any job for an issue, newest first. The `foundry` trigger label outlives a finished job. */
 async function anyJobForIssue(ctx: ControlContext, repoId: string, issueNumber: number) {
   return ctx.db.query.jobs.findFirst({
     where: and(eq(jobs.repoId, repoId), eq(jobs.issueNumber, issueNumber)),
+    orderBy: desc(jobs.createdAt),
   });
 }
 
-/** Create a job for an issue labeled `foundry`. Idempotent per issue while a job is active. */
+/** Statuses where the job is no longer the live attempt for its issue. */
+const FINISHED_STATUSES: readonly string[] = ["merged", "cancelled", "failed"];
+
+/**
+ * Create a job for an issue labeled `foundry`. One issue keeps one card on the board: a live job
+ * is reused, and re-applying the label to a stopped job retries that job in place. Only a merged
+ * job starts a new attempt, because a merged job cannot be re-queued.
+ */
 export async function createJobFromIssue(
   ctx: ControlContext,
   repoId: string,
   issue: Pick<GhIssue, "number" | "title" | "body" | "author" | "labels">,
 ): Promise<Job> {
-  const existing = await activeJobForIssue(ctx, repoId, issue.number);
-  if (existing) return existing;
+  const live = await ctx.db.query.jobs.findFirst({
+    where: and(
+      eq(jobs.repoId, repoId),
+      eq(jobs.issueNumber, issue.number),
+      notInArray(jobs.status, [...FINISHED_STATUSES]),
+    ),
+  });
+  if (live) return live;
+  const previous = await anyJobForIssue(ctx, repoId, issue.number);
+  if (previous && previous.status !== "merged") {
+    // Re-labelling a cancelled/failed issue is a retry, not a second job for the same issue.
+    const revived = await transitionJob(ctx, previous.id, "queued", {
+      reason: "foundry label re-applied",
+      patch: { resumeStage: "triage", failureReason: null, loopCount: 0 },
+    });
+    if (revived) return revived;
+  }
   const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, repoId) });
   if (!repo) throw new NotFoundError(`repo ${repoId} not found`);
   const team = await ctx.db.query.teams.findFirst({ where: eq(teams.id, repo.teamId) });
