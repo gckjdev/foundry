@@ -124,6 +124,7 @@ export function issueLabeledPayload(opts: {
   body?: string;
   author?: string;
   labels?: string[];
+  state?: "open" | "closed";
 }) {
   const labels = opts.labels ?? ["foundry"];
   return {
@@ -138,6 +139,7 @@ export function issueLabeledPayload(opts: {
       body: opts.body ?? "### Goal\n\nFix it\n\n### Acceptance criteria\n\nIt works",
       user: { login: opts.author ?? "alice" },
       labels: labels.map((name) => ({ name })),
+      state: opts.state ?? "open",
     },
   };
 }

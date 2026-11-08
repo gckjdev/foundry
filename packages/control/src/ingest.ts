@@ -2,7 +2,7 @@ import { jobs, repos, users, webhookInbox } from "@foundry/db";
 import { findMarker, parseFoundryCommand, TRIGGER_LABEL } from "@foundry/shared";
 import { and, asc, eq, isNull, lt, notInArray, or } from "drizzle-orm";
 import type { ControlContext } from "./context";
-import { cancelJob, createJobFromIssue, retryJob, sendMessage } from "./jobs";
+import { activeJobForIssue, cancelJob, createJobFromIssue, retryJob, sendMessage } from "./jobs";
 import { evaluateJobGate, handleChangesRequestedReview, jobsForSha, markJobMerged } from "./merge-gate";
 import { answerFromCheckbox, answerFromReply } from "./questions";
 import { refreshRepoConfig } from "./repos";
@@ -64,6 +64,7 @@ interface Payload {
     body: string | null;
     user: { login: string };
     labels: { name: string }[];
+    state?: "open" | "closed";
     pull_request?: unknown;
   };
   comment?: { id: number; body: string; user: { login: string; type: string } };
@@ -134,7 +135,9 @@ async function dispatch(ctx: ControlContext, event: string, p: Payload): Promise
     case "issues": {
       const repo = await repoFor(ctx, p);
       if (!repo || !p.issue) return;
-      if (p.action === "labeled" && p.label?.name === TRIGGER_LABEL) {
+      // A label can arrive after the issue was closed (late delivery, or a re-label); never start
+      // work on a closed issue, because no later `closed` event will stop the job.
+      if (p.action === "labeled" && p.label?.name === TRIGGER_LABEL && p.issue.state !== "closed") {
         await createJobFromIssue(ctx, repo.id, {
           number: p.issue.number,
           title: p.issue.title,
@@ -143,8 +146,9 @@ async function dispatch(ctx: ControlContext, event: string, p: Payload): Promise
           labels: p.issue.labels.map((l) => l.name),
         });
       } else if (p.action === "closed") {
-        const job = await jobForIssueOrPr(ctx, repo.id, p.issue.number);
-        if (job && job.issueNumber === p.issue.number && job.status !== "pr_ci") {
+        // Match on the issue number only: a different job's PR may share this number.
+        const job = await activeJobForIssue(ctx, repo.id, p.issue.number);
+        if (job && job.status !== "pr_ci") {
           await cancelJob(ctx, job.id, p.sender?.login ?? "github");
         }
       }

@@ -6,7 +6,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { claimJob } from "./claim";
 import { processWebhook, storeWebhook } from "./ingest";
 import { cancelJob, getJob, reconcileLabeledIssues, retryJob, setJobMaxCost, setJobMaxMinutes } from "./jobs";
-import { evaluateJobGate, reconcileChangesRequestedReviews, reconcileOpenPullRequests } from "./merge-gate";
+import {
+  evaluateJobGate,
+  reconcileChangesRequestedReviews,
+  reconcileClosedIssues,
+  reconcileOpenPullRequests,
+} from "./merge-gate";
 import { capacityCard } from "./metrics";
 import { openPullRequest } from "./prs";
 import { inbox } from "./queries";
@@ -571,5 +576,93 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
       status: "queued",
     });
     expect(await reconcileLabeledIssues(env.ctx)).toEqual([]);
+  });
+
+  it("does not start a job for an already-closed issue", async () => {
+    const { repo } = await seedTeam(env);
+    env.gh.addIssue("acme/app", {
+      number: 12,
+      title: "Already done",
+      labels: ["foundry"],
+      state: "closed",
+    });
+    await deliver(env, "issues", issueLabeledPayload({ number: 12, title: "Already done", state: "closed" }));
+    expect(await env.ctx.db.query.jobs.findMany({ where: eq(jobs.repoId, repo.id) })).toHaveLength(0);
+    // The catch-up must not create it either.
+    expect(await reconcileLabeledIssues(env.ctx)).toEqual([]);
+  });
+
+  it("stops a working job when its issue is closed and the webhook was missed", async () => {
+    const { repo } = await seedTeam(env);
+    env.gh.addIssue("acme/app", { number: 13, title: "Closed while running", labels: ["foundry"] });
+    await deliver(env, "issues", issueLabeledPayload({ number: 13, title: "Closed while running" }));
+    const [job] = await env.ctx.db.query.jobs.findMany({ where: eq(jobs.repoId, repo.id) });
+    await env.ctx.db.update(jobs).set({ status: "investigating" }).where(eq(jobs.id, job!.id));
+
+    // GitHub closes the issue, but the `issues.closed` delivery never reaches us.
+    env.gh.addIssue("acme/app", {
+      number: 13,
+      title: "Closed while running",
+      labels: ["foundry"],
+      state: "closed",
+    });
+    expect(await reconcileClosedIssues(env.ctx)).toEqual([job!.id]);
+    expect(await getJob(env.ctx, job!.id)).toMatchObject({ status: "cancelled" });
+  });
+
+  it("cancels a job as soon as its issue is closed", async () => {
+    const { repo } = await seedTeam(env);
+    env.gh.addIssue("acme/app", { number: 15, title: "Closed now", labels: ["foundry"] });
+    await deliver(env, "issues", issueLabeledPayload({ number: 15, title: "Closed now" }));
+    const [job] = await env.ctx.db.query.jobs.findMany({ where: eq(jobs.repoId, repo.id) });
+    await env.ctx.db.update(jobs).set({ status: "implementing" }).where(eq(jobs.id, job!.id));
+
+    await deliver(env, "issues", {
+      action: "closed",
+      installation: { id: 1 },
+      repository: { id: 4242, full_name: "acme/app", default_branch: "main" },
+      sender: { login: "alice", type: "User" },
+      issue: {
+        number: 15,
+        title: "Closed now",
+        body: "",
+        user: { login: "alice" },
+        labels: [{ name: "foundry" }],
+        state: "closed",
+      },
+    });
+    expect(await getJob(env.ctx, job!.id)).toMatchObject({ status: "cancelled" });
+  });
+
+  it("keeps a job whose closed issue was closed by its merged pull request", async () => {
+    const { team, repo } = await seedTeam(env);
+    const [job] = await env.ctx.db
+      .insert(jobs)
+      .values({
+        teamId: team.id,
+        repoId: repo.id,
+        issueNumber: 14,
+        title: "Merged",
+        harness: "claude-code",
+        branch: "foundry/merged",
+        status: "pr_ci",
+        prNumber: 4,
+      })
+      .returning();
+    env.gh.addIssue("acme/app", { number: 14, title: "Merged", state: "closed" });
+    env.gh.repo("acme/app").prs.set(4, {
+      number: 4,
+      url: "https://github.com/acme/app/pull/4",
+      headSha: "sha-4",
+      state: "closed",
+      merged: true,
+      head: "foundry/merged",
+      base: "main",
+      title: "Merged",
+      body: "",
+    });
+
+    expect(await reconcileClosedIssues(env.ctx)).toEqual([]);
+    expect((await getJob(env.ctx, job!.id)).status).toBe("pr_ci");
   });
 });
