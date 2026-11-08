@@ -1,4 +1,4 @@
-import { artifactUrl, diagnoseQueue, jobDetail, repoPolicy } from "@foundry/control";
+import { artifactUrl, diagnoseQueue, jobDetail } from "@foundry/control";
 import type { EventRow } from "@foundry/db";
 import {
   type FoundryEvent,
@@ -8,18 +8,11 @@ import {
   STATUS_TITLES,
 } from "@foundry/shared";
 import { githubIssueUrl } from "@foundry/shared/github-host";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ago, StatusPill, usd } from "@/components/status";
 import { requireTeam } from "@/server/session";
-import {
-  answerAction,
-  cancelAction,
-  helpfulAction,
-  maxCostAction,
-  maxMinutesAction,
-  messageAction,
-  retryAction,
-} from "../../../actions";
+import { answerAction, cancelAction, helpfulAction, messageAction, retryAction } from "../../../actions";
 import { LiveLog } from "./live-log";
 
 function describe(e: FoundryEvent): string | null {
@@ -75,12 +68,6 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const initialLog = d.timeline
     .slice(-200)
     .map((e) => ({ id: e.id, ts: e.ts.toISOString(), payload: e.payload as FoundryEvent }));
-  const policy = repoPolicy(repo);
-  const policyMaxMinutes = policy.max_job_minutes;
-  const maxJobMinutes = job.maxJobMinutes ?? policyMaxMinutes;
-  const policyMaxCost = policy.max_cost_per_job_usd;
-  const maxCostUsd = job.maxCostUsd ?? policyMaxCost;
-
   return (
     <>
       <div className="page-head">
@@ -126,6 +113,9 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           ) : null}
         </div>
         <div className="row">
+          <Link className="button" href={`/jobs/${job.id}/configuration`}>
+            Configuration
+          </Link>
           <form action={retryAction} className="row">
             <input type="hidden" name="jobId" value={job.id} />
             <select name="stage" defaultValue={job.lastCompletedStage ? job.resumeStage : "triage"}>
@@ -250,41 +240,6 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         </div>
 
         <div className="stack">
-          <section className="card">
-            <h2 style={{ marginBottom: 10 }}>Job limits</h2>
-            <form action={maxMinutesAction} className="stack">
-              <input type="hidden" name="jobId" value={job.id} />
-              <label>
-                Max execution time (minutes)
-                <input name="maxMinutes" type="number" min="1" step="1" defaultValue={maxJobMinutes} />
-              </label>
-              <div className="dim small">
-                {job.maxJobMinutes === null
-                  ? `Using the repo default (${policyMaxMinutes} minutes).`
-                  : "Custom for this job."}{" "}
-                The runner stops the job when it runs over. Changes apply to a running job too.
-              </div>
-              <div>
-                <button type="submit">Save</button>
-              </div>
-            </form>
-            <form action={maxCostAction} className="stack" style={{ marginTop: 16 }}>
-              <input type="hidden" name="jobId" value={job.id} />
-              <label>
-                Max cost (USD)
-                <input name="maxCost" type="number" min="0.01" step="0.01" defaultValue={maxCostUsd} />
-              </label>
-              <div className="dim small">
-                {job.maxCostUsd === null
-                  ? `Using the repo default (${usd(policyMaxCost)}).`
-                  : "Custom for this job."}{" "}
-                The runner stops the job when it spends more. Changes apply to a running job too.
-              </div>
-              <div>
-                <button type="submit">Save</button>
-              </div>
-            </form>
-          </section>
           {job.plan ? (
             <section className="card">
               <h2 style={{ marginBottom: 10 }}>Plan</h2>
