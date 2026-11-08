@@ -17,6 +17,8 @@ export interface GateInput {
   changedLines: number;
   confidence: { level: ConfidenceLevel; uncertainties: string[] } | null;
   costUsd: number;
+  /** Effective per-job cost cap; falls back to `policy.max_cost_per_job_usd` when absent. */
+  maxCostUsd?: number;
 }
 
 export type GateRuleId =
@@ -105,10 +107,11 @@ export function evaluateGate(input: GateInput): GateResult {
     });
   }
 
-  if (input.costUsd > policy.max_cost_per_job_usd) {
+  const maxCostUsd = input.maxCostUsd ?? policy.max_cost_per_job_usd;
+  if (input.costUsd > maxCostUsd) {
     failed.push({
       rule: "cost",
-      detail: `Job cost $${input.costUsd.toFixed(2)} exceeds $${policy.max_cost_per_job_usd}`,
+      detail: `Job cost $${input.costUsd.toFixed(2)} exceeds $${maxCostUsd}`,
     });
   }
 

@@ -12,6 +12,7 @@ import {
   requireMember,
   retryJob,
   sendMessage,
+  setJobMaxCost,
   setJobMaxMinutes,
   setRunnerStatus,
   startOnboarding,
@@ -122,6 +123,15 @@ export async function maxMinutesAction(form: FormData) {
   const minutes = raw === "" ? null : Number(raw);
   if (minutes !== null && (!Number.isInteger(minutes) || minutes < 1)) return;
   await setJobMaxMinutes(ctx, team.id, job.id, minutes);
+  revalidatePath(`/jobs/${job.id}`);
+}
+
+export async function maxCostAction(form: FormData) {
+  const { ctx, team, job } = await teamJob(str(form, "jobId"));
+  const raw = str(form, "maxCost");
+  const cost = raw === "" ? null : Number(raw);
+  if (cost !== null && (!Number.isFinite(cost) || cost <= 0)) return;
+  await setJobMaxCost(ctx, team.id, job.id, cost);
   revalidatePath(`/jobs/${job.id}`);
 }
 

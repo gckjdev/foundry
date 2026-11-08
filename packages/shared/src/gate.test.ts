@@ -41,7 +41,7 @@ describe("evaluateGate", () => {
     ["medium confidence", (g) => (g.confidence = { level: "medium", uncertainties: [] }), "confidence"],
     ["open uncertainties", (g) => (g.confidence = { level: "high", uncertainties: ["?"] }), "confidence"],
     ["no confidence reported", (g) => (g.confidence = null), "confidence"],
-    ["over budget", (g) => (g.costUsd = 6), "cost"],
+    ["over budget", (g) => (g.costUsd = 11), "cost"],
   ];
 
   it.each(cases)("fails on %s", (_name, mutate, rule) => {
@@ -50,6 +50,13 @@ describe("evaluateGate", () => {
     const r = evaluateGate(g);
     expect(r.pass).toBe(false);
     expect(r.failed.map((f) => f.rule)).toContain(rule);
+  });
+
+  it("uses a per-job cost cap when one is set", () => {
+    const g = base();
+    g.costUsd = 11;
+    expect(evaluateGate({ ...g, maxCostUsd: 20 }).pass).toBe(true);
+    expect(evaluateGate({ ...g, maxCostUsd: 5 }).failed.map((f) => f.rule)).toContain("cost");
   });
 
   it("is pending while CI runs and nothing else failed", () => {

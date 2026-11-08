@@ -36,7 +36,7 @@ Report progress through the `foundry` MCP tools.
    merge: off
    require_ci_green: true
    max_verify_loops: 3
-   max_cost_per_job_usd: 5
+   max_cost_per_job_usd: 10
    max_diff_lines_for_automerge: 400
    risk_rules:
      - name: migrations

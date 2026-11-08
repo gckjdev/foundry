@@ -356,7 +356,7 @@ describe("JobRunner", () => {
   it("fails a job that exceeds the cost budget", async () => {
     const harness = new FakeHarness("claude-code", [
       {
-        events: [{ kind: "usage", tokensIn: 1, tokensOut: 1, costUsd: 9 }],
+        events: [{ kind: "usage", tokensIn: 1, tokensOut: 1, costUsd: 11 }],
         act: () => new Promise((r) => setTimeout(r, 5_000)),
       },
     ]);
@@ -365,7 +365,23 @@ describe("JobRunner", () => {
       claimedJob({ id: "66666666-0000-0000-0000-000000000000", branch: "foundry/6" }),
     ).run();
     expect(outcome).toBe("failed");
-    expect((api.named("stage").at(-1)!.body as { reason: string }).reason).toContain("max_cost_per_job_usd");
+    expect((api.named("stage").at(-1)!.body as { reason: string }).reason).toContain("max cost");
+  });
+
+  it("honours a per-job max cost override", async () => {
+    const harness = new FakeHarness("claude-code", [
+      { events: [{ kind: "usage", tokensIn: 1, tokensOut: 1, costUsd: 11 }] },
+    ]);
+    const outcome = await new JobRunner(
+      deps(harness),
+      claimedJob({
+        id: "77777777-0000-0000-0000-000000000000",
+        branch: "foundry/7",
+        maxCostUsd: 20,
+      }),
+    ).run();
+    expect(outcome).toBe("failed"); // The agent never finishes, but not because of cost.
+    expect((api.named("stage").at(-1)!.body as { reason: string }).reason).not.toContain("max cost");
   });
 
   it("fails a job when its own max execution time is lowered below elapsed time", async () => {
