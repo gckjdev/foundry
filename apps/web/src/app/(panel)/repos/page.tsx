@@ -123,6 +123,15 @@ export default async function Repos({ searchParams }: { searchParams: Promise<Re
               ) : null}
               {role === "admin" ? (
                 <form
+                  // React resets uncontrolled fields after a form action, and an uncontrolled
+                  // select keeps the value it had before the save. Re-key the form by the saved
+                  // settings so the fields remount with the values the action just persisted.
+                  key={[
+                    repo.mergeMode,
+                    repo.defaultHarness ?? "",
+                    repo.defaultModel ?? "",
+                    repo.ghProjectId ?? "",
+                  ].join("|")}
                   action={repoSettingsAction}
                   className="row"
                   style={{ marginTop: 10, alignItems: "flex-end" }}
