@@ -12,7 +12,14 @@ export interface BoardJob {
   waitingReason: string | null;
 }
 
-/** Jobs for the board: everything active plus the last week's finished work. */
+/** Statuses the board files under "Stopped" (plus merged, which is "Done"). */
+const FINISHED_STATUSES: readonly string[] = ["merged", "cancelled", "failed"];
+
+/**
+ * Jobs for the board: everything active plus the last week's finished work.
+ * One issue has at most one card: when a cancelled/failed job and a newer live job both exist
+ * (retry, or an explicit re-label), the live job is the one shown.
+ */
 export async function boardJobs(ctx: ControlContext, teamId: string): Promise<BoardJob[]> {
   await reconcileLabeledIssues(ctx);
   const weekAgo = new Date(ctx.now().getTime() - 7 * 24 * 3600_000);
@@ -30,7 +37,26 @@ export async function boardJobs(ctx: ControlContext, teamId: string): Promise<Bo
     .orderBy(desc(jobs.updatedAt))
     .limit(300);
   const diagnosis = new Map((await diagnoseQueue(ctx, teamId)).map((d) => [d.jobId, d.reason]));
-  return rows.map((r) => ({ ...r, waitingReason: diagnosis.get(r.job.id) ?? null }));
+  const byIssue = new Map<string, (typeof rows)[number]>();
+  const withoutIssue: (typeof rows)[number][] = [];
+  for (const row of rows) {
+    if (row.job.issueNumber === null) {
+      withoutIssue.push(row);
+      continue;
+    }
+    const key = `${row.job.repoId}:${row.job.issueNumber}`;
+    const kept = byIssue.get(key);
+    // Rows are newest first, so keep the first unless it is finished and a live job exists.
+    if (
+      !kept ||
+      (FINISHED_STATUSES.includes(kept.job.status) && !FINISHED_STATUSES.includes(row.job.status))
+    ) {
+      byIssue.set(key, row);
+    }
+  }
+  return [...byIssue.values(), ...withoutIssue]
+    .sort((a, b) => b.job.updatedAt.getTime() - a.job.updatedAt.getTime())
+    .map((r) => ({ ...r, waitingReason: diagnosis.get(r.job.id) ?? null }));
 }
 
 export async function jobDetail(ctx: ControlContext, teamId: string, jobId: string) {

@@ -100,6 +100,24 @@ describe.skipIf(!TEST_DATABASE_URL)("panel and side-effect surfaces", () => {
     expect(await runningJobsByRunner(env.ctx, [crypto.randomUUID()])).toEqual([]);
   });
 
+  it("shows one card per issue on the board", async () => {
+    const { team, alice, repo } = await seedTeam(env);
+    const cancelled = await ticket(repo.id, team.id, alice.id, {
+      issueNumber: 7,
+      status: "cancelled",
+      title: "Cancelled job",
+    });
+    const live = await ticket(repo.id, team.id, alice.id, {
+      issueNumber: 7,
+      status: "queued",
+      title: "Retried job",
+    });
+
+    const board = await boardJobs(env.ctx, team.id);
+    expect(board.map((b) => b.job.id)).toEqual([live.id]);
+    expect(board.find((b) => b.job.id === cancelled.id)).toBeUndefined();
+  });
+
   it("stores an artifact and rejects a bad token", async () => {
     const { team } = await seedTeam(env);
     const row = await storeArtifact(env.ctx, {
