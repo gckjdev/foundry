@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { claimJob } from "./claim";
 import { processWebhook, storeWebhook } from "./ingest";
 import { getJob, reconcileLabeledIssues, setJobMaxMinutes } from "./jobs";
-import { evaluateJobGate, reconcileOpenPullRequests } from "./merge-gate";
+import { evaluateJobGate, reconcileChangesRequestedReviews, reconcileOpenPullRequests } from "./merge-gate";
 import { openPullRequest } from "./prs";
 import { inbox } from "./queries";
 import { answerFromCheckbox } from "./questions";
@@ -360,12 +360,45 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
       repository: { id: 4242 },
       pull_request: { number: b.pr.prNumber, merged: false, head: { sha: "sha-11", ref: "x" } },
       review: {
+        id: 9001,
         state: "changes_requested",
         body: "Use a reversible migration",
         user: { login: "carol", type: "User" },
       },
     });
     expect(await getJob(env.ctx, b.jobId)).toMatchObject({ status: "queued", resumeStage: "implementing" });
+  });
+
+  it("re-queues a job for a changes-requested review even when the webhook was missed", async () => {
+    const { team, repo } = await seedTeam(env);
+    const [job] = await env.ctx.db
+      .insert(jobs)
+      .values({
+        teamId: team.id,
+        repoId: repo.id,
+        title: "Fix login",
+        harness: "claude-code",
+        branch: "foundry/fix-login",
+        status: "waiting_on_you",
+        prNumber: 5,
+        prUrl: "https://github.com/acme/app/pull/5",
+      })
+      .returning();
+    const gh = env.gh.repo("acme/app");
+    gh.reviews.set(5, [
+      { id: 101, author: "carol", state: "COMMENTED", body: "Looks close" },
+      { id: 102, author: "carol", state: "CHANGES_REQUESTED", body: "Use a reversible migration" },
+      { id: 103, author: "bugbot[bot]", state: "CHANGES_REQUESTED", body: "Bot nit" },
+    ]);
+
+    expect(await reconcileChangesRequestedReviews(env.ctx)).toEqual([job!.id]);
+    expect(await getJob(env.ctx, job!.id)).toMatchObject({
+      status: "queued",
+      resumeStage: "implementing",
+      lastReviewId: 102,
+    });
+    // The same review is not forwarded to the agent twice.
+    expect(await reconcileChangesRequestedReviews(env.ctx)).toEqual([]);
   });
 
   it("syncs unlinked GitHub App installations onto the current team", async () => {
