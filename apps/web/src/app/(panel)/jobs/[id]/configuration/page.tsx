@@ -24,7 +24,7 @@ export default async function JobConfigurationPage({ params }: { params: Promise
           <div className="eyebrow">{repo.fullName} · job configuration</div>
           <h1>{job.title}</h1>
         </div>
-        <Link className="button" href={`/jobs/${job.id}`}>
+        <Link className="button" href={`/jobs/${job.id}`} style={{ whiteSpace: "nowrap" }}>
           ← Back to job
         </Link>
       </div>
