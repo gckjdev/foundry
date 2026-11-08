@@ -161,7 +161,7 @@ export default async function Repos({ searchParams }: { searchParams: Promise<Re
                     <input
                       name="defaultModel"
                       defaultValue={repo.defaultModel ?? ""}
-                      placeholder="team default"
+                      placeholder="team default — e.g. deepseek/deepseek-chat"
                     />
                   </label>
                   <label>

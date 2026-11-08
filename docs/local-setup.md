@@ -186,6 +186,26 @@ If Authorize leaves you on GitHub’s “You are being redirected…” page, th
 
 If **Repos** is empty after you installed the App, the Setup URL ran before you had a team (or the install cookie expired). Refresh `/repos` or click **Sync from GitHub** — Foundry lists the App’s installations and attaches any that are not already linked. Keep `pnpm dev:webhooks` running so later “add/remove repos” events stay in sync.
 
+### Harness and model
+
+Each job runs on one harness. **Claude Code** takes Anthropic model IDs; **OpenCode** talks to any
+provider you have configured and always names models as `provider/model`.
+
+Set the default on **Settings → Team → Default harness / Default model**. A repo card on **Repos**
+overrides both for that repo, and an issue label overrides them per job: `harness:opencode` and
+`model:deepseek/deepseek-chat`. Leave a model field empty to inherit the next level's default.
+
+| Harness     | Model format                | Examples                                                                                                       |
+| ----------- | --------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Claude Code | Anthropic model ID or alias | `claude-sonnet-4-5`, `claude-haiku-4-5`                                                                        |
+| OpenCode    | `provider/model`            | `anthropic/claude-sonnet-4-5`, `openai/gpt-5.4`, `deepseek/deepseek-chat`, `openrouter/deepseek/deepseek-chat` |
+
+The OpenCode provider prefix is required. A bare name such as `deepseek-flash` fails at job start
+with `Model not found: deepseek-flash/.` — use the provider and model IDs your OpenCode install
+knows, e.g. `deepseek/deepseek-chat` rather than `deepseek-flash`. The provider must also be
+authenticated on the runner machine, either with `opencode auth login` or the matching environment
+variable (`DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, …), which the runner detects.
+
 ### Multiple runners on one computer
 
 One joined runner already detects **both** Claude Code and OpenCode (whichever is installed). Extra daemons are for **separate identities**, not for having both harnesses.
