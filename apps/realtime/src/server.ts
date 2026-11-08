@@ -28,6 +28,17 @@ interface Client {
   alive: boolean;
 }
 
+/** `columns` is stored as a JSON array of changed column names; undefined means "unknown/empty". */
+function parseColumns(value: unknown): string[] | undefined {
+  if (typeof value !== "string" || value === "") return undefined;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function tokenFrom(req: IncomingMessage): string | null {
   const url = new URL(req.url ?? "/", "http://localhost");
   const fromQuery = url.searchParams.get("token");
@@ -138,7 +149,7 @@ export async function startRealtime(opts: {
     pollTimer = setInterval(async () => {
       try {
         const rs = await sqlite.execute({
-          sql: 'select seq, "table", id, team_id, op from _foundry_changes where seq > ? order by seq',
+          sql: 'select seq, "table", id, team_id, op, columns from _foundry_changes where seq > ? order by seq',
           args: [lastSeq],
         });
         for (const row of rs.rows) {
@@ -148,6 +159,7 @@ export async function startRealtime(opts: {
             id: String(row.id),
             team_id: String(row.team_id),
             op: String(row.op),
+            columns: parseColumns(row.columns),
           });
         }
       } catch {

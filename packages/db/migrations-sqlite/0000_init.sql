@@ -129,9 +129,12 @@ CREATE TABLE "jobs" (
 	"ui_changed" integer DEFAULT 0 NOT NULL,
 	"changed_lines" integer DEFAULT 0 NOT NULL,
 	"plan" text,
+	"max_job_minutes" integer,
+	"max_cost_usd" real,
 	"confidence" text,
 	"gate_result" text,
 	"assigned_reviewers" text DEFAULT '[]' NOT NULL,
+	"last_review_id" integer,
 	"status_comment_id" integer,
 	"cost_usd" real DEFAULT 0 NOT NULL,
 	"tokens_in" integer DEFAULT 0 NOT NULL,
@@ -272,7 +275,8 @@ CREATE TABLE "_foundry_changes" (
 	"table" text NOT NULL,
 	"id" text NOT NULL,
 	"team_id" text NOT NULL,
-	"op" text NOT NULL
+	"op" text NOT NULL,
+	"columns" text
 );
 --> statement-breakpoint
 CREATE TRIGGER "jobs_changes_insert" AFTER INSERT ON "jobs"
@@ -282,11 +286,76 @@ BEGIN
 	VALUES ('jobs', CAST(NEW."id" AS TEXT), NEW."team_id", 'INSERT');
 END;
 --> statement-breakpoint
+-- Mirror the Postgres payload's `columns`: the names of columns whose value actually changed, so
+-- clients can ignore cosmetic updates (cost/token counters, the `updated_at` touch). `IS NOT` is
+-- SQLite's null-safe "is different from", matching Postgres `IS DISTINCT FROM`.
 CREATE TRIGGER "jobs_changes_update" AFTER UPDATE ON "jobs"
 FOR EACH ROW
 BEGIN
-	INSERT INTO "_foundry_changes" ("table", "id", "team_id", "op")
-	VALUES ('jobs', CAST(NEW."id" AS TEXT), NEW."team_id", 'UPDATE');
+	INSERT INTO "_foundry_changes" ("table", "id", "team_id", "op", "columns")
+	SELECT
+		'jobs',
+		CAST(NEW."id" AS TEXT),
+		NEW."team_id",
+		'UPDATE',
+		COALESCE((
+			SELECT json_group_array(c) FROM (
+				SELECT 'team_id' AS c WHERE NEW."team_id" IS NOT OLD."team_id"
+				UNION ALL SELECT 'repo_id' WHERE NEW."repo_id" IS NOT OLD."repo_id"
+				UNION ALL SELECT 'kind' WHERE NEW."kind" IS NOT OLD."kind"
+				UNION ALL SELECT 'author_user_id' WHERE NEW."author_user_id" IS NOT OLD."author_user_id"
+				UNION ALL SELECT 'author_login' WHERE NEW."author_login" IS NOT OLD."author_login"
+				UNION ALL SELECT 'source' WHERE NEW."source" IS NOT OLD."source"
+				UNION ALL SELECT 'issue_number' WHERE NEW."issue_number" IS NOT OLD."issue_number"
+				UNION ALL SELECT 'title' WHERE NEW."title" IS NOT OLD."title"
+				UNION ALL SELECT 'body' WHERE NEW."body" IS NOT OLD."body"
+				UNION ALL SELECT 'playbook' WHERE NEW."playbook" IS NOT OLD."playbook"
+				UNION ALL SELECT 'harness' WHERE NEW."harness" IS NOT OLD."harness"
+				UNION ALL SELECT 'model' WHERE NEW."model" IS NOT OLD."model"
+				UNION ALL SELECT 'pinned_runner_name' WHERE NEW."pinned_runner_name" IS NOT OLD."pinned_runner_name"
+				UNION ALL SELECT 'runner_id' WHERE NEW."runner_id" IS NOT OLD."runner_id"
+				UNION ALL SELECT 'origin_runner_id' WHERE NEW."origin_runner_id" IS NOT OLD."origin_runner_id"
+				UNION ALL SELECT 'sticky_runner_id' WHERE NEW."sticky_runner_id" IS NOT OLD."sticky_runner_id"
+				UNION ALL SELECT 'sticky_until' WHERE NEW."sticky_until" IS NOT OLD."sticky_until"
+				UNION ALL SELECT 'worktree_path' WHERE NEW."worktree_path" IS NOT OLD."worktree_path"
+				UNION ALL SELECT 'port_base' WHERE NEW."port_base" IS NOT OLD."port_base"
+				UNION ALL SELECT 'harness_session_id' WHERE NEW."harness_session_id" IS NOT OLD."harness_session_id"
+				UNION ALL SELECT 'status' WHERE NEW."status" IS NOT OLD."status"
+				UNION ALL SELECT 'resume_stage' WHERE NEW."resume_stage" IS NOT OLD."resume_stage"
+				UNION ALL SELECT 'last_completed_stage' WHERE NEW."last_completed_stage" IS NOT OLD."last_completed_stage"
+				UNION ALL SELECT 'brief_ref' WHERE NEW."brief_ref" IS NOT OLD."brief_ref"
+				UNION ALL SELECT 'resume_count' WHERE NEW."resume_count" IS NOT OLD."resume_count"
+				UNION ALL SELECT 'loop_count' WHERE NEW."loop_count" IS NOT OLD."loop_count"
+				UNION ALL SELECT 'branch' WHERE NEW."branch" IS NOT OLD."branch"
+				UNION ALL SELECT 'head_sha' WHERE NEW."head_sha" IS NOT OLD."head_sha"
+				UNION ALL SELECT 'pr_number' WHERE NEW."pr_number" IS NOT OLD."pr_number"
+				UNION ALL SELECT 'pr_url' WHERE NEW."pr_url" IS NOT OLD."pr_url"
+				UNION ALL SELECT 'ci_status' WHERE NEW."ci_status" IS NOT OLD."ci_status"
+				UNION ALL SELECT 'ai_review_status' WHERE NEW."ai_review_status" IS NOT OLD."ai_review_status"
+				UNION ALL SELECT 'ui_changed' WHERE NEW."ui_changed" IS NOT OLD."ui_changed"
+				UNION ALL SELECT 'changed_lines' WHERE NEW."changed_lines" IS NOT OLD."changed_lines"
+				UNION ALL SELECT 'plan' WHERE NEW."plan" IS NOT OLD."plan"
+				UNION ALL SELECT 'max_job_minutes' WHERE NEW."max_job_minutes" IS NOT OLD."max_job_minutes"
+				UNION ALL SELECT 'max_cost_usd' WHERE NEW."max_cost_usd" IS NOT OLD."max_cost_usd"
+				UNION ALL SELECT 'confidence' WHERE NEW."confidence" IS NOT OLD."confidence"
+				UNION ALL SELECT 'gate_result' WHERE NEW."gate_result" IS NOT OLD."gate_result"
+				UNION ALL SELECT 'assigned_reviewers' WHERE NEW."assigned_reviewers" IS NOT OLD."assigned_reviewers"
+				UNION ALL SELECT 'last_review_id' WHERE NEW."last_review_id" IS NOT OLD."last_review_id"
+				UNION ALL SELECT 'status_comment_id' WHERE NEW."status_comment_id" IS NOT OLD."status_comment_id"
+				UNION ALL SELECT 'cost_usd' WHERE NEW."cost_usd" IS NOT OLD."cost_usd"
+				UNION ALL SELECT 'tokens_in' WHERE NEW."tokens_in" IS NOT OLD."tokens_in"
+				UNION ALL SELECT 'tokens_out' WHERE NEW."tokens_out" IS NOT OLD."tokens_out"
+				UNION ALL SELECT 'failure_reason' WHERE NEW."failure_reason" IS NOT OLD."failure_reason"
+				UNION ALL SELECT 'created_at' WHERE NEW."created_at" IS NOT OLD."created_at"
+				UNION ALL SELECT 'claimed_at' WHERE NEW."claimed_at" IS NOT OLD."claimed_at"
+				UNION ALL SELECT 'started_at' WHERE NEW."started_at" IS NOT OLD."started_at"
+				UNION ALL SELECT 'finished_at' WHERE NEW."finished_at" IS NOT OLD."finished_at"
+				UNION ALL SELECT 'reverted_at' WHERE NEW."reverted_at" IS NOT OLD."reverted_at"
+				UNION ALL SELECT 'pr_title' WHERE NEW."pr_title" IS NOT OLD."pr_title"
+				UNION ALL SELECT 'updated_at' WHERE NEW."updated_at" IS NOT OLD."updated_at"
+			)
+		), '[]')
+	;
 END;
 --> statement-breakpoint
 CREATE TRIGGER "jobs_changes_delete" AFTER DELETE ON "jobs"

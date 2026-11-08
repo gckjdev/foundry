@@ -1,5 +1,6 @@
+import { events, jobs } from "@foundry/db";
 import { describe, expect, it } from "vitest";
-import { teamMetrics } from "./metrics";
+import { capacityCard, teamMetrics } from "./metrics";
 import { createSqliteTestEnv, seedTeam } from "./testing";
 
 describe("metrics (sqlite)", () => {
@@ -14,6 +15,48 @@ describe("metrics (sqlite)", () => {
       expect(m.byOs).toEqual([]);
       expect(m.byHarness).toEqual([]);
       expect(m.runnerUtilization).toEqual([]);
+    } finally {
+      await env.drop();
+    }
+  });
+
+  it("computes the capacity card without window functions", async () => {
+    const env = await createSqliteTestEnv();
+    try {
+      const { ctx } = env;
+      const { team, repo } = await seedTeam(env);
+      const now = ctx.now().getTime();
+      const [job] = await ctx.db
+        .insert(jobs)
+        .values({
+          teamId: team.id,
+          repoId: repo.id,
+          title: "Fix",
+          harness: "claude-code",
+          branch: "foundry/c",
+        })
+        .returning();
+      await ctx.db.insert(events).values([
+        {
+          jobId: job!.id,
+          teamId: team.id,
+          kind: "stage_changed",
+          ts: new Date(now - 5 * 3600_000),
+          payload: { kind: "stage_changed", to: "queued" },
+        },
+        {
+          jobId: job!.id,
+          teamId: team.id,
+          kind: "stage_changed",
+          ts: new Date(now - 4 * 3600_000),
+          payload: { kind: "stage_changed", from: "queued", to: "running" },
+        },
+      ]);
+
+      const card = await capacityCard(ctx, team.id, 7);
+      expect(card.hoursNoOnlineRunner).toBeCloseTo(1, 1);
+      expect(card.hoursQueueWithNoRunner).toBeCloseTo(1, 1);
+      expect(card.estimatedHoursSavedBySharedRunner).toBeCloseTo(1, 1);
     } finally {
       await env.drop();
     }

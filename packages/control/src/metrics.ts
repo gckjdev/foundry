@@ -1,5 +1,5 @@
 import { events, jobs, memberships, questions, runners } from "@foundry/db";
-import { and, count, eq, gte, isNotNull, sql } from "drizzle-orm";
+import { and, count, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 import type { ControlContext } from "./context";
 
 export interface MetricsFilter {
@@ -87,6 +87,74 @@ export interface CapacityCard {
  * hours it would have saved.
  */
 export async function capacityCard(ctx: ControlContext, teamId: string, days = 7): Promise<CapacityCard> {
+  return ctx.dialect === "sqlite"
+    ? capacityCardSqlite(ctx, teamId, days)
+    : capacityCardPostgres(ctx, teamId, days);
+}
+
+/**
+ * SQLite: same number, computed in TS. The Postgres path does this with `::timestamptz` casts,
+ * `payload->>`, `extract(epoch …)` and window functions — none of which SQLite has — so fetch the
+ * team's `stage_changed` events and merge the queue-stay intervals here instead.
+ */
+async function capacityCardSqlite(ctx: ControlContext, teamId: string, days: number): Promise<CapacityCard> {
+  const now = ctx.now();
+  const sinceMs = now.getTime() - days * 24 * 3600_000;
+  const untilMs = now.getTime();
+
+  const rows = await ctx.db
+    .select({ id: events.id, jobId: events.jobId, ts: events.ts, payload: events.payload })
+    .from(events)
+    .where(and(eq(events.teamId, teamId), eq(events.kind, "stage_changed"), lt(events.ts, now)));
+
+  const byJob = new Map<string, { id: number; ts: number; payload: EventPayload }[]>();
+  for (const r of rows) {
+    const list = byJob.get(r.jobId) ?? [];
+    list.push({ id: r.id, ts: r.ts.getTime(), payload: r.payload as EventPayload });
+    byJob.set(r.jobId, list);
+  }
+
+  // Every stage_changed into `queued` opens an interval; the next stage_changed out of `queued`
+  // for the same job closes it (no closing event => still queued at `now`).
+  const intervals: { s: number; e: number }[] = [];
+  for (const list of byJob.values()) {
+    list.sort((a, b) => a.id - b.id);
+    for (let i = 0; i < list.length; i++) {
+      const open = list[i]!;
+      if (open.payload.to !== "queued") continue;
+      const close = list.find((n, j) => j > i && n.payload.from === "queued");
+      const s = Math.max(open.ts, sinceMs);
+      const e = Math.min(close ? close.ts : untilMs, untilMs);
+      if (e > s) intervals.push({ s, e });
+    }
+  }
+
+  // Clip is done above; now merge overlapping intervals (the pg `islands`/`merged` CTEs) and sum.
+  intervals.sort((a, b) => a.s - b.s || a.e - b.e);
+  const merged: { s: number; e: number }[] = [];
+  let cur = intervals[0];
+  for (const iv of intervals) {
+    if (!cur) {
+      cur = iv;
+      continue;
+    }
+    if (iv.s <= cur.e) cur.e = Math.max(cur.e, iv.e);
+    else {
+      merged.push(cur);
+      cur = iv;
+    }
+  }
+  if (cur) merged.push(cur);
+
+  const hours = Math.max(0, merged.reduce((sum, iv) => sum + (iv.e - iv.s), 0) / 3_600_000);
+  return {
+    hoursNoOnlineRunner: hours,
+    hoursQueueWithNoRunner: hours,
+    estimatedHoursSavedBySharedRunner: hours,
+  };
+}
+
+async function capacityCardPostgres(ctx: ControlContext, teamId: string, days = 7): Promise<CapacityCard> {
   const now = ctx.now();
   const since = new Date(now.getTime() - days * 24 * 3600_000).toISOString();
   const until = now.toISOString();

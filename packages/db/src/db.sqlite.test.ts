@@ -95,4 +95,33 @@ describe("sqlite driver", () => {
     expect(rows.rows.length).toBeGreaterThanOrEqual(1);
     expect(rows.rows[0]).toMatchObject({ table: "jobs", id: job!.id, team_id: team!.id, op: "INSERT" });
   });
+
+  it("records the names of columns changed by a jobs update", async () => {
+    const [team] = await t.db.insert(teams).values({ name: "cols" }).returning();
+    const [repo] = await t.db
+      .insert(repos)
+      .values({ teamId: team!.id, ghInstallationId: 1, ghRepoId: 30, fullName: "cols/app" })
+      .returning();
+    const [job] = await t.db
+      .insert(jobs)
+      .values({
+        teamId: team!.id,
+        repoId: repo!.id,
+        title: "Fix",
+        harness: "claude-code",
+        branch: "foundry/z",
+      })
+      .returning();
+
+    await t.db.update(jobs).set({ title: "Fix 2" }).where(eq(jobs.id, job!.id));
+
+    const rows = await t.sqlite!.execute(
+      'select "columns" from _foundry_changes where id = ? and op = ? order by seq',
+      [job!.id, "UPDATE"],
+    );
+    const sets = rows.rows.map((r) => JSON.parse(String(r.columns)) as string[]);
+    // The update itself reports the meaningful change; the `jobs_touch` bump reports `updated_at`.
+    expect(sets.some((c) => c.includes("title"))).toBe(true);
+    expect(sets.some((c) => c.includes("updated_at"))).toBe(true);
+  });
 });

@@ -60,7 +60,48 @@ describe("realtime sqlite polling", () => {
       table: "jobs",
       id: expect.any(String),
       op: "INSERT",
+      columns: [],
     });
+    a.ws.close();
+  });
+
+  it("broadcasts the changed column names for a jobs update", async () => {
+    db = await createSqliteTestDatabase();
+    const [team] = await db.db.insert(teams).values({ name: "rt" }).returning();
+
+    rt = await startRealtime({ sql: null, sqlite: db.sqlite, secret: SECRET, port: 0, pollIntervalMs: 20 });
+    const port = (rt.server.address() as AddressInfo).port;
+    const a = await connect(`ws://localhost:${port}/?token=${token(team!.id)}`);
+    await until(() => a.messages.length > 0); // hello
+
+    const [repo] = await db.db
+      .insert(repos)
+      .values({ teamId: team!.id, ghInstallationId: 1, ghRepoId: 98, fullName: "rt/app" })
+      .returning();
+    const [job] = await db.db
+      .insert(jobs)
+      .values({
+        teamId: team!.id,
+        repoId: repo!.id,
+        title: "Fix",
+        harness: "claude-code",
+        branch: "foundry/x",
+      })
+      .returning();
+
+    await db.sqlite!.execute("update jobs set title = ? where id = ?", ["Fix 2", job!.id]);
+
+    await until(() =>
+      a.messages.some(
+        (m) =>
+          (m as { type: string; op?: string; columns?: string[] }).type === "change" &&
+          (m as { op?: string }).op === "UPDATE",
+      ),
+    );
+    const update = a.messages.find(
+      (m) => (m as { type: string; op?: string }).type === "change" && (m as { op?: string }).op === "UPDATE",
+    ) as { columns: string[] };
+    expect(update.columns).toContain("title");
     a.ws.close();
   });
 });
