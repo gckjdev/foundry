@@ -381,10 +381,14 @@ export class JobRunner {
   private track(session: HarnessSession): void {
     this.session = session;
     if (this.stopReason) void this.adapter.stop(session).catch(() => {});
-    void session.id.then((id) => {
-      this.sessionId = id;
-      this.saveLocal("running");
-    });
+    void session.id
+      .then((id) => {
+        this.sessionId = id;
+        this.saveLocal("running");
+      })
+      // A job revoked before the harness reports an id never gets one; the rejection is the
+      // harness's signal to whoever awaits `id`, not an error this process should exit on.
+      .catch(() => undefined);
   }
 
   private async drive(): Promise<JobOutcome> {

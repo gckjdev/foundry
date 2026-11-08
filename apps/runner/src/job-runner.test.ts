@@ -1,7 +1,15 @@
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FakeHarness, type FakeTurn } from "@foundry/harness-core";
+import {
+  AsyncQueue,
+  FakeHarness,
+  type FakeTurn,
+  type HarnessAdapter,
+  type HarnessEvent,
+  type HarnessSession,
+  type SessionResult,
+} from "@foundry/harness-core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { JobRunner, type JobRunnerDeps } from "./job-runner";
 import { PortLeases } from "./ports";
@@ -65,7 +73,7 @@ beforeEach(() => {
 afterEach(() => {});
 
 function deps(
-  harness: FakeHarness,
+  harness: HarnessAdapter,
   screenshot?: (url: string, path: string) => Promise<void>,
 ): JobRunnerDeps {
   return {
@@ -310,6 +318,39 @@ describe("JobRunner", () => {
     ]);
     const portable = claimedJob({ ...job, resumeMode: "portable", resumeStage: "implementing" });
     expect(await new JobRunner(deps(other), portable).run()).toBe("pr_opened");
+  });
+
+  it("revokes a job whose harness is stopped before it reports a session id", async () => {
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => (started = resolve));
+    let stopSession!: () => void;
+    const harness: HarnessAdapter = {
+      id: "claude-code",
+      detect: async () => ({ installed: true, authOk: true }),
+      start: async (): Promise<HarnessSession> => {
+        const events = new AsyncQueue<HarnessEvent>();
+        let finish!: (result: SessionResult) => void;
+        const done = new Promise<SessionResult>((resolve) => (finish = resolve));
+        let rejectId!: (err: Error) => void;
+        const id = new Promise<string>((_, reject) => (rejectId = reject));
+        stopSession = () => {
+          rejectId(new Error("session ended before it started"));
+          events.close();
+          finish({ status: "stopped" });
+        };
+        started();
+        return { id, events, done };
+      },
+      resume: async () => {
+        throw new Error("not used");
+      },
+      stop: async () => stopSession(),
+    };
+    const runner = new JobRunner(deps(harness), claimedJob());
+    const running = runner.run();
+    await ready;
+    await runner.revoke();
+    expect(await running).toBe("revoked");
   });
 
   it("fails a job that exceeds the cost budget", async () => {
