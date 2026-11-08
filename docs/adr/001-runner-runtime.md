@@ -54,7 +54,10 @@ The per-job `foundry` MCP server must run as a stdio subprocess that the harness
 ## Consequences
 
 - Release matrix: `bun-darwin-arm64`, `bun-darwin-x64`, `bun-linux-x64`, `bun-linux-arm64`,
-  cross-compiled from one CI job (`apps/runner/scripts/build-release.ts`).
+  `bun-windows-x64`, cross-compiled from one CI job (`apps/runner/scripts/build-release.ts`).
+  On Windows the runner spawns recipe and harness commands through PowerShell (preferring `pwsh`,
+  falling back to `powershell.exe`) and serves the per-job MCP bridge over `127.0.0.1:<port>` rather
+  than a Unix socket.
 - `foundry doctor` reports Claude Code as not installed in a compiled runner without the `claude`
   CLI; the fix is `npm i -g @anthropic-ai/claude-code` or the native installer.
 - If the SDK and CLI versions drift too far apart, pin the engine with `FOUNDRY_CLAUDE_PATH`.

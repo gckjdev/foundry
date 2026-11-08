@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { HeartbeatResponseSchema } from "./api";
 import { parseBrief, renderBrief } from "./brief";
 import {
   findMarker,
@@ -9,7 +10,7 @@ import {
   renderQuestionComment,
 } from "./comments";
 import { parseUnifiedDiff } from "./diff";
-import { parsePolicyYaml } from "./policy";
+import { DEFAULT_POLICY, effectiveMaxCostUsd, effectiveMaxJobMinutes, parsePolicyYaml } from "./policy";
 import { expandRecipeVars, parseRecipeYaml } from "./recipe";
 import { isUiChange, matchRiskRules, splitReviewers } from "./risk";
 import { assertTransition, canTransition, stageLabel } from "./states";
@@ -70,6 +71,20 @@ risk_rules:
   });
 });
 
+describe("policy", () => {
+  it("defaults max job minutes to 60 and lets a job override it", () => {
+    expect(effectiveMaxJobMinutes(null, DEFAULT_POLICY)).toBe(60);
+    expect(effectiveMaxJobMinutes(90, DEFAULT_POLICY)).toBe(90);
+    expect(effectiveMaxJobMinutes(null, { max_job_minutes: 30 })).toBe(30);
+  });
+
+  it("defaults max cost to $10 and lets a job override it", () => {
+    expect(effectiveMaxCostUsd(null, DEFAULT_POLICY)).toBe(10);
+    expect(effectiveMaxCostUsd(25, DEFAULT_POLICY)).toBe(25);
+    expect(effectiveMaxCostUsd(null, { max_cost_per_job_usd: 5 })).toBe(5);
+  });
+});
+
 describe("recipe", () => {
   it("parses the spec example and expands vars", () => {
     const r = parseRecipeYaml(`
@@ -85,6 +100,11 @@ system_deps: [playwright-chromium]
 `);
     expect(r.checks[0]).toEqual({ name: "lint", run: "bun run lint", timeout_sec: 900 });
     expect(expandRecipeVars(r.dev_server!.run, { FOUNDRY_PORT: "41000" })).toBe("bun run dev --port 41000");
+  });
+
+  it("parses a windows os constraint", () => {
+    expect(parseRecipeYaml("os: [windows]\nchecks: []").os).toEqual(["windows"]);
+    expect(parseRecipeYaml("os: [macos, linux]\nchecks: []").os).toEqual(["macos", "linux"]);
   });
 });
 
@@ -131,6 +151,20 @@ describe("tickets", () => {
     expect(jobBranchName("0123456789ab", "Mark recipes as Favorites!")).toBe(
       "foundry/01234567-mark-recipes-as-favorites",
     );
+  });
+});
+
+describe("heartbeat response", () => {
+  it("parses keepJobIds", () => {
+    const res = HeartbeatResponseSchema.parse({
+      realtimeUrl: "ws://x",
+      realtimeToken: "t",
+      draining: false,
+      revokedJobIds: ["a"],
+      keepJobIds: ["b"],
+      repos: [],
+    });
+    expect(res.keepJobIds).toEqual(["b"]);
   });
 });
 

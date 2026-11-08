@@ -104,6 +104,12 @@ export async function heartbeat(
     })
     .where(eq(runners.id, runner.id));
 
+  const keepJobs = await ctx.db
+    .select({ id: jobs.id, maxJobMinutes: jobs.maxJobMinutes, maxCostUsd: jobs.maxCostUsd })
+    .from(jobs)
+    .where(and(eq(jobs.runnerId, runner.id), inArray(jobs.status, [...RUNNING_STATUSES, "needs_input"])));
+  const keepJobIds = keepJobs.map((j) => j.id);
+
   let revokedJobIds: string[] = [];
   if (req.runningJobIds.length > 0) {
     const mine = await ctx.db
@@ -126,6 +132,12 @@ export async function heartbeat(
     realtimeToken: realtimeToken(ctx, { teamId: runner.teamId, sub: runner.id, kind: "runner" }),
     draining: runner.status === "draining",
     revokedJobIds,
+    keepJobIds,
+    jobLimits: keepJobs.map((j) => ({
+      jobId: j.id,
+      maxJobMinutes: j.maxJobMinutes,
+      maxCostUsd: j.maxCostUsd,
+    })),
     repos: teamRepos.map((r) => ({
       id: r.id,
       fullName: r.fullName,

@@ -13,7 +13,7 @@ import {
   TERMINAL_STATUSES,
   TRIGGER_LABEL,
 } from "@foundry/shared";
-import { and, asc, eq, isNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, notInArray, sql } from "drizzle-orm";
 import { bestEffort, type ControlContext } from "./context";
 import { repoRef, syncJobToGitHub } from "./github-sync";
 
@@ -23,6 +23,44 @@ export async function getJob(ctx: ControlContext, jobId: string): Promise<Job> {
   const job = await ctx.db.query.jobs.findFirst({ where: eq(jobs.id, jobId) });
   if (!job) throw new NotFoundError(`job ${jobId} not found`);
   return job;
+}
+
+/** Set (or, with `null`, clear) a job's own wall-clock limit in minutes. */
+export async function setJobMaxMinutes(
+  ctx: ControlContext,
+  teamId: string,
+  jobId: string,
+  maxJobMinutes: number | null,
+): Promise<Job> {
+  if (maxJobMinutes !== null && (!Number.isInteger(maxJobMinutes) || maxJobMinutes < 1)) {
+    throw new RangeError("max execution time must be a positive whole number of minutes");
+  }
+  const [row] = await ctx.db
+    .update(jobs)
+    .set({ maxJobMinutes, updatedAt: ctx.now() })
+    .where(and(eq(jobs.id, jobId), eq(jobs.teamId, teamId)))
+    .returning();
+  if (!row) throw new NotFoundError(`job ${jobId} not found`);
+  return row;
+}
+
+/** Set (or, with `null`, clear) a job's own max cost in US dollars. */
+export async function setJobMaxCost(
+  ctx: ControlContext,
+  teamId: string,
+  jobId: string,
+  maxCostUsd: number | null,
+): Promise<Job> {
+  if (maxCostUsd !== null && (!Number.isFinite(maxCostUsd) || maxCostUsd <= 0)) {
+    throw new RangeError("max cost must be a positive number of US dollars");
+  }
+  const [row] = await ctx.db
+    .update(jobs)
+    .set({ maxCostUsd, updatedAt: ctx.now() })
+    .where(and(eq(jobs.id, jobId), eq(jobs.teamId, teamId)))
+    .returning();
+  if (!row) throw new NotFoundError(`job ${jobId} not found`);
+  return row;
 }
 
 export async function recordEvents(
@@ -119,14 +157,44 @@ export async function activeJobForIssue(ctx: ControlContext, repoId: string, iss
   });
 }
 
-/** Create a job for an issue labeled `foundry`. Idempotent per issue while a job is active. */
+/** Any job for an issue, newest first. The `foundry` trigger label outlives a finished job. */
+async function anyJobForIssue(ctx: ControlContext, repoId: string, issueNumber: number) {
+  return ctx.db.query.jobs.findFirst({
+    where: and(eq(jobs.repoId, repoId), eq(jobs.issueNumber, issueNumber)),
+    orderBy: desc(jobs.createdAt),
+  });
+}
+
+/** Statuses where the job is no longer the live attempt for its issue. */
+const FINISHED_STATUSES: readonly string[] = ["merged", "cancelled", "failed"];
+
+/**
+ * Create a job for an issue labeled `foundry`. One issue keeps one card on the board: a live job
+ * is reused, and re-applying the label to a stopped job retries that job in place. Only a merged
+ * job starts a new attempt, because a merged job cannot be re-queued.
+ */
 export async function createJobFromIssue(
   ctx: ControlContext,
   repoId: string,
   issue: Pick<GhIssue, "number" | "title" | "body" | "author" | "labels">,
 ): Promise<Job> {
-  const existing = await activeJobForIssue(ctx, repoId, issue.number);
-  if (existing) return existing;
+  const live = await ctx.db.query.jobs.findFirst({
+    where: and(
+      eq(jobs.repoId, repoId),
+      eq(jobs.issueNumber, issue.number),
+      notInArray(jobs.status, [...FINISHED_STATUSES]),
+    ),
+  });
+  if (live) return live;
+  const previous = await anyJobForIssue(ctx, repoId, issue.number);
+  if (previous && previous.status !== "merged") {
+    // Re-labelling a cancelled/failed issue is a retry, not a second job for the same issue.
+    const revived = await transitionJob(ctx, previous.id, "queued", {
+      reason: "foundry label re-applied",
+      patch: { resumeStage: "triage", failureReason: null, loopCount: 0 },
+    });
+    if (revived) return revived;
+  }
   const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, repoId) });
   if (!repo) throw new NotFoundError(`repo ${repoId} not found`);
   const team = await ctx.db.query.teams.findFirst({ where: eq(teams.id, repo.teamId) });
@@ -181,7 +249,9 @@ export async function reconcileLabeledIssues(ctx: ControlContext): Promise<strin
       continue;
     }
     for (const issue of issues) {
-      const existing = await activeJobForIssue(ctx, repo.id, issue.number);
+      // The trigger label stays on the issue after a job finishes, so any existing job (cancelled
+      // included) means this label is not a new request. Retrying revives that job instead.
+      const existing = await anyJobForIssue(ctx, repo.id, issue.number);
       if (existing) continue;
       const job = await createJobFromIssue(ctx, repo.id, issue);
       created.push(job.id);

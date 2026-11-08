@@ -1,14 +1,14 @@
 import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { resolveGitHubHostConfig } from "@foundry/shared/github-host";
 import { git, gitOut } from "./git";
 
 /** Paths the runner writes into worktrees that must never be committed. */
 const LOCAL_EXCLUDES = [".env", ".foundry-local/"];
 
 export function remoteUrl(fullName: string): string {
-  const base = (process.env.FOUNDRY_GIT_BASE ?? "https://github.com").replace(/\/$/, "");
-  return `${base}/${fullName}.git`;
+  return `${resolveGitHubHostConfig().gitBase}/${fullName}.git`;
 }
 
 function slug(fullName: string): string {

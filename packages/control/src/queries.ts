@@ -3,7 +3,7 @@ import { and, asc, desc, eq, gt, inArray, isNull, notInArray, or, sql } from "dr
 import { diagnoseQueue } from "./claim";
 import type { ControlContext } from "./context";
 import { reconcileLabeledIssues } from "./jobs";
-import { syncMergedPullRequest } from "./merge-gate";
+import { syncChangesRequestedReview, syncMergedPullRequest } from "./merge-gate";
 
 export interface BoardJob {
   job: Job;
@@ -12,7 +12,14 @@ export interface BoardJob {
   waitingReason: string | null;
 }
 
-/** Jobs for the board: everything active plus the last week's finished work. */
+/** Statuses the board files under "Stopped" (plus merged, which is "Done"). */
+const FINISHED_STATUSES: readonly string[] = ["merged", "cancelled", "failed"];
+
+/**
+ * Jobs for the board: everything active plus the last week's finished work.
+ * One issue has at most one card: when a cancelled/failed job and a newer live job both exist
+ * (retry, or an explicit re-label), the live job is the one shown.
+ */
 export async function boardJobs(ctx: ControlContext, teamId: string): Promise<BoardJob[]> {
   await reconcileLabeledIssues(ctx);
   const weekAgo = new Date(ctx.now().getTime() - 7 * 24 * 3600_000);
@@ -30,7 +37,26 @@ export async function boardJobs(ctx: ControlContext, teamId: string): Promise<Bo
     .orderBy(desc(jobs.updatedAt))
     .limit(300);
   const diagnosis = new Map((await diagnoseQueue(ctx, teamId)).map((d) => [d.jobId, d.reason]));
-  return rows.map((r) => ({ ...r, waitingReason: diagnosis.get(r.job.id) ?? null }));
+  const byIssue = new Map<string, (typeof rows)[number]>();
+  const withoutIssue: (typeof rows)[number][] = [];
+  for (const row of rows) {
+    if (row.job.issueNumber === null) {
+      withoutIssue.push(row);
+      continue;
+    }
+    const key = `${row.job.repoId}:${row.job.issueNumber}`;
+    const kept = byIssue.get(key);
+    // Rows are newest first, so keep the first unless it is finished and a live job exists.
+    if (
+      !kept ||
+      (FINISHED_STATUSES.includes(kept.job.status) && !FINISHED_STATUSES.includes(row.job.status))
+    ) {
+      byIssue.set(key, row);
+    }
+  }
+  return [...byIssue.values(), ...withoutIssue]
+    .sort((a, b) => b.job.updatedAt.getTime() - a.job.updatedAt.getTime())
+    .map((r) => ({ ...r, waitingReason: diagnosis.get(r.job.id) ?? null }));
 }
 
 export async function jobDetail(ctx: ControlContext, teamId: string, jobId: string) {
@@ -46,6 +72,9 @@ export async function jobDetail(ctx: ControlContext, teamId: string, jobId: stri
   if (synced) {
     const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, row.repo.id) });
     row = { job: synced, repo: repo ?? row.repo, runnerName: row.runnerName };
+  } else {
+    const requeued = await syncChangesRequestedReview(ctx, row.job);
+    if (requeued) row = { job: requeued, repo: row.repo, runnerName: row.runnerName };
   }
   const [timeline, ev, qs] = await Promise.all([
     ctx.db.select().from(events).where(eq(events.jobId, jobId)).orderBy(asc(events.id)).limit(2000),
@@ -65,13 +94,14 @@ export async function eventsSince(ctx: ControlContext, teamId: string, jobId: st
 }
 
 /**
- * Per-member inbox (spec 5.7/5.12): questions addressed to me, PRs handed to me, my own tickets
- * in flight, and the unassigned lane of handovers nobody was routed to.
+ * Per-member inbox (spec 5.6/5.7/5.12): questions addressed to me, PRs handed to me, my own tickets
+ * in flight — including queued ones blocked by the scheduler — and the unassigned lane of handovers
+ * nobody was routed to.
  */
 export async function inbox(ctx: ControlContext, teamId: string, userId: string) {
   await reconcileLabeledIssues(ctx);
   const user = await ctx.db.query.users.findFirst({ where: eq(users.id, userId) });
-  if (!user) return { questions: [], reviews: [], mine: [], unassigned: [] };
+  if (!user) return { questions: [], reviews: [], mine: [], unassigned: [], blocked: [] };
   const login = user.ghLogin;
   const [openQuestions, handovers, mine] = await Promise.all([
     ctx.db
@@ -99,11 +129,20 @@ export async function inbox(ctx: ControlContext, teamId: string, userId: string)
       .orderBy(desc(jobs.updatedAt)),
   ]);
   const routedTo = (j: Job) => ((j.assignedReviewers as string[]) ?? []).map((r) => r.toLowerCase());
+  const queuedMine = mine.filter((j) => j.status === "queued");
+  const reasons = new Map<string, string | null>(
+    queuedMine.length > 0 ? (await diagnoseQueue(ctx, teamId)).map((d) => [d.jobId, d.reason]) : [],
+  );
+  const blocked = queuedMine.flatMap((job) => {
+    const reason = reasons.get(job.id);
+    return reason ? [{ job, reason }] : [];
+  });
   return {
     questions: openQuestions,
     reviews: handovers.filter((j) => routedTo(j).includes(login)),
     mine,
     unassigned: handovers.filter((j) => routedTo(j).length === 0),
+    blocked,
   };
 }
 

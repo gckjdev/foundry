@@ -1,13 +1,15 @@
-import { jobs, repos, teams } from "@foundry/db";
+import { events, jobs, repos, teams, users } from "@foundry/db";
 import { TEST_DATABASE_URL } from "@foundry/db/testing";
 import { stageLabel } from "@foundry/shared";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { claimJob } from "./claim";
 import { processWebhook, storeWebhook } from "./ingest";
-import { getJob, reconcileLabeledIssues } from "./jobs";
-import { evaluateJobGate, reconcileOpenPullRequests } from "./merge-gate";
+import { cancelJob, getJob, reconcileLabeledIssues, retryJob, setJobMaxCost, setJobMaxMinutes } from "./jobs";
+import { evaluateJobGate, reconcileChangesRequestedReviews, reconcileOpenPullRequests } from "./merge-gate";
+import { capacityCard } from "./metrics";
 import { openPullRequest } from "./prs";
+import { boardJobs, inbox } from "./queries";
 import { answerFromCheckbox } from "./questions";
 import { runnerAsk, runnerConfidence, runnerEvidence, runnerStage } from "./runner-api";
 import { createJoinToken, heartbeat, joinRunner } from "./runners";
@@ -102,6 +104,191 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
         maxConcurrency: 1,
       }),
     ).rejects.toThrow();
+  });
+
+  it("shows my queued jobs blocked without a runner, and only mine", async () => {
+    const { team, repo, alice } = await seedTeam(env);
+    const [bob] = await env.ctx.db
+      .insert(users)
+      .values({ ghLogin: "bob", email: "bob@acme.test" })
+      .returning();
+    const insert = async (title: string, authorId: string, authorLogin: string) => {
+      const [job] = await env.ctx.db
+        .insert(jobs)
+        .values({
+          teamId: team.id,
+          repoId: repo.id,
+          title,
+          harness: "claude-code",
+          branch: `foundry/${crypto.randomUUID()}`,
+          authorUserId: authorId,
+          authorLogin,
+        })
+        .returning();
+      return job!;
+    };
+    const mine = await insert("Blocked for alice", alice.id, "alice");
+    const theirs = await insert("Blocked for bob", bob!.id, "bob");
+
+    // No runner has joined the team, so the queued jobs cannot be claimed.
+    const aliceBox = await inbox(env.ctx, team.id, alice.id);
+    expect(aliceBox.blocked).toHaveLength(1);
+    expect(aliceBox.blocked[0]).toMatchObject({
+      job: { id: mine.id, status: "queued" },
+      reason: "no runners joined",
+    });
+
+    const bobBox = await inbox(env.ctx, team.id, bob!.id);
+    expect(bobBox.blocked.map((b) => b.job.id)).toEqual([theirs.id]);
+  });
+
+  it("reports the hours the queue had no online runner", async () => {
+    const { team, repo } = await seedTeam(env);
+    const now = env.ctx.now();
+    const hoursAgo = (h: number) => new Date(now.getTime() - h * 3600_000);
+    const insertJob = async (title: string) => {
+      const [job] = await env.ctx.db
+        .insert(jobs)
+        .values({
+          teamId: team.id,
+          repoId: repo.id,
+          title,
+          harness: "claude-code",
+          branch: `foundry/${crypto.randomUUID()}`,
+        })
+        .returning();
+      return job!;
+    };
+    const event = (jobId: string, at: Date, from: string | null, to: string) =>
+      env.ctx.db.insert(events).values({
+        jobId,
+        teamId: team.id,
+        ts: at,
+        kind: "stage_changed",
+        stage: to,
+        payload: { kind: "stage_changed", from, to },
+      });
+
+    // No runner joined, so the queued job has had nobody to pick it up for six hours.
+    const waited = await insertJob("Waited overnight");
+    // A second job queued and claimed inside that interval: the union must not double-count it.
+    const claimed = await insertJob("Claimed later");
+    await event(waited.id, hoursAgo(6), null, "queued");
+    await event(claimed.id, hoursAgo(5), null, "queued");
+    await event(claimed.id, hoursAgo(3), "queued", "triage");
+
+    const card = await capacityCard(env.ctx, team.id);
+    expect(card.hoursNoOnlineRunner).toBeCloseTo(6, 1);
+    expect(card.hoursQueueWithNoRunner).toBeCloseTo(6, 1);
+    expect(card.estimatedHoursSavedBySharedRunner).toBeCloseTo(6, 1);
+  });
+
+  it("reports keepJobIds for needs_input and in-progress jobs it still owns", async () => {
+    const { team, repo } = await seedTeam(env);
+    const runner = await seedRunner(env, team.id, repo.id, { name: "alice-mbp" });
+    const other = await seedRunner(env, team.id, repo.id, { name: "office-mini" });
+    const insert = async (status: string, runnerId: string | null) => {
+      const [job] = await env.ctx.db
+        .insert(jobs)
+        .values({
+          teamId: team.id,
+          repoId: repo.id,
+          title: `Job ${status}`,
+          harness: "claude-code",
+          branch: `foundry/${crypto.randomUUID()}`,
+          status,
+          runnerId,
+        })
+        .returning();
+      return job!;
+    };
+    const parked = await insert("needs_input", runner.id);
+    const running = await insert("verifying", runner.id);
+    await insert("queued", null);
+    await insert("needs_input", other.id);
+
+    const hb = await heartbeat(env.ctx, runner, {
+      cpu: 10,
+      memMb: 32000,
+      diskFreeMb: 100000,
+      onAcPower: true,
+      accepting: true,
+      runningJobIds: [running.id],
+      harnesses: [{ id: "claude-code", installed: true, authOk: true }],
+      maxConcurrency: 1,
+      version: "0.1.0",
+    });
+    expect([...hb.keepJobIds].sort()).toEqual([parked.id, running.id].sort());
+    expect(hb.revokedJobIds).toEqual([]);
+  });
+
+  it("saves a per-job max execution time and reports it in heartbeats", async () => {
+    const { team, repo } = await seedTeam(env);
+    const runner = await seedRunner(env, team.id, repo.id, { name: "alice-mbp" });
+    const [job] = await env.ctx.db
+      .insert(jobs)
+      .values({
+        teamId: team.id,
+        repoId: repo.id,
+        title: "Long job",
+        harness: "claude-code",
+        branch: `foundry/${crypto.randomUUID()}`,
+        status: "implementing",
+        runnerId: runner.id,
+      })
+      .returning();
+
+    await setJobMaxMinutes(env.ctx, team.id, job!.id, 90);
+    expect((await getJob(env.ctx, job!.id)).maxJobMinutes).toBe(90);
+    await expect(setJobMaxMinutes(env.ctx, crypto.randomUUID(), job!.id, 30)).rejects.toThrow();
+
+    const hb = await heartbeat(env.ctx, runner, {
+      cpu: 10,
+      memMb: 32000,
+      diskFreeMb: 100000,
+      onAcPower: true,
+      accepting: true,
+      runningJobIds: [job!.id],
+      harnesses: [{ id: "claude-code", installed: true, authOk: true }],
+      maxConcurrency: 1,
+      version: "0.1.0",
+    });
+    expect(hb.jobLimits).toEqual([{ jobId: job!.id, maxJobMinutes: 90, maxCostUsd: null }]);
+  });
+
+  it("saves a per-job max cost and reports it in heartbeats", async () => {
+    const { team, repo } = await seedTeam(env);
+    const runner = await seedRunner(env, team.id, repo.id, { name: "alice-mbp" });
+    const [job] = await env.ctx.db
+      .insert(jobs)
+      .values({
+        teamId: team.id,
+        repoId: repo.id,
+        title: "Pricey job",
+        harness: "claude-code",
+        branch: `foundry/${crypto.randomUUID()}`,
+        status: "implementing",
+        runnerId: runner.id,
+      })
+      .returning();
+
+    await setJobMaxCost(env.ctx, team.id, job!.id, 12.5);
+    expect((await getJob(env.ctx, job!.id)).maxCostUsd).toBe(12.5);
+    await expect(setJobMaxCost(env.ctx, crypto.randomUUID(), job!.id, 20)).rejects.toThrow();
+    await expect(setJobMaxCost(env.ctx, team.id, job!.id, 0)).rejects.toThrow();
+
+    const hb = await heartbeat(env.ctx, runner, {
+      cpu: 10,
+      memMb: 32000,
+      diskFreeMb: 100000,
+      onAcPower: true,
+      accepting: true,
+      runningJobIds: [job!.id],
+      harnesses: [{ id: "claude-code", installed: true, authOk: true }],
+      maxConcurrency: 1,
+      version: "0.1.0",
+    });
+    expect(hb.jobLimits).toEqual([{ jobId: job!.id, maxJobMinutes: null, maxCostUsd: 12.5 }]);
   });
 
   it("prefers the shared runner and never double-claims", async () => {
@@ -250,12 +437,45 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
       repository: { id: 4242 },
       pull_request: { number: b.pr.prNumber, merged: false, head: { sha: "sha-11", ref: "x" } },
       review: {
+        id: 9001,
         state: "changes_requested",
         body: "Use a reversible migration",
         user: { login: "carol", type: "User" },
       },
     });
     expect(await getJob(env.ctx, b.jobId)).toMatchObject({ status: "queued", resumeStage: "implementing" });
+  });
+
+  it("re-queues a job for a changes-requested review even when the webhook was missed", async () => {
+    const { team, repo } = await seedTeam(env);
+    const [job] = await env.ctx.db
+      .insert(jobs)
+      .values({
+        teamId: team.id,
+        repoId: repo.id,
+        title: "Fix login",
+        harness: "claude-code",
+        branch: "foundry/fix-login",
+        status: "waiting_on_you",
+        prNumber: 5,
+        prUrl: "https://github.com/acme/app/pull/5",
+      })
+      .returning();
+    const gh = env.gh.repo("acme/app");
+    gh.reviews.set(5, [
+      { id: 101, author: "carol", state: "COMMENTED", body: "Looks close" },
+      { id: 102, author: "carol", state: "CHANGES_REQUESTED", body: "Use a reversible migration" },
+      { id: 103, author: "bugbot[bot]", state: "CHANGES_REQUESTED", body: "Bot nit" },
+    ]);
+
+    expect(await reconcileChangesRequestedReviews(env.ctx)).toEqual([job!.id]);
+    expect(await getJob(env.ctx, job!.id)).toMatchObject({
+      status: "queued",
+      resumeStage: "implementing",
+      lastReviewId: 102,
+    });
+    // The same review is not forwarded to the agent twice.
+    expect(await reconcileChangesRequestedReviews(env.ctx)).toEqual([]);
   });
 
   it("syncs unlinked GitHub App installations onto the current team", async () => {
@@ -313,6 +533,48 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
     expect(await getJob(env.ctx, job!.id)).toMatchObject({ status: "merged" });
     const updated = await env.ctx.db.query.repos.findFirst({ where: eq(repos.id, repo.id) });
     expect(updated).toMatchObject({ acceptsJobs: true, onboardingStatus: "done" });
+  });
+
+  it("does not re-create a cancelled job whose trigger label lingers, and retries it in place", async () => {
+    const { team, repo } = await seedTeam(env);
+    env.gh.addIssue("acme/app", { number: 9, title: "Cancel then retry", labels: ["foundry"] });
+    await deliver(env, "issues", issueLabeledPayload({ number: 9, title: "Cancel then retry" }));
+    const [job] = await env.ctx.db.query.jobs.findMany({ where: eq(jobs.repoId, repo.id) });
+
+    await cancelJob(env.ctx, job!.id, "alice");
+    env.clock.advance(1000);
+    // The issue still carries the `foundry` label; the catch-up must not start a second job.
+    expect(await reconcileLabeledIssues(env.ctx)).toEqual([]);
+    expect(await env.ctx.db.query.jobs.findMany({ where: eq(jobs.repoId, repo.id) })).toHaveLength(1);
+
+    // Removing and re-adding the label delivers `issues.labeled` again: that is a retry of the
+    // same job, so the board moves its one card back instead of showing the issue twice.
+    await deliver(env, "issues", issueLabeledPayload({ number: 9, title: "Cancel then retry" }));
+    const rows = await env.ctx.db.query.jobs.findMany({ where: eq(jobs.repoId, repo.id) });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: job!.id, status: "queued" });
+
+    const board = await boardJobs(env.ctx, team.id);
+    expect(board.map((b) => b.job.id)).toEqual([job!.id]);
+    expect(board[0]?.job.status).toBe("queued");
+
+    expect(await retryJob(env.ctx, job!.id, "triage", "alice")).toMatchObject({
+      id: job!.id,
+      status: "queued",
+    });
+  });
+
+  it("revives a failed job in place when the trigger label is re-applied", async () => {
+    const { repo } = await seedTeam(env);
+    env.gh.addIssue("acme/app", { number: 10, title: "Fail then relabel", labels: ["foundry"] });
+    await deliver(env, "issues", issueLabeledPayload({ number: 10, title: "Fail then relabel" }));
+    const [job] = await env.ctx.db.query.jobs.findMany({ where: eq(jobs.repoId, repo.id) });
+    await env.ctx.db.update(jobs).set({ status: "failed" }).where(eq(jobs.id, job!.id));
+
+    await deliver(env, "issues", issueLabeledPayload({ number: 10, title: "Fail then relabel" }));
+    const rows = await env.ctx.db.query.jobs.findMany({ where: eq(jobs.repoId, repo.id) });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: job!.id, status: "queued" });
   });
 
   it("creates a ticket job for an open foundry-labeled issue when the webhook was missed", async () => {

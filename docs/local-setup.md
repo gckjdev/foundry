@@ -73,6 +73,23 @@ From the App page:
 - **Webhook secret** → `GITHUB_WEBHOOK_SECRET`
 - Generate a private key, save it as `github-app.pem` at the repo root (gitignored), set `GITHUB_APP_PRIVATE_KEY_PATH` to that absolute or repo-relative path
 
+### GitHub Enterprise Server (GHES)
+
+To point Foundry at a self-hosted GitHub Enterprise Server (GHES 3.12+) instead of github.com, set one host in `.env` and derive everything else from it:
+
+```bash
+GITHUB_HOST=https://github.example.com
+```
+
+Foundry then derives `https://github.example.com/api/v3` (REST), `https://github.example.com/api/graphql` (GraphQL/Projects v2), the OAuth authorize/token/userinfo endpoints, git remotes, the App install link, and issue/PR links. Leave `GITHUB_HOST` empty/unset for github.com (which keeps the special-cased `https://api.github.com` REST host). One control plane talks to one GitHub host.
+
+- Create the GitHub App **on that GHES instance** (not github.com) and fill in the same App ID / slug / client ID / secret / private key / webhook secret as above. Use the same repository and account permissions as the github.com instructions; accept them on the installation after any change.
+- The App's **Webhook URL** and OAuth **Callback URL** stay the same Foundry URLs (`https://<foundry>/api/webhooks/github` and `/api/auth/callback/github`). The webhook path and signature verification are unchanged.
+- smee still works only if the GHES instance can reach the smee URL. If it cannot, use a webhook tunnel that GHES can call, or the public Foundry host's own `/api/webhooks/github`.
+- GHES must present a certificate Node trusts. Foundry does **not** disable TLS verification; add your enterprise CA to the machine's trust store rather than setting `NODE_TLS_REJECT_UNAUTHORIZED=0`.
+- Optional overrides `GITHUB_API_URL` and `FOUNDRY_GIT_BASE` win over the derived values when set.
+- GitHub Projects (v2) and some merge APIs may be absent on older GHES. Project status sync logs and skips on a 404 rather than failing the job.
+
 ## 2. Environment
 
 ```bash
@@ -230,6 +247,31 @@ The name in the unit is lowercased, with other characters turned into `-`. `Keep
 An older install used the single label `dev.foundry.runner` / `foundry-runner.service`. After you install the named unit, boot that old one out or two copies of the same runner will run.
 
 The token for `~/.foundry` stays in the macOS Keychain (or `~/.config/foundry` on Linux). Any other home stores its token in `<home>/secrets`, so a second join does not invalidate the first.
+
+### Windows runner
+
+A Windows 10/11 (x64) machine can join as a personal runner. Prerequisites:
+
+- **Git for Windows** (required for `git worktree`; the runner does not reimplement git).
+- **Node 22+** and **Bun** to run from source, or the compiled `foundry.exe`
+  (`foundry-windows-x64.tar.gz` from the release).
+- **Claude Code** and/or **OpenCode** Windows installers, signed in.
+
+```powershell
+foundry.exe runner join <token> --server http://<your-foundry>
+foundry.exe runner start
+```
+
+On Windows the runner runs recipe `install` / `checks` / `dev_server` / `warm` commands through
+PowerShell — it prefers `pwsh` (PowerShell 7) when on `PATH`, otherwise `powershell.exe`. POSIX `&&`
+and `;` also work in PowerShell 7, so recipes written for macOS/Linux usually run unchanged. Set
+`recipe.os: [windows]` for Windows-only commands; a repo with `os: [macos, linux]` is **not** claimed
+by a Windows runner, while a repo with no `os:` constraint can be. The per-job MCP bridge listens on
+`127.0.0.1:<port>` instead of a Unix socket.
+
+`foundry.exe runner install-service` writes a `.cmd` into the current user's **Startup** folder so the
+runner starts at login (there is no launchd/systemd equivalent to manage). Run
+`foundry.exe runner start` in a terminal to run in the foreground instead.
 
 ## 4. Daily commands
 

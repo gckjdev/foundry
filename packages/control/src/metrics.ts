@@ -56,6 +56,85 @@ type EventPayload = {
 
 const FINAL_STATUSES = new Set(["merged", "failed", "waiting_on_you", "pr_ci", "cancelled"]);
 
+export interface CapacityCard {
+  /** Hours in the window with at least one queued job and no machine awake to take it. */
+  hoursNoOnlineRunner: number;
+  /** Same as `hoursNoOnlineRunner`; see the formula note on `capacityCard`. */
+  hoursQueueWithNoRunner: number;
+  /** Queue time an always-on shared runner would plausibly have saved, in hours. */
+  estimatedHoursSavedBySharedRunner: number;
+}
+
+/**
+ * Capacity card for laptops-only teams (spec 5.6 Runners): how many hours the queue had no
+ * online runner, plus a one-line estimate of the queue time a shared runner would have saved.
+ *
+ * Formula: every `stage_changed` event whose target is `queued` opens an interval; the next
+ * `stage_changed` event for that job with `from = 'queued'` closes it (no such event means the job
+ * is still queued at `now`). Intervals are clipped to the window, overlaps merged, and the total
+ * summed. Deriving from events rather than `jobs.claimed_at` keeps re-queued jobs (runner went
+ * offline, changes requested, retry) correct — each queue stay is its own interval.
+ *
+ * Why both hour fields are the same number: heartbeats overwrite `runners.last_seen_at` in place,
+ * so the control plane keeps no history of which runners were online at a past moment. We cannot
+ * subtract "queued while a runner was online but busy" from "queued while every runner slept", so
+ * — as the ticket allows — both report the queued-hours total. A runner's jobs are re-queued
+ * within HEARTBEAT_TIMEOUT_MS of it going offline, so for a laptops-only team this total is
+ * dominated by the hours the queue actually waited with no machine awake.
+ *
+ * The estimate is deliberately the same number, not a model: a shared runner that stays online
+ * would have claimed each queued job as soon as it appeared, so the queue's idle hours are the
+ * hours it would have saved.
+ */
+export async function capacityCard(ctx: ControlContext, teamId: string, days = 7): Promise<CapacityCard> {
+  const now = ctx.now();
+  const since = new Date(now.getTime() - days * 24 * 3600_000).toISOString();
+  const until = now.toISOString();
+
+  const [row] = (await ctx.db.execute(sql`
+    with intervals as (
+      select
+        greatest(e.ts, ${since}::timestamptz) as s,
+        least(coalesce((
+          select min(n.ts) from events n
+          where n.job_id = e.job_id and n.kind = 'stage_changed' and n.id > e.id
+            and n.payload->>'from' = 'queued'
+        ), ${until}::timestamptz), ${until}::timestamptz) as e
+      from events e
+      where e.team_id = ${teamId}
+        and e.kind = 'stage_changed'
+        and e.payload->>'to' = 'queued'
+        and e.ts < ${until}::timestamptz
+    ),
+    clipped as (
+      select s, e from intervals where e > s
+    ),
+    islands as (
+      select s, e,
+        case
+          when s <= max(e) over (order by s, e rows between unbounded preceding and 1 preceding)
+          then 0 else 1
+        end as starts_new
+      from clipped
+    ),
+    grouped as (
+      select sum(starts_new) over (order by s, e) as grp, s, e from islands
+    ),
+    merged as (
+      select min(s) as gs, max(e) as ge from grouped group by grp
+    )
+    select coalesce(sum(extract(epoch from (ge - gs))), 0) / 3600 as hours
+    from merged
+  `)) as unknown as { hours: unknown }[];
+
+  const hours = Math.max(0, Number(row?.hours ?? 0));
+  return {
+    hoursNoOnlineRunner: hours,
+    hoursQueueWithNoRunner: hours,
+    estimatedHoursSavedBySharedRunner: hours,
+  };
+}
+
 /** Every metric in spec 5.11, computed from the metrics_* views over `events` and `jobs`. */
 export async function teamMetrics(ctx: ControlContext, f: MetricsFilter): Promise<TeamMetrics> {
   return ctx.dialect === "sqlite" ? teamMetricsSqlite(ctx, f) : teamMetricsPostgres(ctx, f);

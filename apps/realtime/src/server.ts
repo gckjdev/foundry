@@ -11,6 +11,7 @@ export interface ChangeMessage {
   id: string;
   team_id: string;
   op: string;
+  columns?: string[];
 }
 
 export interface RealtimeServer {
@@ -98,7 +99,13 @@ export async function startRealtime(opts: {
   }, 25_000);
 
   const broadcast = (change: ChangeMessage): number => {
-    const msg = JSON.stringify({ type: "change", table: change.table, id: change.id, op: change.op });
+    const msg = JSON.stringify({
+      type: "change",
+      table: change.table,
+      id: change.id,
+      op: change.op,
+      columns: change.columns ?? [],
+    });
     let sent = 0;
     for (const c of clients) {
       if (c.claims.teamId !== change.team_id || c.ws.readyState !== WebSocket.OPEN) continue;

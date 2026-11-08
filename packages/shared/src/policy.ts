@@ -22,7 +22,7 @@ export const PolicySchema = z.object({
   /** GitHub logins whose reviews count as the AI review (e.g. Bugbot). */
   ai_review_bots: z.array(z.string()).default(["cursor[bot]"]),
   max_verify_loops: z.number().int().min(0).default(3),
-  max_cost_per_job_usd: z.number().positive().default(5),
+  max_cost_per_job_usd: z.number().positive().default(10),
   max_diff_lines_for_automerge: z.number().int().positive().default(400),
   max_job_minutes: z.number().int().positive().default(60),
   risk_rules: z.array(RiskRuleSchema).default([]),
@@ -43,3 +43,19 @@ export function parsePolicyYaml(text: string): Policy {
 }
 
 export const DEFAULT_POLICY: Policy = PolicySchema.parse({});
+
+/** A job's own limit wins; otherwise the repo policy applies (60 minutes by default). */
+export function effectiveMaxJobMinutes(
+  override: number | null | undefined,
+  policy: Pick<Policy, "max_job_minutes">,
+): number {
+  return override ?? policy.max_job_minutes;
+}
+
+/** A job's own cost cap wins; otherwise the repo policy applies ($10 by default). */
+export function effectiveMaxCostUsd(
+  override: number | null | undefined,
+  policy: Pick<Policy, "max_cost_per_job_usd">,
+): number {
+  return override ?? policy.max_cost_per_job_usd;
+}

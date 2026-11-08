@@ -58,6 +58,7 @@ export class Daemon {
   private socketUrl = "";
   private accepting: { ok: boolean; reason?: string } = { ok: true };
   private draining = false;
+  private keepJobIds: string[] | null = null;
   private stopped = false;
   private claiming = false;
   private harnessInfo: HarnessInfo[] = [];
@@ -87,6 +88,7 @@ export class Daemon {
       localJobs: this.localJobs,
       ports: this.ports,
       running: new Set(),
+      keep: null,
     });
     await this.tick();
     this.heartbeatTimer = setInterval(() => void this.tick(), this.opts.heartbeatMs ?? HEARTBEAT_INTERVAL_MS);
@@ -131,6 +133,7 @@ export class Daemon {
         localJobs: this.localJobs,
         ports: this.ports,
         running: new Set(this.running.keys()),
+        keep: this.keepJobIds ? new Set(this.keepJobIds) : null,
       });
       if (removed.length) this.log(`gc removed ${removed.length} worktree(s)`);
     } catch (err) {
@@ -174,12 +177,19 @@ export class Daemon {
         version: VERSION,
       });
       this.draining = res.draining;
+      this.keepJobIds = res.keepJobIds;
       for (const id of res.revokedJobIds) {
         const r = this.running.get(id);
         if (r) {
           this.log(`job ${id} was revoked by the control plane`);
           void r.runner.revoke();
         }
+      }
+      // A limit changed on the job page takes effect without waiting for a re-claim.
+      for (const { jobId, maxJobMinutes, maxCostUsd } of res.jobLimits) {
+        const runner = this.running.get(jobId)?.runner;
+        runner?.setMaxJobMinutes(maxJobMinutes);
+        runner?.setMaxCostUsd(maxCostUsd);
       }
       // Outside the schedule (lid unplugged, owner active, window closed): hand jobs back.
       if (wasAccepting && !this.accepting.ok && this.opts.schedule.acPowerOnly && onAcPower === false) {

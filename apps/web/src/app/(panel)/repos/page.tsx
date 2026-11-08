@@ -1,5 +1,6 @@
 import { syncUnlinkedInstallations, teamRepos } from "@foundry/control";
 import { HARNESS_IDS } from "@foundry/shared";
+import { githubInstallUrl } from "@foundry/shared/github-host";
 import { requireTeam } from "@/server/session";
 import { onboardAction, repoSettingsAction, syncReposAction } from "../../actions";
 
@@ -39,7 +40,7 @@ export default async function Repos({ searchParams }: { searchParams: Promise<Re
             </form>
           ) : null}
           {appSlug && role === "admin" ? (
-            <a className="button primary" href={`https://github.com/apps/${appSlug}/installations/new`}>
+            <a className="button primary" href={githubInstallUrl(process.env.GITHUB_HOST, appSlug)}>
               Install GitHub App
             </a>
           ) : null}
