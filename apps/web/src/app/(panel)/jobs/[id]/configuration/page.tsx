@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { usd } from "@/components/status";
 import { requireTeam } from "@/server/session";
 import { maxCostAction, maxMinutesAction } from "../../../../actions";
+import { jobLimitValues } from "./limits";
 
 export default async function JobConfigurationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -13,9 +14,8 @@ export default async function JobConfigurationPage({ params }: { params: Promise
   const { job, repo } = d;
   const policy = repoPolicy(repo);
   const policyMaxMinutes = policy.max_job_minutes;
-  const maxJobMinutes = job.maxJobMinutes ?? policyMaxMinutes;
   const policyMaxCost = policy.max_cost_per_job_usd;
-  const maxCostUsd = job.maxCostUsd ?? policyMaxCost;
+  const { maxJobMinutes, maxCostUsd, minutesKey, costKey } = jobLimitValues(job, policy);
 
   return (
     <>
@@ -31,7 +31,7 @@ export default async function JobConfigurationPage({ params }: { params: Promise
       <div className="grid grid-2" style={{ alignItems: "start" }}>
         <section className="card">
           <h2 style={{ marginBottom: 10 }}>Job limits</h2>
-          <form action={maxMinutesAction} className="stack">
+          <form key={minutesKey} action={maxMinutesAction} className="stack">
             <input type="hidden" name="jobId" value={job.id} />
             <label>
               Max execution time (minutes)
@@ -47,7 +47,7 @@ export default async function JobConfigurationPage({ params }: { params: Promise
               <button type="submit">Save</button>
             </div>
           </form>
-          <form action={maxCostAction} className="stack" style={{ marginTop: 16 }}>
+          <form key={costKey} action={maxCostAction} className="stack" style={{ marginTop: 16 }}>
             <input type="hidden" name="jobId" value={job.id} />
             <label>
               Max cost (USD)
