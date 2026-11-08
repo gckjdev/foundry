@@ -1,4 +1,4 @@
-import { jobs, repos, teams, users } from "@foundry/db";
+import { events, jobs, repos, teams, users } from "@foundry/db";
 import { TEST_DATABASE_URL } from "@foundry/db/testing";
 import { stageLabel } from "@foundry/shared";
 import { eq } from "drizzle-orm";
@@ -7,6 +7,7 @@ import { claimJob } from "./claim";
 import { processWebhook, storeWebhook } from "./ingest";
 import { getJob, reconcileLabeledIssues, setJobMaxCost, setJobMaxMinutes } from "./jobs";
 import { evaluateJobGate, reconcileChangesRequestedReviews, reconcileOpenPullRequests } from "./merge-gate";
+import { capacityCard } from "./metrics";
 import { openPullRequest } from "./prs";
 import { inbox } from "./queries";
 import { answerFromCheckbox } from "./questions";
@@ -139,6 +140,47 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
 
     const bobBox = await inbox(env.ctx, team.id, bob!.id);
     expect(bobBox.blocked.map((b) => b.job.id)).toEqual([theirs.id]);
+  });
+
+  it("reports the hours the queue had no online runner", async () => {
+    const { team, repo } = await seedTeam(env);
+    const now = env.ctx.now();
+    const hoursAgo = (h: number) => new Date(now.getTime() - h * 3600_000);
+    const insertJob = async (title: string) => {
+      const [job] = await env.ctx.db
+        .insert(jobs)
+        .values({
+          teamId: team.id,
+          repoId: repo.id,
+          title,
+          harness: "claude-code",
+          branch: `foundry/${crypto.randomUUID()}`,
+        })
+        .returning();
+      return job!;
+    };
+    const event = (jobId: string, at: Date, from: string | null, to: string) =>
+      env.ctx.db.insert(events).values({
+        jobId,
+        teamId: team.id,
+        ts: at,
+        kind: "stage_changed",
+        stage: to,
+        payload: { kind: "stage_changed", from, to },
+      });
+
+    // No runner joined, so the queued job has had nobody to pick it up for six hours.
+    const waited = await insertJob("Waited overnight");
+    // A second job queued and claimed inside that interval: the union must not double-count it.
+    const claimed = await insertJob("Claimed later");
+    await event(waited.id, hoursAgo(6), null, "queued");
+    await event(claimed.id, hoursAgo(5), null, "queued");
+    await event(claimed.id, hoursAgo(3), "queued", "triage");
+
+    const card = await capacityCard(env.ctx, team.id);
+    expect(card.hoursNoOnlineRunner).toBeCloseTo(6, 1);
+    expect(card.hoursQueueWithNoRunner).toBeCloseTo(6, 1);
+    expect(card.estimatedHoursSavedBySharedRunner).toBeCloseTo(6, 1);
   });
 
   it("reports keepJobIds for needs_input and in-progress jobs it still owns", async () => {

@@ -1,4 +1,4 @@
-import { runningJobsByRunner, teamRunners } from "@foundry/control";
+import { capacityCard, runningJobsByRunner, teamRunners } from "@foundry/control";
 import { repos, runnerRepoReadiness } from "@foundry/db";
 import { type HarnessInfo, isOnline } from "@foundry/shared";
 import { eq, inArray } from "drizzle-orm";
@@ -26,6 +26,7 @@ export default async function Runners() {
   const online = list.filter((r) => isOnline(r, now));
   const slots = online.reduce((n, r) => n + (r.accepting && r.status === "active" ? r.maxConcurrency : 0), 0);
   const shared = list.filter((r) => r.kind === "shared");
+  const capacity = shared.length === 0 && list.length > 0 ? await capacityCard(ctx, team.id) : null;
 
   return (
     <>
@@ -54,11 +55,24 @@ export default async function Runners() {
           <div className="stat-label">shared machines</div>
         </div>
       </div>
-      {shared.length === 0 && list.length > 0 ? (
-        <div className="notice" style={{ marginBottom: 14 }}>
-          Laptops-only team: jobs pause when every laptop sleeps and resume on the next one that wakes. A
-          spare Mac mini or Linux box as a shared runner keeps work moving overnight.
-        </div>
+      {capacity ? (
+        <section className="card" style={{ marginBottom: 14 }}>
+          <h2 style={{ marginBottom: 8 }}>Laptops-only capacity</h2>
+          <div className="grid grid-2">
+            <div>
+              <div className="stat">{capacity.hoursNoOnlineRunner.toFixed(1)}h</div>
+              <div className="stat-label">no runner online this week</div>
+            </div>
+            <div>
+              <div className="stat">{capacity.estimatedHoursSavedBySharedRunner.toFixed(1)}h</div>
+              <div className="stat-label">queue time a shared runner would save</div>
+            </div>
+          </div>
+          <p className="dim small" style={{ marginTop: 8 }}>
+            Jobs pause when every laptop sleeps and resume on the next one that wakes. A spare Mac mini or
+            Linux box as a shared runner would cover those hours.
+          </p>
+        </section>
       ) : null}
 
       <section className="card">
