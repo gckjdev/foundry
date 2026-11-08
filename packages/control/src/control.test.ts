@@ -9,7 +9,7 @@ import { cancelJob, getJob, reconcileLabeledIssues, retryJob, setJobMaxCost, set
 import { evaluateJobGate, reconcileChangesRequestedReviews, reconcileOpenPullRequests } from "./merge-gate";
 import { capacityCard } from "./metrics";
 import { openPullRequest } from "./prs";
-import { inbox } from "./queries";
+import { boardJobs, inbox } from "./queries";
 import { answerFromCheckbox } from "./questions";
 import { runnerAsk, runnerConfidence, runnerEvidence, runnerStage } from "./runner-api";
 import { createJoinToken, heartbeat, joinRunner } from "./runners";
@@ -536,7 +536,7 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
   });
 
   it("does not re-create a cancelled job whose trigger label lingers, and retries it in place", async () => {
-    const { repo } = await seedTeam(env);
+    const { team, repo } = await seedTeam(env);
     env.gh.addIssue("acme/app", { number: 9, title: "Cancel then retry", labels: ["foundry"] });
     await deliver(env, "issues", issueLabeledPayload({ number: 9, title: "Cancel then retry" }));
     const [job] = await env.ctx.db.query.jobs.findMany({ where: eq(jobs.repoId, repo.id) });
@@ -547,10 +547,34 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
     expect(await reconcileLabeledIssues(env.ctx)).toEqual([]);
     expect(await env.ctx.db.query.jobs.findMany({ where: eq(jobs.repoId, repo.id) })).toHaveLength(1);
 
+    // Removing and re-adding the label delivers `issues.labeled` again: that is a retry of the
+    // same job, so the board moves its one card back instead of showing the issue twice.
+    await deliver(env, "issues", issueLabeledPayload({ number: 9, title: "Cancel then retry" }));
+    const rows = await env.ctx.db.query.jobs.findMany({ where: eq(jobs.repoId, repo.id) });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: job!.id, status: "queued" });
+
+    const board = await boardJobs(env.ctx, team.id);
+    expect(board.map((b) => b.job.id)).toEqual([job!.id]);
+    expect(board[0]?.job.status).toBe("queued");
+
     expect(await retryJob(env.ctx, job!.id, "triage", "alice")).toMatchObject({
       id: job!.id,
       status: "queued",
     });
+  });
+
+  it("revives a failed job in place when the trigger label is re-applied", async () => {
+    const { repo } = await seedTeam(env);
+    env.gh.addIssue("acme/app", { number: 10, title: "Fail then relabel", labels: ["foundry"] });
+    await deliver(env, "issues", issueLabeledPayload({ number: 10, title: "Fail then relabel" }));
+    const [job] = await env.ctx.db.query.jobs.findMany({ where: eq(jobs.repoId, repo.id) });
+    await env.ctx.db.update(jobs).set({ status: "failed" }).where(eq(jobs.id, job!.id));
+
+    await deliver(env, "issues", issueLabeledPayload({ number: 10, title: "Fail then relabel" }));
+    const rows = await env.ctx.db.query.jobs.findMany({ where: eq(jobs.repoId, repo.id) });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: job!.id, status: "queued" });
   });
 
   it("creates a ticket job for an open foundry-labeled issue when the webhook was missed", async () => {
