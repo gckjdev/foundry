@@ -42,8 +42,8 @@ professional kitchen rather than a widget press:
 
 ### Four things that make it a factory
 
-| Property              | What it means                                                                                |
-| --------------------- | -------------------------------------------------------------------------------------------- |
+| Property              | What it means                                                                                 |
+| --------------------- | --------------------------------------------------------------------------------------------- |
 | **Standard input**    | Work enters in a known form (a GitHub issue with acceptance criteria), not as a vague prompt. |
 | **Fixed pipeline**    | The stages are the same on every run. Only the judgment inside a stage is left to the model.  |
 | **Verification gate** | Nothing is "done" until the repository's own checks pass and the result is reviewable.        |
@@ -89,9 +89,9 @@ or waits for a human.
 
 ![The Foundry board: queued, working, needs input, PR/CI, waiting-on-you, done and stopped lanes](images/foundry-board.png)
 
-*The board with a sample team. Each ticket shows its repository and issue number, its cost, the
+_The board with a sample team. Each ticket shows its repository and issue number, its cost, the
 stage or runner handling it, and when it last changed. Tickets in the Working lane are live; the
-Needs input lane is waiting for a human answer.*
+Needs input lane is waiting for a human answer._
 
 ## 5. The path from ticket to pull request
 
