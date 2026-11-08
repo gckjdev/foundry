@@ -104,49 +104,58 @@ export async function claimJob(ctx: ControlContext, runner: Runner): Promise<Cla
     const resumed = job.resumeCount > 0 || job.lastCompletedStage !== null || resumeStage !== "triage";
     const resumeMode: ClaimedJob["resumeMode"] = sticky ? "sticky" : resumed ? "portable" : "fresh";
 
-    const claimed = await ctx.db.transaction(async (tx) => {
-      const [row] = await tx
-        .update(jobs)
-        .set({
-          status: resumeStage,
-          runnerId: runner.id,
-          originRunnerId: job.originRunnerId ?? runner.id,
-          claimedAt: now,
-          startedAt: job.startedAt ?? now,
-          stickyRunnerId: null,
-          stickyUntil: null,
-          resumeCount: resumeMode === "fresh" ? job.resumeCount : job.resumeCount + 1,
-          // A different machine cannot continue another machine's native session.
-          harnessSessionId: sticky ? job.harnessSessionId : null,
-        })
-        .where(
-          sql`${jobs.id} = (select id from jobs where id = ${job.id} and status = 'queued' for update skip locked)`,
-        )
-        .returning();
-      if (!row) return null;
-      const list: FoundryEvent[] = [
-        { kind: "stage_changed", from: "queued", to: resumeStage, reason: `claimed by ${runner.name}` },
-      ];
-      if (resumeMode !== "fresh") {
-        list.push({
-          kind: "resumed",
-          runnerId: runner.id,
-          runnerName: runner.name,
-          mode: resumeMode,
-          harnessChanged: false,
-        });
-      }
-      await tx.insert(events).values(
-        list.map((e) => ({
-          jobId: row.id,
-          teamId: row.teamId,
-          kind: e.kind,
-          stage: resumeStage,
-          payload: e,
-        })),
-      );
-      return row;
-    });
+    const patch = {
+      status: resumeStage,
+      runnerId: runner.id,
+      originRunnerId: job.originRunnerId ?? runner.id,
+      claimedAt: now,
+      startedAt: job.startedAt ?? now,
+      stickyRunnerId: null,
+      stickyUntil: null,
+      resumeCount: resumeMode === "fresh" ? job.resumeCount : job.resumeCount + 1,
+      // A different machine cannot continue another machine's native session.
+      harnessSessionId: sticky ? job.harnessSessionId : null,
+    };
+    const list: FoundryEvent[] = [
+      { kind: "stage_changed", from: "queued", to: resumeStage, reason: `claimed by ${runner.name}` },
+    ];
+    if (resumeMode !== "fresh") {
+      list.push({
+        kind: "resumed",
+        runnerId: runner.id,
+        runnerName: runner.name,
+        mode: resumeMode,
+        harnessChanged: false,
+      });
+    }
+    const eventRows = (jobId: string, teamId: string) =>
+      list.map((e) => ({ jobId, teamId, kind: e.kind, stage: resumeStage, payload: e }));
+
+    const claimed =
+      ctx.dialect === "sqlite"
+        ? await (async () => {
+            // SQLite has no FOR UPDATE SKIP LOCKED; a conditional UPDATE is atomic and exclusive.
+            const [row] = await ctx.db
+              .update(jobs)
+              .set(patch)
+              .where(and(eq(jobs.id, job.id), eq(jobs.status, "queued")))
+              .returning();
+            if (!row) return null;
+            await ctx.db.insert(events).values(eventRows(row.id, row.teamId));
+            return row;
+          })()
+        : await ctx.db.transaction(async (tx) => {
+            const [row] = await tx
+              .update(jobs)
+              .set(patch)
+              .where(
+                sql`${jobs.id} = (select id from jobs where id = ${job.id} and status = 'queued' for update skip locked)`,
+              )
+              .returning();
+            if (!row) return null;
+            await tx.insert(events).values(eventRows(row.id, row.teamId));
+            return row;
+          });
     if (!claimed) continue;
 
     await bestEffort(ctx, "github sync", () => syncJobToGitHub(ctx, claimed, "queued"));
@@ -179,6 +188,13 @@ export async function claimJob(ctx: ControlContext, runner: Runner): Promise<Cla
 export async function spendToday(ctx: ControlContext, teamId: string): Promise<number> {
   const start = new Date(ctx.now());
   start.setHours(0, 0, 0, 0);
+  if (ctx.dialect === "sqlite") {
+    const rows = await ctx.db
+      .select({ payload: events.payload })
+      .from(events)
+      .where(and(eq(events.teamId, teamId), eq(events.kind, "usage"), gte(events.ts, start)));
+    return rows.reduce((sum, r) => sum + ((r.payload as { costUsd?: number } | null)?.costUsd ?? 0), 0);
+  }
   const [row] = await ctx.db
     .select({ total: sql<string | null>`sum((${events.payload}->>'costUsd')::float8)` })
     .from(events)

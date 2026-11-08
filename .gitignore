@@ -14,5 +14,9 @@ apps/web/AGENTS.md
 .env.local
 .DS_Store
 /data
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
 github-app.pem
 *.pem

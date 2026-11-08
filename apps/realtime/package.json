@@ -13,6 +13,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@foundry/db": "workspace:*",
     "@foundry/shared": "workspace:*",
     "postgres": "^3.4.7",
     "tsx": "^4.20.0",

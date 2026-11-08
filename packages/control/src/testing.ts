@@ -1,5 +1,5 @@
 import { memberships, repos, runnerRepoReadiness, runners, teams, users } from "@foundry/db";
-import { createTestDatabase } from "@foundry/db/testing";
+import { createSqliteTestDatabase, createTestDatabase } from "@foundry/db/testing";
 import { FakeGitHub } from "@foundry/github";
 import { sha256 } from "@foundry/shared";
 import { eq } from "drizzle-orm";
@@ -26,6 +26,15 @@ export interface TestEnv {
 /** A migrated throwaway database plus FakeGitHub, a controllable clock and a memory notifier. */
 export async function createTestEnv(): Promise<TestEnv> {
   const database = await createTestDatabase();
+  return envFromDatabase(database);
+}
+
+/** Like {@link createTestEnv}, but always backed by a throwaway SQLite file (no Postgres needed). */
+export async function createSqliteTestEnv(): Promise<TestEnv> {
+  return envFromDatabase(await createSqliteTestDatabase());
+}
+
+function envFromDatabase(database: Awaited<ReturnType<typeof createTestDatabase>>): TestEnv {
   const gh = new FakeGitHub();
   const notifier = new MemoryNotifier();
   const clock = {
@@ -37,6 +46,8 @@ export async function createTestEnv(): Promise<TestEnv> {
   const ctx: ControlContext = {
     db: database.db,
     sql: database.sql,
+    sqlite: database.sqlite,
+    dialect: database.dialect,
     gh,
     notifier,
     publicUrl: "https://foundry.test",

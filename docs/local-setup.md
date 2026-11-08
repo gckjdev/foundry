@@ -18,7 +18,7 @@ Repo: `git@github.com:gckjdev/foundry.git`. Root `.env` is chmod 600. `apps/web/
 ## Prerequisites
 
 - Node 22+, pnpm 10 (`packageManager` in root `package.json`)
-- Postgres 16+
+- Postgres 16+ (production / Compose default) — or **no database at all** with the SQLite option below
 - Bun (runner / CLI only)
 - A GitHub App you admin, plus its private key `.pem`
 - Optional: `FOUNDRY_HTTP_PROXY` if this machine cannot reach GitHub or model APIs directly
@@ -103,6 +103,21 @@ Generate long random values for `FOUNDRY_SECRET` and `AUTH_SECRET` if you start 
 Set `FOUNDRY_HTTP_PROXY` (for example `http://127.0.0.1:8118`) so **every** outbound HTTP call — GitHub OAuth/API, outgoing webhooks, git fetch/push, OpenCode/Claude model APIs — uses that proxy. Localhost (the panel, realtime, `opencode serve`) is excluded via `FOUNDRY_NO_PROXY`. If this is unset, Foundry still honors `HTTPS_PROXY`/`HTTP_PROXY`, then the macOS system proxy. Restart `pnpm dev` and `pnpm dev:runner` after changing it. The runner also stores `httpProxy` in `~/.foundry/config.json` on join (`--http-proxy` or this env var).
 
 ## 3. Local install
+
+### Zero-Postgres option (SQLite)
+
+For “clone and run” without installing Postgres, point `DATABASE_URL` at a local SQLite file instead:
+
+```bash
+DATABASE_URL=file:./data/foundry.sqlite
+```
+
+(`sqlite:./data/foundry.sqlite` and a bare `.sqlite` path also work.) The driver selects the
+backend from the URL scheme, so `pnpm db:migrate` and `pnpm dev` (web + realtime) run with no
+database daemon. Realtime polls the change log on a ≤1s interval instead of `LISTEN/NOTIFY`, so
+live updates can lag slightly. The default SQLite files are gitignored. This is control-plane
+storage only — job recipes that declare `services.postgres` still need a Postgres URL on the
+**runner** (`FOUNDRY_POSTGRES_URL`).
 
 ### Start Postgres
 

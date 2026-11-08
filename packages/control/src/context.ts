@@ -1,11 +1,13 @@
-import type { Db } from "@foundry/db";
+import type { Db, Dialect, SqliteClient } from "@foundry/db";
 import type { GitHubClient } from "@foundry/github";
 import type { Sql } from "postgres";
 import type { Notifier } from "./notify";
 
 export interface ControlContext {
   db: Db;
-  sql: Sql;
+  sql: Sql | null;
+  sqlite: SqliteClient | null;
+  dialect: Dialect;
   gh: GitHubClient;
   notifier: Notifier;
   /** Public base URL of the panel, used in links posted to GitHub. */
