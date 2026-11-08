@@ -1,4 +1,5 @@
 import { evidence, type Job, jobs, repos } from "@foundry/db";
+import type { GhReview } from "@foundry/github";
 import {
   type ConfidenceLevel,
   diffFromGitHubFiles,
@@ -9,10 +10,10 @@ import {
   matchRiskRules,
   splitReviewers,
 } from "@foundry/shared";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { bestEffort, type ControlContext } from "./context";
 import { repoRef } from "./github-sync";
-import { getJob, recordEvents, transitionJob } from "./jobs";
+import { getJob, recordEvents, sendMessage, transitionJob } from "./jobs";
 import { effectiveMergeMode, refreshRepoConfig, repoPolicy, repoRecipe } from "./repos";
 
 /** Latest evidence per (kind, name) for the job's current verify loop. */
@@ -84,6 +85,74 @@ export async function reconcileOpenPullRequests(ctx: ControlContext): Promise<st
     if (merged) done.push(job.id);
   }
   return done;
+}
+
+/** A human review that requests changes, forwarded to the agent at most once. */
+export async function handleChangesRequestedReview(
+  ctx: ControlContext,
+  job: Pick<Job, "id" | "lastReviewId">,
+  review: { id: number; author: string; body?: string | null },
+): Promise<Job | null> {
+  if (job.lastReviewId === review.id) return null;
+  // Claim the review atomically so the webhook and the catch-up poll cannot both re-queue it.
+  const [claimed] = await ctx.db
+    .update(jobs)
+    .set({ lastReviewId: review.id })
+    .where(and(eq(jobs.id, job.id), or(isNull(jobs.lastReviewId), ne(jobs.lastReviewId, review.id))))
+    .returning({ id: jobs.id });
+  if (!claimed) return null;
+  const text = review.body?.trim() || "Changes requested on the pull request; see review comments.";
+  return sendMessage(ctx, job.id, text, review.author);
+}
+
+/** Each non-bot author's latest review; the newest one still requesting changes wins. */
+function blockingReview(reviews: GhReview[]): GhReview | null {
+  const latest = new Map<string, GhReview>();
+  for (const review of reviews) {
+    if (!review.author.endsWith("[bot]")) latest.set(review.author.toLowerCase(), review);
+  }
+  return (
+    [...latest.values()]
+      .filter((review) => review.state === "CHANGES_REQUESTED")
+      .sort((a, b) => b.id - a.id)[0] ?? null
+  );
+}
+
+/**
+ * Catch-up for a "Request changes" review that never reached us (smee/webhooks down): read the
+ * reviews from GitHub and return the job to the agent, exactly once per review.
+ */
+export async function syncChangesRequestedReview(ctx: ControlContext, job: Job): Promise<Job | null> {
+  if (job.prNumber === null) return null;
+  if (job.status !== "pr_ci" && job.status !== "waiting_on_you") return null;
+  const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, job.repoId) });
+  if (!repo) return null;
+  let reviews: GhReview[];
+  try {
+    reviews = await ctx.gh.listReviews(repoRef(repo), job.prNumber);
+  } catch {
+    return null;
+  }
+  const review = blockingReview(reviews);
+  if (!review) return null;
+  return handleChangesRequestedReview(ctx, job, review);
+}
+
+/** Apply every missed changes-requested review on open PRs. Called from the worker and job page. */
+export async function reconcileChangesRequestedReviews(ctx: ControlContext): Promise<string[]> {
+  const open = await ctx.db
+    .select()
+    .from(jobs)
+    .where(inArray(jobs.status, ["pr_ci", "waiting_on_you"]));
+  const requeued: string[] = [];
+  for (const job of open) {
+    try {
+      if (await syncChangesRequestedReview(ctx, job)) requeued.push(job.id);
+    } catch (err) {
+      ctx.log("changes-requested reconcile failed", { job: job.id, error: String(err) });
+    }
+  }
+  return requeued;
 }
 
 /**

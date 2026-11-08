@@ -3,7 +3,7 @@ import { findMarker, parseFoundryCommand, TRIGGER_LABEL } from "@foundry/shared"
 import { and, asc, eq, isNull, lt, notInArray, or } from "drizzle-orm";
 import type { ControlContext } from "./context";
 import { cancelJob, createJobFromIssue, retryJob, sendMessage } from "./jobs";
-import { evaluateJobGate, jobsForSha, markJobMerged } from "./merge-gate";
+import { evaluateJobGate, handleChangesRequestedReview, jobsForSha, markJobMerged } from "./merge-gate";
 import { answerFromCheckbox, answerFromReply } from "./questions";
 import { refreshRepoConfig } from "./repos";
 import { linkInstallation, membership, unlinkRepos } from "./teams";
@@ -68,7 +68,7 @@ interface Payload {
   };
   comment?: { id: number; body: string; user: { login: string; type: string } };
   pull_request?: { number: number; title?: string; merged: boolean; head: { sha: string; ref: string } };
-  review?: { state: string; body: string | null; user: { login: string; type: string } };
+  review?: { id: number; state: string; body: string | null; user: { login: string; type: string } };
   check_suite?: { head_sha: string };
   check_run?: { head_sha: string };
   sha?: string;
@@ -207,8 +207,11 @@ async function dispatch(ctx: ControlContext, event: string, p: Payload): Promise
       });
       if (!job) return;
       if (!isBot(p.review.user) && p.review.state.toLowerCase() === "changes_requested") {
-        const text = p.review.body?.trim() || "Changes requested on the pull request; see review comments.";
-        await sendMessage(ctx, job.id, text, p.review.user.login);
+        await handleChangesRequestedReview(ctx, job, {
+          id: p.review.id,
+          author: p.review.user.login,
+          body: p.review.body,
+        });
       } else if (job.status === "pr_ci") {
         await evaluateJobGate(ctx, job.id);
       }

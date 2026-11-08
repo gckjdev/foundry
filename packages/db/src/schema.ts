@@ -198,6 +198,8 @@ export const jobs = pgTable(
     confidence: jsonb("confidence"),
     gateResult: jsonb("gate_result"),
     assignedReviewers: jsonb("assigned_reviewers").notNull().default(sql`'[]'::jsonb`),
+    /** Last GitHub review handed to the agent, so a catch-up poll re-queues it only once. */
+    lastReviewId: bigint("last_review_id", { mode: "number" }),
     statusCommentId: bigint("status_comment_id", { mode: "number" }),
     costUsd: doublePrecision("cost_usd").notNull().default(0),
     tokensIn: integer("tokens_in").notNull().default(0),
