@@ -13,11 +13,24 @@ import {
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import { diagnoseQueue } from "./claim";
 import type { ControlContext } from "./context";
-import { reconcileLabeledIssues } from "./jobs";
 import { syncChangesRequestedReview, syncMergedPullRequest } from "./merge-gate";
 
+/** The `jobs` columns the board renders. Selecting the whole row pulled issue bodies and plans. */
+const BOARD_JOB_COLUMNS = {
+  id: jobs.id,
+  repoId: jobs.repoId,
+  issueNumber: jobs.issueNumber,
+  title: jobs.title,
+  status: jobs.status,
+  harness: jobs.harness,
+  costUsd: jobs.costUsd,
+  updatedAt: jobs.updatedAt,
+} as const;
+
+export type BoardJobRow = Pick<Job, keyof typeof BOARD_JOB_COLUMNS>;
+
 export interface BoardJob {
-  job: Job;
+  job: BoardJobRow;
   repoFullName: string;
   runnerName: string | null;
   waitingReason: string | null;
@@ -30,24 +43,31 @@ const FINISHED_STATUSES: readonly string[] = ["merged", "cancelled", "failed"];
  * Jobs for the board: everything active plus the last week's finished work.
  * One issue has at most one card: when a cancelled/failed job and a newer live job both exist
  * (retry, or an explicit re-label), the live job is the one shown.
+ *
+ * This is a read path: it does not talk to GitHub. Labeled issues are turned into jobs by the
+ * `issues.labeled` webhook and, as a catch-up, by the worker's poll every `SWEEP_INTERVAL_MS`
+ * (`reconcileLabeledIssues`). Doing that here made every page load — and every realtime
+ * `router.refresh()` — wait on one GitHub API call per onboarded repo.
  */
 export async function boardJobs(ctx: ControlContext, teamId: string): Promise<BoardJob[]> {
-  await reconcileLabeledIssues(ctx);
   const weekAgo = new Date(ctx.now().getTime() - 7 * 24 * 3600_000);
-  const rows = await ctx.db
-    .select({ job: jobs, repoFullName: repos.fullName, runnerName: runners.name })
-    .from(jobs)
-    .innerJoin(repos, eq(repos.id, jobs.repoId))
-    .leftJoin(runners, eq(runners.id, jobs.runnerId))
-    .where(
-      and(
-        eq(jobs.teamId, teamId),
-        or(notInArray(jobs.status, ["merged", "cancelled", "failed"]), gt(jobs.updatedAt, weekAgo)),
-      ),
-    )
-    .orderBy(desc(jobs.updatedAt))
-    .limit(300);
-  const diagnosis = new Map((await diagnoseQueue(ctx, teamId)).map((d) => [d.jobId, d.reason]));
+  const [rows, diagnosis] = await Promise.all([
+    ctx.db
+      .select({ job: BOARD_JOB_COLUMNS, repoFullName: repos.fullName, runnerName: runners.name })
+      .from(jobs)
+      .innerJoin(repos, eq(repos.id, jobs.repoId))
+      .leftJoin(runners, eq(runners.id, jobs.runnerId))
+      .where(
+        and(
+          eq(jobs.teamId, teamId),
+          or(notInArray(jobs.status, ["merged", "cancelled", "failed"]), gt(jobs.updatedAt, weekAgo)),
+        ),
+      )
+      .orderBy(desc(jobs.updatedAt))
+      .limit(300),
+    diagnoseQueue(ctx, teamId),
+  ]);
+  const reasons = new Map(diagnosis.map((d) => [d.jobId, d.reason]));
   const byIssue = new Map<string, (typeof rows)[number]>();
   const withoutIssue: (typeof rows)[number][] = [];
   for (const row of rows) {
@@ -67,7 +87,7 @@ export async function boardJobs(ctx: ControlContext, teamId: string): Promise<Bo
   }
   return [...byIssue.values(), ...withoutIssue]
     .sort((a, b) => b.job.updatedAt.getTime() - a.job.updatedAt.getTime())
-    .map((r) => ({ ...r, waitingReason: diagnosis.get(r.job.id) ?? null }));
+    .map((r) => ({ ...r, waitingReason: reasons.get(r.job.id) ?? null }));
 }
 
 export async function jobDetail(ctx: ControlContext, teamId: string, jobId: string) {
@@ -104,31 +124,50 @@ export async function eventsSince(ctx: ControlContext, teamId: string, jobId: st
     .limit(500);
 }
 
+/** The `jobs` columns the inbox renders (plus the routing fields its rows are filtered on). */
+const INBOX_JOB_COLUMNS = {
+  id: jobs.id,
+  title: jobs.title,
+  status: jobs.status,
+  updatedAt: jobs.updatedAt,
+  prUrl: jobs.prUrl,
+  assignedReviewers: jobs.assignedReviewers,
+  authorUserId: jobs.authorUserId,
+  authorLogin: jobs.authorLogin,
+} as const;
+
+export type InboxJob = Pick<Job, keyof typeof INBOX_JOB_COLUMNS>;
+
 /**
  * Per-member inbox (spec 5.6/5.7/5.12): questions addressed to me, PRs handed to me, my own tickets
  * in flight — including queued ones blocked by the scheduler — and the unassigned lane of handovers
  * nobody was routed to.
+ *
+ * Like the board, this read path stays off GitHub: the webhook and the worker's catch-up poll own
+ * labeled-issue reconciliation.
  */
 export async function inbox(ctx: ControlContext, teamId: string, userId: string) {
-  await reconcileLabeledIssues(ctx);
-  const user = await ctx.db.query.users.findFirst({ where: eq(users.id, userId) });
+  // The handover list does not need the user row, so fetch it alongside the lookup.
+  const [user, handovers] = await Promise.all([
+    ctx.db.query.users.findFirst({ where: eq(users.id, userId) }),
+    ctx.db
+      .select(INBOX_JOB_COLUMNS)
+      .from(jobs)
+      .where(and(eq(jobs.teamId, teamId), eq(jobs.status, "waiting_on_you")))
+      .orderBy(desc(jobs.updatedAt)),
+  ]);
   if (!user) return { questions: [], reviews: [], mine: [], unassigned: [], blocked: [] };
   const login = user.ghLogin;
-  const [openQuestions, handovers, mine] = await Promise.all([
+  const [openQuestions, mine, diagnosis] = await Promise.all([
     ctx.db
-      .select({ question: questions, job: jobs })
+      .select({ question: questions, job: INBOX_JOB_COLUMNS })
       .from(questions)
       .innerJoin(jobs, eq(jobs.id, questions.jobId))
       .where(
         and(eq(questions.teamId, teamId), isNull(questions.answeredAt), eq(questions.askedLogin, login)),
       ),
     ctx.db
-      .select()
-      .from(jobs)
-      .where(and(eq(jobs.teamId, teamId), eq(jobs.status, "waiting_on_you")))
-      .orderBy(desc(jobs.updatedAt)),
-    ctx.db
-      .select()
+      .select(INBOX_JOB_COLUMNS)
       .from(jobs)
       .where(
         and(
@@ -138,12 +177,12 @@ export async function inbox(ctx: ControlContext, teamId: string, userId: string)
         ),
       )
       .orderBy(desc(jobs.updatedAt)),
+    // Runs for every inbox load so it overlaps the queries above; only queued rows use it.
+    diagnoseQueue(ctx, teamId),
   ]);
-  const routedTo = (j: Job) => ((j.assignedReviewers as string[]) ?? []).map((r) => r.toLowerCase());
+  const routedTo = (j: InboxJob) => ((j.assignedReviewers as string[]) ?? []).map((r) => r.toLowerCase());
   const queuedMine = mine.filter((j) => j.status === "queued");
-  const reasons = new Map<string, string | null>(
-    queuedMine.length > 0 ? (await diagnoseQueue(ctx, teamId)).map((d) => [d.jobId, d.reason]) : [],
-  );
+  const reasons = new Map<string, string | null>(diagnosis.map((d) => [d.jobId, d.reason]));
   const blocked = queuedMine.flatMap((job) => {
     const reason = reasons.get(job.id);
     return reason ? [{ job, reason }] : [];

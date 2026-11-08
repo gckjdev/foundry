@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { jobs, questions, repos, teams, users } from "@foundry/db";
 import { TEST_DATABASE_URL } from "@foundry/db/testing";
 import { eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { artifactUrl, readArtifact, storeArtifact } from "./artifacts";
 import { NotFoundError, recordEvents } from "./jobs";
 import { teamMetrics } from "./metrics";
@@ -98,6 +98,17 @@ describe.skipIf(!TEST_DATABASE_URL)("panel and side-effect surfaces", () => {
     expect(await teamRepos(env.ctx, team.id)).toHaveLength(1);
     expect(await runningJobsByRunner(env.ctx, [])).toEqual([]);
     expect(await runningJobsByRunner(env.ctx, [crypto.randomUUID()])).toEqual([]);
+  });
+
+  it("serves the board and inbox without calling GitHub", async () => {
+    const { team, alice, repo } = await seedTeam(env);
+    await ticket(repo.id, team.id, alice.id);
+    // Labeled issues are reconciled by the webhook and the worker's catch-up poll, not by the
+    // read path: a list call here made every page load and realtime refresh wait on GitHub.
+    const listIssues = vi.spyOn(env.gh, "listIssues");
+    await boardJobs(env.ctx, team.id);
+    await inbox(env.ctx, team.id, alice.id);
+    expect(listIssues).not.toHaveBeenCalled();
   });
 
   it("shows one card per issue on the board", async () => {
