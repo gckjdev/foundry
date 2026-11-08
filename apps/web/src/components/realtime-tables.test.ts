@@ -33,4 +33,50 @@ describe("panel realtime refresh", () => {
     expect(isRefreshMessage(board, { type: "hello" })).toBe(false);
     expect(isRefreshMessage(board, { type: "change" })).toBe(false);
   });
+
+  it("does not refresh the board for a cost-only jobs update", () => {
+    expect(
+      isRefreshMessage(board, {
+        type: "change",
+        table: "jobs",
+        op: "UPDATE",
+        columns: ["cost_usd", "tokens_in", "tokens_out", "updated_at"],
+      }),
+    ).toBe(false);
+  });
+
+  it("refreshes the board when a job's status (or any meaningful column) changes", () => {
+    expect(
+      isRefreshMessage(board, {
+        type: "change",
+        table: "jobs",
+        op: "UPDATE",
+        columns: ["status", "updated_at"],
+      }),
+    ).toBe(true);
+    expect(
+      isRefreshMessage(board, {
+        type: "change",
+        table: "jobs",
+        op: "UPDATE",
+        columns: ["title", "updated_at"],
+      }),
+    ).toBe(true);
+  });
+
+  it("refreshes the board on job insert and delete regardless of columns", () => {
+    expect(isRefreshMessage(board, { type: "change", table: "jobs", op: "INSERT", columns: [] })).toBe(true);
+    expect(isRefreshMessage(board, { type: "change", table: "jobs", op: "DELETE", columns: [] })).toBe(true);
+  });
+
+  it("still refreshes when the payload has no column info (older realtime)", () => {
+    expect(isRefreshMessage(board, { type: "change", table: "jobs", op: "UPDATE" })).toBe(true);
+  });
+
+  it("does not suppress updates for tables without a noise map", () => {
+    const runners = new Set(tablesForPage("/runners"));
+    expect(
+      isRefreshMessage(runners, { type: "change", table: "runners", op: "UPDATE", columns: ["updated_at"] }),
+    ).toBe(true);
+  });
 });

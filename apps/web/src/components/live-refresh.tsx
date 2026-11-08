@@ -37,7 +37,12 @@ export function LiveRefresh({ tables }: { tables?: string[] }) {
           setState("live");
         };
         ws.onmessage = (ev) => {
-          const msg = JSON.parse(String(ev.data)) as { type?: string; table?: string };
+          const msg = JSON.parse(String(ev.data)) as {
+            type?: string;
+            table?: string;
+            op?: string;
+            columns?: string[];
+          };
           if (!isRefreshMessage(watched.current, msg)) return;
           if (timer.current) return;
           timer.current = setTimeout(() => {

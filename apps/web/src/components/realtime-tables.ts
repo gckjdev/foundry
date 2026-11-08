@@ -20,10 +20,27 @@ export function tablesForPage(pathname: string | null | undefined): string[] {
   return page ? [...page.tables] : [];
 }
 
+/**
+ * Columns whose updates are cosmetic for the UI and must not trigger a re-render. The runner
+ * writes `costUsd`/`tokensIn`/`tokensOut` back to `jobs` on every event flush (about once a
+ * second) and the `jobs_touch` trigger bumps `updated_at` alongside, so a `jobs` change whose
+ * only differing columns are these is just an accounting tick, not a status move.
+ */
+const NOISE_COLUMNS: Record<string, ReadonlySet<string>> = {
+  jobs: new Set(["cost_usd", "tokens_in", "tokens_out", "updated_at"]),
+};
+
 /** Whether a realtime message should trigger a refresh for a page watching `tables`. */
 export function isRefreshMessage(
   tables: ReadonlySet<string>,
-  msg: { type?: string; table?: string },
+  msg: { type?: string; table?: string; op?: string; columns?: string[] },
 ): boolean {
-  return msg.type === "change" && typeof msg.table === "string" && tables.has(msg.table);
+  if (msg.type !== "change" || typeof msg.table !== "string") return false;
+  if (!tables.has(msg.table)) return false;
+  if (msg.op === "INSERT" || msg.op === "DELETE") return true;
+  // Older payloads carry no column info; keep refreshing to avoid dropping a real change.
+  if (!Array.isArray(msg.columns)) return true;
+  const noise = NOISE_COLUMNS[msg.table];
+  if (!noise) return true;
+  return msg.columns.some((c) => !noise.has(c));
 }

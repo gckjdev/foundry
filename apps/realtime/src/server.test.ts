@@ -36,9 +36,17 @@ describe("realtime server", () => {
     const a = await connect(`ws://localhost:${port}/?token=${token("team-a")}`);
     const b = await connect(`ws://localhost:${port}/`, ["foundry", token("team-b")]);
     await until(() => a.messages.length > 0 && b.messages.length > 0);
-    expect(rt.broadcast({ table: "jobs", id: "j1", team_id: "team-a", op: "UPDATE" })).toBe(1);
+    expect(
+      rt.broadcast({ table: "jobs", id: "j1", team_id: "team-a", op: "UPDATE", columns: ["status"] }),
+    ).toBe(1);
     await until(() => a.messages.length > 1);
-    expect(a.messages.at(-1)).toEqual({ type: "change", table: "jobs", id: "j1", op: "UPDATE" });
+    expect(a.messages.at(-1)).toEqual({
+      type: "change",
+      table: "jobs",
+      id: "j1",
+      op: "UPDATE",
+      columns: ["status"],
+    });
     expect(b.messages).toHaveLength(1);
     a.ws.close();
     b.ws.close();
