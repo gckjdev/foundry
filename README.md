@@ -45,4 +45,4 @@ Several jobs on one daemon: re-join with `--concurrency N`. A second daemon on t
 
 Tests: `pnpm test` (unit + API + in-process e2e). Set `FOUNDRY_TEST_DATABASE_URL` to a Postgres you can create databases on, otherwise database tests are skipped. Browser e2e: `pnpm test:e2e`. Coverage: `pnpm test:report`. See `docs/testing.md`.
 
-See `docs/local-setup.md` for GitHub App URLs, `.env` (including `FOUNDRY_HTTP_PROXY`), local Postgres, and Docker Compose deploy. Repo onboarding (join token, runner, recipe PR) is `docs/onboarding.md`.
+See `docs/local-setup.md` for GitHub App URLs, `.env` (including `FOUNDRY_HTTP_PROXY`), local Postgres, and Docker Compose deploy. Repo onboarding (join token, runner, recipe PR) is `docs/onboarding.md`. Field reference for every file under `.foundry/` and every `recipe.yaml` / `policy.yaml` field is `docs/foundry-dot-dir.md`.

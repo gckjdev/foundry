@@ -4,6 +4,8 @@ Onboarding is the first job Foundry runs on a repository. An agent writes `.foun
 
 The control plane (`pnpm dev`) does **not** run jobs. A joined runner does.
 
+Field reference for every file and field Foundry reads from `.foundry/`: `docs/foundry-dot-dir.md`.
+
 ## Before you start
 
 1. Panel at `http://localhost:3000`, signed in with GitHub, with a team created.
