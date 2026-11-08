@@ -1,4 +1,4 @@
-import { syncUnlinkedInstallations, teamRepos } from "@foundry/control";
+import { syncUnlinkedInstallations, teamReposWithReadiness } from "@foundry/control";
 import { HARNESS_IDS } from "@foundry/shared";
 import { githubInstallUrl } from "@foundry/shared/github-host";
 import { requireTeam } from "@/server/session";
@@ -14,12 +14,12 @@ const ONBOARDING: Record<string, { label: string; tone: string }> = {
 
 export default async function Repos({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   const { ctx, team, role } = await requireTeam();
-  let list = await teamRepos(ctx, team.id);
+  let list = await teamReposWithReadiness(ctx, team.id);
   let syncError: string | null = null;
   if (list.length === 0 && role === "admin") {
     try {
       await syncUnlinkedInstallations(ctx, team.id);
-      list = await teamRepos(ctx, team.id);
+      list = await teamReposWithReadiness(ctx, team.id);
     } catch (err) {
       syncError = err instanceof Error ? err.message : String(err);
     }
@@ -63,7 +63,7 @@ export default async function Repos({ searchParams }: { searchParams: Promise<Re
         </div>
       ) : null}
       <div className="stack">
-        {list.map((repo) => {
+        {list.map(({ repo, recipePrUrl, readiness }) => {
           const ob = ONBOARDING[repo.onboardingStatus] ?? ONBOARDING.not_started!;
           return (
             <section key={repo.id} className="card">
@@ -98,6 +98,29 @@ export default async function Repos({ searchParams }: { searchParams: Promise<Re
                   review.
                 </p>
               )}
+              {recipePrUrl ? (
+                <p className="small" style={{ marginTop: 6 }}>
+                  <a href={recipePrUrl} target="_blank" rel="noreferrer">
+                    Recipe PR ↗
+                  </a>
+                </p>
+              ) : null}
+              {readiness.length > 0 ? (
+                <div style={{ marginTop: 8 }}>
+                  <div className="faint small">Runner readiness</div>
+                  {readiness.map((report) => (
+                    <div key={report.runnerId} className="small">
+                      <span style={{ color: report.ready ? "var(--ok)" : "var(--bad)" }}>
+                        {report.ready ? "✔" : "✖"}
+                      </span>{" "}
+                      {report.runnerName}{" "}
+                      <span className="faint">
+                        {report.ready ? "ready" : `not ready${report.reason ? ` — ${report.reason}` : ""}`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               {role === "admin" ? (
                 <form
                   action={repoSettingsAction}

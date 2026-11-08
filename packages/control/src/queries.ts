@@ -1,5 +1,16 @@
-import { events, evidence, type Job, jobs, questions, repos, runners, users } from "@foundry/db";
-import { and, asc, desc, eq, gt, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
+import {
+  events,
+  evidence,
+  type Job,
+  jobs,
+  questions,
+  type Repo,
+  repos,
+  runnerRepoReadiness,
+  runners,
+  users,
+} from "@foundry/db";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import { diagnoseQueue } from "./claim";
 import type { ControlContext } from "./context";
 import { reconcileLabeledIssues } from "./jobs";
@@ -148,6 +159,74 @@ export async function inbox(ctx: ControlContext, teamId: string, userId: string)
 
 export async function teamRepos(ctx: ControlContext, teamId: string) {
   return ctx.db.select().from(repos).where(eq(repos.teamId, teamId)).orderBy(asc(repos.fullName));
+}
+
+export interface RepoRunnerReadiness {
+  runnerId: string;
+  runnerName: string;
+  ready: boolean;
+  reason: string | null;
+  recipeSha: string | null;
+  checkedAt: Date;
+}
+
+export interface TeamRepoWithReadiness {
+  repo: Repo;
+  /** Pull request opened by the repo's most recent onboarding job, if it got that far. */
+  recipePrUrl: string | null;
+  /** One row per runner that has reported readiness for the repo, ordered by runner name. */
+  readiness: RepoRunnerReadiness[];
+}
+
+/**
+ * Repos plus the readiness details spec 5.6 shows on the Repos screen: the recipe PR opened by
+ * onboarding, and each runner's last report for the repo. Runners that have not reported yet are
+ * omitted.
+ */
+export async function teamReposWithReadiness(
+  ctx: ControlContext,
+  teamId: string,
+): Promise<TeamRepoWithReadiness[]> {
+  const list = await teamRepos(ctx, teamId);
+  if (list.length === 0) return [];
+  const repoIds = list.map((repo) => repo.id);
+  const [onboarding, reports] = await Promise.all([
+    ctx.db
+      .select({ repoId: jobs.repoId, prUrl: jobs.prUrl })
+      .from(jobs)
+      .where(and(eq(jobs.teamId, teamId), eq(jobs.kind, "onboarding"), isNotNull(jobs.prUrl)))
+      .orderBy(desc(jobs.createdAt), desc(jobs.id)),
+    ctx.db
+      .select({
+        repoId: runnerRepoReadiness.repoId,
+        runnerId: runnerRepoReadiness.runnerId,
+        runnerName: runners.name,
+        ready: runnerRepoReadiness.ready,
+        reason: runnerRepoReadiness.reason,
+        recipeSha: runnerRepoReadiness.recipeSha,
+        checkedAt: runnerRepoReadiness.checkedAt,
+      })
+      .from(runnerRepoReadiness)
+      .innerJoin(runners, eq(runners.id, runnerRepoReadiness.runnerId))
+      .where(and(inArray(runnerRepoReadiness.repoId, repoIds), ne(runners.status, "removed")))
+      .orderBy(asc(runners.name)),
+  ]);
+
+  const prByRepo = new Map<string, string>();
+  for (const row of onboarding) {
+    if (row.prUrl && !prByRepo.has(row.repoId)) prByRepo.set(row.repoId, row.prUrl);
+  }
+  const readinessByRepo = new Map<string, RepoRunnerReadiness[]>();
+  for (const { repoId, ...row } of reports) {
+    const bucket = readinessByRepo.get(repoId) ?? [];
+    bucket.push(row);
+    readinessByRepo.set(repoId, bucket);
+  }
+  return list.map((repo) => ({
+    repo,
+    recipePrUrl: prByRepo.get(repo.id) ?? null,
+    readiness: readinessByRepo.get(repo.id) ?? [],
+  }));
 }
 
 export async function runningJobsByRunner(ctx: ControlContext, runnerIds: string[]) {

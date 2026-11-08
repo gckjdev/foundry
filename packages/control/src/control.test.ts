@@ -1,4 +1,4 @@
-import { events, jobs, repos, teams, users } from "@foundry/db";
+import { events, jobs, repos, runnerRepoReadiness, teams, users } from "@foundry/db";
 import { TEST_DATABASE_URL } from "@foundry/db/testing";
 import { stageLabel } from "@foundry/shared";
 import { eq } from "drizzle-orm";
@@ -9,7 +9,7 @@ import { cancelJob, getJob, reconcileLabeledIssues, retryJob, setJobMaxCost, set
 import { evaluateJobGate, reconcileChangesRequestedReviews, reconcileOpenPullRequests } from "./merge-gate";
 import { capacityCard } from "./metrics";
 import { openPullRequest } from "./prs";
-import { boardJobs, inbox } from "./queries";
+import { boardJobs, inbox, teamReposWithReadiness } from "./queries";
 import { answerFromCheckbox } from "./questions";
 import { runnerAsk, runnerConfidence, runnerEvidence, runnerStage } from "./runner-api";
 import { createJoinToken, heartbeat, joinRunner } from "./runners";
@@ -595,5 +595,32 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
       status: "queued",
     });
     expect(await reconcileLabeledIssues(env.ctx)).toEqual([]);
+  });
+
+  it("returns the recipe PR and every runner's readiness for a repo", async () => {
+    const { team, repo } = await seedTeam(env);
+    await seedRunner(env, team.id, repo.id, { name: "ready-mbp" });
+    const broken = await seedRunner(env, team.id, repo.id, { name: "broken-mbp" });
+    await env.ctx.db
+      .update(runnerRepoReadiness)
+      .set({ ready: false, reason: "pnpm test failed" })
+      .where(eq(runnerRepoReadiness.runnerId, broken.id));
+    await env.ctx.db.insert(jobs).values({
+      teamId: team.id,
+      repoId: repo.id,
+      kind: "onboarding",
+      title: "Set up Foundry for acme/app",
+      harness: "claude-code",
+      branch: "foundry/onboarding-12345678",
+      prUrl: "https://github.com/acme/app/pull/12",
+    });
+
+    const [withReadiness] = await teamReposWithReadiness(env.ctx, team.id);
+    expect(withReadiness?.repo.id).toBe(repo.id);
+    expect(withReadiness?.recipePrUrl).toBe("https://github.com/acme/app/pull/12");
+    expect(withReadiness?.readiness).toEqual([
+      expect.objectContaining({ runnerName: "broken-mbp", ready: false, reason: "pnpm test failed" }),
+      expect.objectContaining({ runnerName: "ready-mbp", ready: true }),
+    ]);
   });
 });
