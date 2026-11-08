@@ -124,6 +124,7 @@ export async function maxMinutesAction(form: FormData) {
   if (minutes !== null && (!Number.isInteger(minutes) || minutes < 1)) return;
   await setJobMaxMinutes(ctx, team.id, job.id, minutes);
   revalidatePath(`/jobs/${job.id}`);
+  revalidatePath(`/jobs/${job.id}/configuration`);
 }
 
 export async function maxCostAction(form: FormData) {
@@ -133,6 +134,7 @@ export async function maxCostAction(form: FormData) {
   if (cost !== null && (!Number.isFinite(cost) || cost <= 0)) return;
   await setJobMaxCost(ctx, team.id, job.id, cost);
   revalidatePath(`/jobs/${job.id}`);
+  revalidatePath(`/jobs/${job.id}/configuration`);
 }
 
 export async function retryAction(form: FormData) {
