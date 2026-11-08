@@ -1,5 +1,7 @@
 # Foundry — Software Factory Product Spec
 
+> 中文版本: [software-factory-product-spec.zh-CN.md](software-factory-product-spec.zh-CN.md)
+
 > Working name: **Foundry**. Version 0.5 · 2026-11-06
 > **Decisions locked:** primary customer is **small product teams (2–20 engineers)** (v0.2). Jobs **run on local machines** (team-owned runners using git worktrees), not cloud sandboxes (v0.2). Runners support **macOS and Linux** from day one (v0.3). A **laptops-only** team setup is fully supported; a shared always-on runner is recommended, not required (v0.3). The MVP is **GitHub-only**: GitHub Issues is the ticket source, and questions, status and notifications use GitHub itself plus the panel (email and browser push). It has no dependency on Linear or Slack (v0.4). MVP harnesses are **Claude Code and OpenCode**; Codex, Cursor CLI and others come later. The **Runner core and the Control plane are both TypeScript** and share one monorepo and one set of types (v0.5).
 > Sources studied:

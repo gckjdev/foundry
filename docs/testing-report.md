@@ -1,5 +1,7 @@
 # Testing coverage report
 
+> 中文版本: [testing-report.zh-CN.md](testing-report.zh-CN.md)
+
 Generated **2026-11-07** by `pnpm test:report`. Database-backed tests: **included**.
 
 Regenerate after changing tests:

@@ -1,5 +1,7 @@
 # Foundry
 
+> 中文版本: [README.zh-CN.md](README.zh-CN.md)
+
 Foundry turns GitHub issues into verified, merged pull requests. Coding agents (Claude Code or OpenCode) run on your team's own Mac and Linux machines, follow a fixed playbook (triage, investigate, implement, verify, PR), and a confidence gate decides whether a change merges itself or goes to a human.
 
 Product spec: `software-factory-product-spec.md` (v0.5).
@@ -46,3 +48,21 @@ Several jobs on one daemon: re-join with `--concurrency N`. A second daemon on t
 Tests: `pnpm test` (unit + API + in-process e2e). Set `FOUNDRY_TEST_DATABASE_URL` to a Postgres you can create databases on, otherwise database tests are skipped. Browser e2e: `pnpm test:e2e`. Coverage: `pnpm test:report`. See `docs/testing.md`.
 
 See `docs/local-setup.md` for GitHub App URLs, `.env` (including `FOUNDRY_HTTP_PROXY`), local Postgres, and Docker Compose deploy. Repo onboarding (join token, runner, recipe PR) is `docs/onboarding.md`.
+
+## Documentation
+
+Every human-facing document has a Chinese version.
+
+| Document                              | English                                                              | 中文                                                                             |
+| ------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Product spec                          | [software-factory-product-spec.md](software-factory-product-spec.md) | [software-factory-product-spec.zh-CN.md](software-factory-product-spec.zh-CN.md) |
+| Overall solution design               | [docs/design/overall-design.md](docs/design/overall-design.md)       | [docs/design/overall-design.zh-CN.md](docs/design/overall-design.zh-CN.md)       |
+| Component solution design             | [docs/design/components.md](docs/design/components.md)               | [docs/design/components.zh-CN.md](docs/design/components.zh-CN.md)               |
+| Core use cases and sequence diagrams  | [docs/design/use-cases.md](docs/design/use-cases.md)                 | [docs/design/use-cases.zh-CN.md](docs/design/use-cases.zh-CN.md)                 |
+| Configuration, install and deploy     | [docs/local-setup.md](docs/local-setup.md)                           | [docs/local-setup.zh-CN.md](docs/local-setup.zh-CN.md)                           |
+| Repo onboarding                       | [docs/onboarding.md](docs/onboarding.md)                             | [docs/onboarding.zh-CN.md](docs/onboarding.zh-CN.md)                             |
+| Testing architecture                  | [docs/testing.md](docs/testing.md)                                   | [docs/testing.zh-CN.md](docs/testing.zh-CN.md)                                   |
+| Testing coverage snapshot             | [docs/testing-report.md](docs/testing-report.md)                     | [docs/testing-report.zh-CN.md](docs/testing-report.zh-CN.md)                     |
+| ADR 001: runner runtime and packaging | [docs/adr/001-runner-runtime.md](docs/adr/001-runner-runtime.md)     | [docs/adr/001-runner-runtime.zh-CN.md](docs/adr/001-runner-runtime.zh-CN.md)     |
+| Agent instructions                    | [AGENTS.md](AGENTS.md)                                               | not translated (per ticket)                                                      |
+| Claude Code notes                     | [CLAUDE.md](CLAUDE.md)                                               | not translated (per ticket)                                                      |
