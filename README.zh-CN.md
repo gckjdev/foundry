@@ -56,7 +56,8 @@ pnpm dev:runner
 
 GitHub App URL、`.env`（包括 `FOUNDRY_HTTP_PROXY`）、本地 Postgres 和 Docker Compose 部署见
 `docs/local-setup.zh-CN.md`。仓库 onboarding（join token、runner、recipe PR）见
-`docs/onboarding.zh-CN.md`。
+`docs/onboarding.zh-CN.md`。`.foundry/` 下每个文件以及 `recipe.yaml` / `policy.yaml` 每个字段的
+参考见 `docs/foundry-dot-dir.zh-CN.md`。
 
 ## 文档
 
@@ -70,6 +71,7 @@ GitHub App URL、`.env`（包括 `FOUNDRY_HTTP_PROXY`）、本地 Postgres 和 D
 | 核心用例与序列图             | [docs/design/use-cases.md](docs/design/use-cases.md)                 | [docs/design/use-cases.zh-CN.md](docs/design/use-cases.zh-CN.md)                 |
 | 配置、安装与部署             | [docs/local-setup.md](docs/local-setup.md)                           | [docs/local-setup.zh-CN.md](docs/local-setup.zh-CN.md)                           |
 | 仓库 onboarding              | [docs/onboarding.md](docs/onboarding.md)                             | [docs/onboarding.zh-CN.md](docs/onboarding.zh-CN.md)                             |
+| `.foundry/` 字段参考         | [docs/foundry-dot-dir.md](docs/foundry-dot-dir.md)                   | [docs/foundry-dot-dir.zh-CN.md](docs/foundry-dot-dir.zh-CN.md)                   |
 | 测试架构                     | [docs/testing.md](docs/testing.md)                                   | [docs/testing.zh-CN.md](docs/testing.zh-CN.md)                                   |
 | 测试覆盖率快照               | [docs/testing-report.md](docs/testing-report.md)                     | [docs/testing-report.zh-CN.md](docs/testing-report.zh-CN.md)                     |
 | ADR 001：Runner 运行时与打包 | [docs/adr/001-runner-runtime.md](docs/adr/001-runner-runtime.md)     | [docs/adr/001-runner-runtime.zh-CN.md](docs/adr/001-runner-runtime.zh-CN.md)     |

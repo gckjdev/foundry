@@ -8,6 +8,8 @@ pull request。你审查并合并该 PR。之后，给 issue 加上 `foundry` �
 
 控制面（`pnpm dev`）**不**运行任务。已加入的 runner 才运行任务。
 
+Foundry 从 `.foundry/` 读取的每个文件和字段的参考：`docs/foundry-dot-dir.zh-CN.md`。
+
 ## 开始之前
 
 1. 面板位于 `http://localhost:3000`，已用 GitHub 登录，并创建了团队。

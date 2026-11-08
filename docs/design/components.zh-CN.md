@@ -45,7 +45,7 @@
 | 上下文     | `src/server/context.ts`                                                                                      | 从数据库、GitHub 客户端、通知器和环境变量构建唯一 `ControlContext`；测试可注入。 |
 | HTTP 辅助  | `src/server/http.ts`                                                                                         | JSON/错误映射和 `runnerRoute()`：bearer 认证、zod 校验、类型化错误。             |
 | 代理       | `src/server/retry-fetch.ts`、`src/instrumentation.node.ts`                                                   | 通过 `FOUNDRY_HTTP_PROXY` 包装全局 fetch 并重试；只启动一次 worker。             |
-| 面板页面   | `src/app/(panel)/**`                                                                                         | Inbox、看板、任务详情、仓库、runner、指标、设置、团队。                          |
+| 面板页面   | `src/app/(panel)/**`                                                                                         | Inbox、看板、任务详情、任务配置、仓库、runner、指标、设置、团队。                |
 | Actions    | `src/app/actions.ts`                                                                                         | 面板按钮的服务端 action（回答、重试、取消、合并、设置）。                        |
 | Webhook    | `src/app/api/webhooks/github/route.ts`                                                                       | 验证签名、存储投递、异步处理。                                                   |
 | Runner API | `src/app/api/runner/**`                                                                                      | Join、心跳、领取、就绪、git token、artifact、单任务动作。                        |
