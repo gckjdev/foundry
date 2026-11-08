@@ -306,7 +306,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 </div>
                 <ul className="dim">
                   {gate.failed.map((f) => (
-                    <li key={f.rule}>
+                    <li key={`${f.rule}-${f.detail}`}>
                       <b>{f.rule}</b> — {f.detail}
                     </li>
                   ))}
