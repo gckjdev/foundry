@@ -25,6 +25,7 @@ export class RecordingControlPlane implements ControlPlane {
     draining: false,
     revokedJobIds: [],
     keepJobIds: [],
+    jobLimits: [],
     repos: [],
   };
 
@@ -167,6 +168,8 @@ export function claimedJob(overrides: Partial<ClaimedJob> = {}): ClaimedJob {
     resumeMode: "fresh",
     loopCount: 0,
     costUsd: 0,
+    maxJobMinutes: null,
+    maxCostUsd: null,
     pendingInputs: [],
     mergeMode: "off",
     ...overrides,

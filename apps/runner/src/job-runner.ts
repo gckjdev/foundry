@@ -23,6 +23,8 @@ import {
   briefRef,
   type ClaimedJob,
   DEFAULT_POLICY,
+  effectiveMaxCostUsd,
+  effectiveMaxJobMinutes,
   expandRecipeVars,
   type FoundryEvent,
   type HandoffBrief,
@@ -126,6 +128,10 @@ export class JobRunner {
   private env: Record<string, string> = {};
   private recipe: Recipe | null = null;
   private policy: Policy = DEFAULT_POLICY;
+  private maxJobMinutes = 60;
+  private maxCostUsd = DEFAULT_POLICY.max_cost_per_job_usd;
+  private driveStartedAt = 0;
+  private deadlineTimer: ReturnType<typeof setTimeout> | null = null;
   private gitToken: { token: string; expiresAt: number } | null = null;
   private buffer: FoundryEvent[] = [];
   private flushTimer: ReturnType<typeof setInterval> | null = null;
@@ -235,6 +241,8 @@ export class JobRunner {
       this.recipe = (await loadRecipe(this.cwd)).recipe;
     }
     this.policy = job.kind === "ticket" ? await loadPolicy(this.cwd) : DEFAULT_POLICY;
+    this.maxJobMinutes = effectiveMaxJobMinutes(job.maxJobMinutes, this.policy);
+    this.maxCostUsd = effectiveMaxCostUsd(job.maxCostUsd, this.policy);
 
     const services =
       job.kind === "ticket" ? await provisionServices(job.id, this.recipe, deps.postgresUrl) : {};
@@ -391,17 +399,49 @@ export class JobRunner {
       .catch(() => undefined);
   }
 
+  /** Apply a limit change from the control plane, including while the job is running. */
+  setMaxJobMinutes(override: number | null): void {
+    const next = effectiveMaxJobMinutes(override, this.policy);
+    if (next === this.maxJobMinutes) return;
+    this.maxJobMinutes = next;
+    if (this.driveStartedAt > 0) this.armDeadline();
+  }
+
+  /** Apply a cost cap change from the control plane, including while the job is running. */
+  setMaxCostUsd(override: number | null): void {
+    this.maxCostUsd = effectiveMaxCostUsd(override, this.policy);
+    const total = this.job.costUsd + this.sessionCost;
+    if (total > this.maxCostUsd && !this.stopReason) {
+      void this.halt({ kind: "budget", reason: this.costBudgetReason(total) });
+    }
+  }
+
+  private costBudgetReason(total: number): string {
+    return `job cost $${total.toFixed(2)} exceeded max cost ($${this.maxCostUsd})`;
+  }
+
+  private armDeadline(): void {
+    if (this.deadlineTimer) clearTimeout(this.deadlineTimer);
+    const reason = `job exceeded max execution time (${this.maxJobMinutes} minutes)`;
+    const remainingMs = this.driveStartedAt + this.maxJobMinutes * 60_000 - Date.now();
+    if (remainingMs <= 0) {
+      void this.halt({ kind: "budget", reason });
+      return;
+    }
+    this.deadlineTimer = setTimeout(() => void this.halt({ kind: "budget", reason }), remainingMs);
+  }
+
+  private clearDeadline(): void {
+    if (this.deadlineTimer) clearTimeout(this.deadlineTimer);
+    this.deadlineTimer = null;
+    this.driveStartedAt = 0;
+  }
+
   private async drive(): Promise<JobOutcome> {
     let session = await this.startSession();
     let nudges = 0;
-    const deadline = setTimeout(
-      () =>
-        void this.halt({
-          kind: "budget",
-          reason: `job exceeded max_job_minutes (${this.policy.max_job_minutes})`,
-        }),
-      this.policy.max_job_minutes * 60_000,
-    );
+    this.driveStartedAt = Date.now();
+    this.armDeadline();
     try {
       for (;;) {
         const result = await this.consume(session);
@@ -436,7 +476,7 @@ export class JobRunner {
         throw new FailJob("the agent stopped before finishing the playbook");
       }
     } finally {
-      clearTimeout(deadline);
+      this.clearDeadline();
     }
   }
 
@@ -452,11 +492,8 @@ export class JobRunner {
       if (e.kind === "usage") {
         this.sessionCost += e.costUsd;
         const total = this.job.costUsd + this.sessionCost;
-        if (total > this.policy.max_cost_per_job_usd && !this.stopReason) {
-          void this.halt({
-            kind: "budget",
-            reason: `job cost $${total.toFixed(2)} exceeded max_cost_per_job_usd ($${this.policy.max_cost_per_job_usd})`,
-          });
+        if (total > this.maxCostUsd && !this.stopReason) {
+          void this.halt({ kind: "budget", reason: this.costBudgetReason(total) });
         }
       }
     }
