@@ -8,6 +8,9 @@ implement、verify、PR）工作，并由置信度门禁决定变更是自动合
 
 产品规格：`software-factory-product-spec.zh-CN.md`（v0.5）。
 
+第一次接触这个概念？从 [docs/introduction.zh-CN.md](docs/introduction.zh-CN.md) 开始——一篇面向初学者的
+软件工厂介绍，以及 Foundry 如何实现它。
+
 ## 目录结构
 
 | 路径                   | 内容                                                                            |
@@ -65,6 +68,7 @@ GitHub App URL、`.env`（包括 `FOUNDRY_HTTP_PROXY`）、本地 Postgres 和 D
 
 | 文档                         | English                                                              | 中文                                                                             |
 | ---------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| 软件工厂入门                 | [docs/introduction.md](docs/introduction.md)                         | [docs/introduction.zh-CN.md](docs/introduction.zh-CN.md)                         |
 | 产品规格                     | [software-factory-product-spec.md](software-factory-product-spec.md) | [software-factory-product-spec.zh-CN.md](software-factory-product-spec.zh-CN.md) |
 | 总体方案设计                 | [docs/design/overall-design.md](docs/design/overall-design.md)       | [docs/design/overall-design.zh-CN.md](docs/design/overall-design.zh-CN.md)       |
 | 组件方案设计                 | [docs/design/components.md](docs/design/components.md)               | [docs/design/components.zh-CN.md](docs/design/components.zh-CN.md)               |

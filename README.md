@@ -6,6 +6,9 @@ Foundry turns GitHub issues into verified, merged pull requests. Coding agents (
 
 Product spec: `software-factory-product-spec.md` (v0.5).
 
+New to the idea? Start with [docs/introduction.md](docs/introduction.md) — a beginner-friendly guide to
+software factories and how Foundry implements one.
+
 ## Layout
 
 | Path                   | What it is                                                                                  |
@@ -55,6 +58,7 @@ Every human-facing document has a Chinese version.
 
 | Document                              | English                                                              | 中文                                                                             |
 | ------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Introduction to software factories    | [docs/introduction.md](docs/introduction.md)                         | [docs/introduction.zh-CN.md](docs/introduction.zh-CN.md)                         |
 | Product spec                          | [software-factory-product-spec.md](software-factory-product-spec.md) | [software-factory-product-spec.zh-CN.md](software-factory-product-spec.zh-CN.md) |
 | Overall solution design               | [docs/design/overall-design.md](docs/design/overall-design.md)       | [docs/design/overall-design.zh-CN.md](docs/design/overall-design.zh-CN.md)       |
 | Component solution design             | [docs/design/components.md](docs/design/components.md)               | [docs/design/components.zh-CN.md](docs/design/components.zh-CN.md)               |
