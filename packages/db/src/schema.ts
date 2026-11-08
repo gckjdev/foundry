@@ -216,6 +216,8 @@ export const jobs = pgTable(
   },
   (t) => [
     index("jobs_team_status_idx").on(t.teamId, t.status),
+    // Board and inbox list a team's jobs newest-first.
+    index("jobs_team_updated_idx").on(t.teamId, t.updatedAt),
     index("jobs_runner_idx").on(t.runnerId),
     uniqueIndex("jobs_issue_active_idx")
       .on(t.repoId, t.issueNumber)

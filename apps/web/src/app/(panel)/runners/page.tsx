@@ -13,7 +13,10 @@ export default async function Runners() {
   const list = await teamRunners(ctx, team.id);
   const now = new Date();
   const ids = list.map((r) => r.id);
-  const [running, readiness] = await Promise.all([
+  const shared = list.filter((r) => r.kind === "shared");
+  // The capacity card only depends on the team, so it overlaps the runner-scoped queries rather
+  // than adding a third, sequential round trip to the page.
+  const [running, readiness, capacity] = await Promise.all([
     runningJobsByRunner(ctx, ids),
     ids.length
       ? ctx.db
@@ -22,11 +25,10 @@ export default async function Runners() {
           .innerJoin(repos, eq(repos.id, runnerRepoReadiness.repoId))
           .where(inArray(runnerRepoReadiness.runnerId, ids))
       : Promise.resolve([]),
+    shared.length === 0 && list.length > 0 ? capacityCard(ctx, team.id) : Promise.resolve(null),
   ]);
   const online = list.filter((r) => isOnline(r, now));
   const slots = online.reduce((n, r) => n + (r.accepting && r.status === "active" ? r.maxConcurrency : 0), 0);
-  const shared = list.filter((r) => r.kind === "shared");
-  const capacity = shared.length === 0 && list.length > 0 ? await capacityCard(ctx, team.id) : null;
 
   return (
     <>

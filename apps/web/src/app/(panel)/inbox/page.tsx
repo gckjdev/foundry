@@ -1,10 +1,9 @@
-import { inbox } from "@foundry/control";
-import type { Job } from "@foundry/db";
+import { type InboxJob, inbox } from "@foundry/control";
 import Link from "next/link";
 import { ago, StatusPill } from "@/components/status";
 import { requireTeam } from "@/server/session";
 
-function JobRow({ job, note }: { job: Job; note?: string }) {
+function JobRow({ job, note }: { job: InboxJob; note?: string }) {
   return (
     <tr>
       <td>
