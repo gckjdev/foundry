@@ -156,6 +156,13 @@ export async function activeJobForIssue(ctx: ControlContext, repoId: string, iss
   });
 }
 
+/** Any job for an issue, finished or not. The `foundry` trigger label outlives a cancelled job. */
+async function anyJobForIssue(ctx: ControlContext, repoId: string, issueNumber: number) {
+  return ctx.db.query.jobs.findFirst({
+    where: and(eq(jobs.repoId, repoId), eq(jobs.issueNumber, issueNumber)),
+  });
+}
+
 /** Create a job for an issue labeled `foundry`. Idempotent per issue while a job is active. */
 export async function createJobFromIssue(
   ctx: ControlContext,
@@ -218,7 +225,9 @@ export async function reconcileLabeledIssues(ctx: ControlContext): Promise<strin
       continue;
     }
     for (const issue of issues) {
-      const existing = await activeJobForIssue(ctx, repo.id, issue.number);
+      // The trigger label stays on the issue after a job finishes, so any existing job (cancelled
+      // included) means this label is not a new request. Retrying revives that job instead.
+      const existing = await anyJobForIssue(ctx, repo.id, issue.number);
       if (existing) continue;
       const job = await createJobFromIssue(ctx, repo.id, issue);
       created.push(job.id);

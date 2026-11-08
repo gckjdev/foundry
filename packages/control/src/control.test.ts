@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { claimJob } from "./claim";
 import { processWebhook, storeWebhook } from "./ingest";
-import { getJob, reconcileLabeledIssues, setJobMaxCost, setJobMaxMinutes } from "./jobs";
+import { cancelJob, getJob, reconcileLabeledIssues, retryJob, setJobMaxCost, setJobMaxMinutes } from "./jobs";
 import { evaluateJobGate, reconcileChangesRequestedReviews, reconcileOpenPullRequests } from "./merge-gate";
 import { capacityCard } from "./metrics";
 import { openPullRequest } from "./prs";
@@ -533,6 +533,24 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
     expect(await getJob(env.ctx, job!.id)).toMatchObject({ status: "merged" });
     const updated = await env.ctx.db.query.repos.findFirst({ where: eq(repos.id, repo.id) });
     expect(updated).toMatchObject({ acceptsJobs: true, onboardingStatus: "done" });
+  });
+
+  it("does not re-create a cancelled job whose trigger label lingers, and retries it in place", async () => {
+    const { repo } = await seedTeam(env);
+    env.gh.addIssue("acme/app", { number: 9, title: "Cancel then retry", labels: ["foundry"] });
+    await deliver(env, "issues", issueLabeledPayload({ number: 9, title: "Cancel then retry" }));
+    const [job] = await env.ctx.db.query.jobs.findMany({ where: eq(jobs.repoId, repo.id) });
+
+    await cancelJob(env.ctx, job!.id, "alice");
+    env.clock.advance(1000);
+    // The issue still carries the `foundry` label; the catch-up must not start a second job.
+    expect(await reconcileLabeledIssues(env.ctx)).toEqual([]);
+    expect(await env.ctx.db.query.jobs.findMany({ where: eq(jobs.repoId, repo.id) })).toHaveLength(1);
+
+    expect(await retryJob(env.ctx, job!.id, "triage", "alice")).toMatchObject({
+      id: job!.id,
+      status: "queued",
+    });
   });
 
   it("creates a ticket job for an open foundry-labeled issue when the webhook was missed", async () => {
