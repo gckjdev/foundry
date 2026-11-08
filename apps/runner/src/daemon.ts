@@ -185,6 +185,10 @@ export class Daemon {
           void r.runner.revoke();
         }
       }
+      // A limit changed on the job page takes effect without waiting for a re-claim.
+      for (const { jobId, maxJobMinutes } of res.jobLimits) {
+        this.running.get(jobId)?.runner.setMaxJobMinutes(maxJobMinutes);
+      }
       // Outside the schedule (lid unplugged, owner active, window closed): hand jobs back.
       if (wasAccepting && !this.accepting.ok && this.opts.schedule.acPowerOnly && onAcPower === false) {
         for (const r of this.running.values()) void r.runner.pause();

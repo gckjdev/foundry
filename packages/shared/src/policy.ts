@@ -43,3 +43,11 @@ export function parsePolicyYaml(text: string): Policy {
 }
 
 export const DEFAULT_POLICY: Policy = PolicySchema.parse({});
+
+/** A job's own limit wins; otherwise the repo policy applies (60 minutes by default). */
+export function effectiveMaxJobMinutes(
+  override: number | null | undefined,
+  policy: Pick<Policy, "max_job_minutes">,
+): number {
+  return override ?? policy.max_job_minutes;
+}

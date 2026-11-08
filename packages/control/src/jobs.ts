@@ -25,6 +25,25 @@ export async function getJob(ctx: ControlContext, jobId: string): Promise<Job> {
   return job;
 }
 
+/** Set (or, with `null`, clear) a job's own wall-clock limit in minutes. */
+export async function setJobMaxMinutes(
+  ctx: ControlContext,
+  teamId: string,
+  jobId: string,
+  maxJobMinutes: number | null,
+): Promise<Job> {
+  if (maxJobMinutes !== null && (!Number.isInteger(maxJobMinutes) || maxJobMinutes < 1)) {
+    throw new RangeError("max execution time must be a positive whole number of minutes");
+  }
+  const [row] = await ctx.db
+    .update(jobs)
+    .set({ maxJobMinutes, updatedAt: ctx.now() })
+    .where(and(eq(jobs.id, jobId), eq(jobs.teamId, teamId)))
+    .returning();
+  if (!row) throw new NotFoundError(`job ${jobId} not found`);
+  return row;
+}
+
 export async function recordEvents(
   ctx: ControlContext,
   job: Pick<Job, "id" | "teamId" | "status">,

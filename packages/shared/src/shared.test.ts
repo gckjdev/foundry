@@ -10,7 +10,7 @@ import {
   renderQuestionComment,
 } from "./comments";
 import { parseUnifiedDiff } from "./diff";
-import { parsePolicyYaml } from "./policy";
+import { DEFAULT_POLICY, effectiveMaxJobMinutes, parsePolicyYaml } from "./policy";
 import { expandRecipeVars, parseRecipeYaml } from "./recipe";
 import { isUiChange, matchRiskRules, splitReviewers } from "./risk";
 import { assertTransition, canTransition, stageLabel } from "./states";
@@ -68,6 +68,14 @@ risk_rules:
   });
   it("detects UI changes", () => {
     expect(isUiChange(diff, parseRecipeYaml("{}").ui_paths)).toBe(true);
+  });
+});
+
+describe("policy", () => {
+  it("defaults max job minutes to 60 and lets a job override it", () => {
+    expect(effectiveMaxJobMinutes(null, DEFAULT_POLICY)).toBe(60);
+    expect(effectiveMaxJobMinutes(90, DEFAULT_POLICY)).toBe(90);
+    expect(effectiveMaxJobMinutes(null, { max_job_minutes: 30 })).toBe(30);
   });
 });
 

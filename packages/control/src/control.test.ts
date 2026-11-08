@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { claimJob } from "./claim";
 import { processWebhook, storeWebhook } from "./ingest";
-import { getJob, reconcileLabeledIssues } from "./jobs";
+import { getJob, reconcileLabeledIssues, setJobMaxMinutes } from "./jobs";
 import { evaluateJobGate, reconcileOpenPullRequests } from "./merge-gate";
 import { openPullRequest } from "./prs";
 import { inbox } from "./queries";
@@ -178,6 +178,40 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
     });
     expect([...hb.keepJobIds].sort()).toEqual([parked.id, running.id].sort());
     expect(hb.revokedJobIds).toEqual([]);
+  });
+
+  it("saves a per-job max execution time and reports it in heartbeats", async () => {
+    const { team, repo } = await seedTeam(env);
+    const runner = await seedRunner(env, team.id, repo.id, { name: "alice-mbp" });
+    const [job] = await env.ctx.db
+      .insert(jobs)
+      .values({
+        teamId: team.id,
+        repoId: repo.id,
+        title: "Long job",
+        harness: "claude-code",
+        branch: `foundry/${crypto.randomUUID()}`,
+        status: "implementing",
+        runnerId: runner.id,
+      })
+      .returning();
+
+    await setJobMaxMinutes(env.ctx, team.id, job!.id, 90);
+    expect((await getJob(env.ctx, job!.id)).maxJobMinutes).toBe(90);
+    await expect(setJobMaxMinutes(env.ctx, crypto.randomUUID(), job!.id, 30)).rejects.toThrow();
+
+    const hb = await heartbeat(env.ctx, runner, {
+      cpu: 10,
+      memMb: 32000,
+      diskFreeMb: 100000,
+      onAcPower: true,
+      accepting: true,
+      runningJobIds: [job!.id],
+      harnesses: [{ id: "claude-code", installed: true, authOk: true }],
+      maxConcurrency: 1,
+      version: "0.1.0",
+    });
+    expect(hb.jobLimits).toEqual([{ jobId: job!.id, maxJobMinutes: 90 }]);
   });
 
   it("prefers the shared runner and never double-claims", async () => {
