@@ -1,23 +1,30 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { isRefreshMessage, tablesForPage } from "./realtime-tables";
 
 /**
- * Subscribes to the realtime service and re-renders the current server page when any row for
- * this team changes. Re-renders are debounced so a burst of agent events costs one refresh.
+ * Subscribes to the realtime service and re-renders the current server page when a table it
+ * actually renders changes. Re-renders are debounced so a burst of agent events costs one refresh.
  */
 export function LiveRefresh({ tables }: { tables?: string[] }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [state, setState] = useState<"connecting" | "live" | "offline">("connecting");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const filter = tables?.join(",");
+  const tablesKey = (tables ?? tablesForPage(pathname)).join(",");
+  const watched = useRef(new Set(tablesKey ? tablesKey.split(",") : []));
+
+  // Navigating between panel pages keeps the WebSocket open; only the filter changes.
+  useEffect(() => {
+    watched.current = new Set(tablesKey ? tablesKey.split(",") : []);
+  }, [tablesKey]);
 
   useEffect(() => {
     let ws: WebSocket | null = null;
     let closed = false;
     let backoff = 1000;
-    const wanted = filter ? new Set(filter.split(",")) : null;
 
     const connect = async () => {
       try {
@@ -30,8 +37,8 @@ export function LiveRefresh({ tables }: { tables?: string[] }) {
           setState("live");
         };
         ws.onmessage = (ev) => {
-          const msg = JSON.parse(String(ev.data)) as { type: string; table?: string };
-          if (msg.type !== "change" || (wanted && msg.table && !wanted.has(msg.table))) return;
+          const msg = JSON.parse(String(ev.data)) as { type?: string; table?: string };
+          if (!isRefreshMessage(watched.current, msg)) return;
           if (timer.current) return;
           timer.current = setTimeout(() => {
             timer.current = null;
@@ -54,7 +61,7 @@ export function LiveRefresh({ tables }: { tables?: string[] }) {
       closed = true;
       ws?.close();
     };
-  }, [router, filter]);
+  }, [router]);
 
   return (
     <span
