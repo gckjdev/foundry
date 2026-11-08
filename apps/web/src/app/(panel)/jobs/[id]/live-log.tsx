@@ -2,12 +2,7 @@
 
 import type { FoundryEvent } from "@foundry/shared";
 import { useEffect, useRef, useState } from "react";
-
-interface Line {
-  id: number;
-  ts: string;
-  payload: FoundryEvent;
-}
+import { type Line, mergeLines } from "./live-log-lines";
 
 function render(e: FoundryEvent): string {
   switch (e.kind) {
@@ -44,12 +39,15 @@ export function LiveLog({ jobId, initial, after }: { jobId: string; initial: Lin
           const res = await fetch(`/api/jobs/${jobId}/events?after=${cursor.current}`);
           if (res.ok) {
             const { events } = (await res.json()) as { events: Line[] };
+            // This loop may have been stopped by the effect cleanup while the request was in flight.
+            if (stop) return;
             if (events.length) {
-              cursor.current = events.at(-1)!.id;
-              setLines((prev) => [...prev, ...events].slice(-1000));
+              cursor.current = Math.max(cursor.current, events.at(-1)!.id);
+              setLines((prev) => mergeLines(prev, events));
             }
           }
         } catch {
+          if (stop) return;
           // keep polling
         }
         await new Promise((r) => setTimeout(r, 2000));
