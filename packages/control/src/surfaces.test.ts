@@ -85,6 +85,7 @@ describe.skipIf(!TEST_DATABASE_URL)("panel and side-effect surfaces", () => {
       reviews: [],
       mine: [],
       unassigned: [],
+      blocked: [],
     });
 
     const detail = await jobDetail(env.ctx, team.id, queued.id);

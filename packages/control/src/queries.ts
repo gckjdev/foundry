@@ -65,13 +65,14 @@ export async function eventsSince(ctx: ControlContext, teamId: string, jobId: st
 }
 
 /**
- * Per-member inbox (spec 5.7/5.12): questions addressed to me, PRs handed to me, my own tickets
- * in flight, and the unassigned lane of handovers nobody was routed to.
+ * Per-member inbox (spec 5.6/5.7/5.12): questions addressed to me, PRs handed to me, my own tickets
+ * in flight — including queued ones blocked by the scheduler — and the unassigned lane of handovers
+ * nobody was routed to.
  */
 export async function inbox(ctx: ControlContext, teamId: string, userId: string) {
   await reconcileLabeledIssues(ctx);
   const user = await ctx.db.query.users.findFirst({ where: eq(users.id, userId) });
-  if (!user) return { questions: [], reviews: [], mine: [], unassigned: [] };
+  if (!user) return { questions: [], reviews: [], mine: [], unassigned: [], blocked: [] };
   const login = user.ghLogin;
   const [openQuestions, handovers, mine] = await Promise.all([
     ctx.db
@@ -99,11 +100,20 @@ export async function inbox(ctx: ControlContext, teamId: string, userId: string)
       .orderBy(desc(jobs.updatedAt)),
   ]);
   const routedTo = (j: Job) => ((j.assignedReviewers as string[]) ?? []).map((r) => r.toLowerCase());
+  const queuedMine = mine.filter((j) => j.status === "queued");
+  const reasons = new Map<string, string | null>(
+    queuedMine.length > 0 ? (await diagnoseQueue(ctx, teamId)).map((d) => [d.jobId, d.reason]) : [],
+  );
+  const blocked = queuedMine.flatMap((job) => {
+    const reason = reasons.get(job.id);
+    return reason ? [{ job, reason }] : [];
+  });
   return {
     questions: openQuestions,
     reviews: handovers.filter((j) => routedTo(j).includes(login)),
     mine,
     unassigned: handovers.filter((j) => routedTo(j).length === 0),
+    blocked,
   };
 }
 

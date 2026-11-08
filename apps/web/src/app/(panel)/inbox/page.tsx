@@ -78,6 +78,15 @@ export default async function Inbox() {
             <JobRow key={job.id} job={job} />
           ))}
         </Section>
+        <Section
+          title="Blocked — no capacity"
+          empty="No jobs waiting on a runner."
+          count={box.blocked.length}
+        >
+          {box.blocked.map(({ job, reason }) => (
+            <JobRow key={job.id} job={job} note={reason} />
+          ))}
+        </Section>
         <Section title="Your tickets in flight" empty="You have no open tickets." count={box.mine.length}>
           {box.mine.map((job) => (
             <JobRow key={job.id} job={job} />

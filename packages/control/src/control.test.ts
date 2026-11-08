@@ -1,4 +1,4 @@
-import { jobs, repos, teams } from "@foundry/db";
+import { jobs, repos, teams, users } from "@foundry/db";
 import { TEST_DATABASE_URL } from "@foundry/db/testing";
 import { stageLabel } from "@foundry/shared";
 import { eq } from "drizzle-orm";
@@ -8,6 +8,7 @@ import { processWebhook, storeWebhook } from "./ingest";
 import { getJob, reconcileLabeledIssues } from "./jobs";
 import { evaluateJobGate, reconcileOpenPullRequests } from "./merge-gate";
 import { openPullRequest } from "./prs";
+import { inbox } from "./queries";
 import { answerFromCheckbox } from "./questions";
 import { runnerAsk, runnerConfidence, runnerEvidence, runnerStage } from "./runner-api";
 import { createJoinToken, heartbeat, joinRunner } from "./runners";
@@ -102,6 +103,42 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
         maxConcurrency: 1,
       }),
     ).rejects.toThrow();
+  });
+
+  it("shows my queued jobs blocked without a runner, and only mine", async () => {
+    const { team, repo, alice } = await seedTeam(env);
+    const [bob] = await env.ctx.db
+      .insert(users)
+      .values({ ghLogin: "bob", email: "bob@acme.test" })
+      .returning();
+    const insert = async (title: string, authorId: string, authorLogin: string) => {
+      const [job] = await env.ctx.db
+        .insert(jobs)
+        .values({
+          teamId: team.id,
+          repoId: repo.id,
+          title,
+          harness: "claude-code",
+          branch: `foundry/${crypto.randomUUID()}`,
+          authorUserId: authorId,
+          authorLogin,
+        })
+        .returning();
+      return job!;
+    };
+    const mine = await insert("Blocked for alice", alice.id, "alice");
+    const theirs = await insert("Blocked for bob", bob!.id, "bob");
+
+    // No runner has joined the team, so the queued jobs cannot be claimed.
+    const aliceBox = await inbox(env.ctx, team.id, alice.id);
+    expect(aliceBox.blocked).toHaveLength(1);
+    expect(aliceBox.blocked[0]).toMatchObject({
+      job: { id: mine.id, status: "queued" },
+      reason: "no runners joined",
+    });
+
+    const bobBox = await inbox(env.ctx, team.id, bob!.id);
+    expect(bobBox.blocked.map((b) => b.job.id)).toEqual([theirs.id]);
   });
 
   it("reports keepJobIds for needs_input and in-progress jobs it still owns", async () => {
