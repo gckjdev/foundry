@@ -189,11 +189,14 @@ If **Repos** is empty after you installed the App, the Setup URL ran before you 
 ### Harness and model
 
 Each job runs on one harness. **Claude Code** takes Anthropic model IDs; **OpenCode** talks to any
-provider you have configured and always names models as `provider/model`.
+provider you have configured and always names models as `provider/model`. A model name from one
+harness does not carry over to the other.
 
 Set the default on **Settings → Team → Default harness / Default model**. A repo card on **Repos**
 overrides both for that repo, and an issue label overrides them per job: `harness:opencode` and
 `model:deepseek/deepseek-chat`. Leave a model field empty to inherit the next level's default.
+Retrying a failed job re-reads these settings (issue override labels still win), so after a harness
+error fix the Repo's harness or model and click **Retry** on the job.
 
 | Harness     | Model format                | Examples                                                                                                       |
 | ----------- | --------------------------- | -------------------------------------------------------------------------------------------------------------- |

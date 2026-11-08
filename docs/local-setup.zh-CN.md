@@ -223,11 +223,14 @@ pnpm dev:runner
 ### Harness 与模型
 
 每个任务在一个 harness 上运行。**Claude Code** 使用 Anthropic 的模型 ID；**OpenCode** 可以连接
-你本地配置的任意 provider，但模型名必须写成 `provider/model`。
+你本地配置的任意 provider，但模型名必须写成 `provider/model`。一个 harness 的模型名不能直接
+拿到另一个 harness 上使用。
 
 在 **Settings → Team → Default harness / Default model** 设置默认值。**Repos** 里的仓库卡片可以
 为单个仓库覆盖这两项，issue 标签还可以按任务覆盖：`harness:opencode` 和
-`model:deepseek/deepseek-chat`。模型字段留空表示继承上一层的默认值。
+`model:deepseek/deepseek-chat`。模型字段留空表示继承上一层的默认值。重试失败的任务时会重新读取
+这些设置（issue 上的覆盖标签仍然优先），所以 harness 报错后，改好 Repo 的 harness 或模型，再在任务
+上点击 **Retry** 即可。
 
 | Harness     | 模型格式                 | 示例                                                                                                           |
 | ----------- | ------------------------ | -------------------------------------------------------------------------------------------------------------- |
