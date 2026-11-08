@@ -229,6 +229,9 @@ export async function reconcileLabeledIssues(ctx: ControlContext): Promise<strin
       // included) means this label is not a new request. Retrying revives that job instead.
       const existing = await anyJobForIssue(ctx, repo.id, issue.number);
       if (existing) continue;
+      // `listIssues` asks for open issues, but a just-closed issue can still come back; never
+      // start work on a closed issue, since there is no later close event to stop it.
+      if (issue.state !== "open") continue;
       const job = await createJobFromIssue(ctx, repo.id, issue);
       created.push(job.id);
     }

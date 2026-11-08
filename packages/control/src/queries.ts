@@ -3,7 +3,7 @@ import { and, asc, desc, eq, gt, inArray, isNull, notInArray, or, sql } from "dr
 import { diagnoseQueue } from "./claim";
 import type { ControlContext } from "./context";
 import { reconcileLabeledIssues } from "./jobs";
-import { syncChangesRequestedReview, syncMergedPullRequest } from "./merge-gate";
+import { syncChangesRequestedReview, syncClosedIssue, syncMergedPullRequest } from "./merge-gate";
 
 export interface BoardJob {
   job: Job;
@@ -68,7 +68,7 @@ export async function jobDetail(ctx: ControlContext, teamId: string, jobId: stri
     .where(and(eq(jobs.id, jobId), eq(jobs.teamId, teamId)));
   if (!found) return null;
   let row = found;
-  const synced = await syncMergedPullRequest(ctx, row.job);
+  const synced = (await syncMergedPullRequest(ctx, row.job)) ?? (await syncClosedIssue(ctx, row.job));
   if (synced) {
     const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, row.repo.id) });
     row = { job: synced, repo: repo ?? row.repo, runnerName: row.runnerName };

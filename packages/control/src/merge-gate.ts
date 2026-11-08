@@ -1,5 +1,5 @@
 import { evidence, type Job, jobs, repos } from "@foundry/db";
-import type { GhReview } from "@foundry/github";
+import type { GhIssue, GhReview } from "@foundry/github";
 import {
   type ConfidenceLevel,
   diffFromGitHubFiles,
@@ -7,10 +7,12 @@ import {
   evaluateGate,
   type FoundryEvent,
   type GateResult,
+  type JobStatus,
   matchRiskRules,
   splitReviewers,
+  TERMINAL_STATUSES,
 } from "@foundry/shared";
-import { and, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, notInArray, or } from "drizzle-orm";
 import { bestEffort, type ControlContext } from "./context";
 import { repoRef } from "./github-sync";
 import { getJob, recordEvents, sendMessage, transitionJob } from "./jobs";
@@ -68,6 +70,58 @@ export async function syncMergedPullRequest(ctx: ControlContext, job: Job): Prom
     return null;
   }
   return markJobMerged(ctx, job, "pull request merged");
+}
+
+/**
+ * Stop a job whose source issue is closed. The `issues.closed` webhook handles the normal path;
+ * this catches a missed delivery and a job that was (re)created after the issue closed.
+ */
+export async function syncClosedIssue(ctx: ControlContext, job: Job): Promise<Job | null> {
+  if (job.issueNumber === null) return null;
+  if (TERMINAL_STATUSES.includes(job.status as JobStatus) || job.status === "failed") return null;
+  const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, job.repoId) });
+  if (!repo) return null;
+  const ref = repoRef(repo);
+  let issue: GhIssue;
+  try {
+    issue = await ctx.gh.getIssue(ref, job.issueNumber);
+  } catch {
+    return null;
+  }
+  if (issue.state !== "closed") return null;
+  // A merged PR is the successful end of the job. Leave it to the merge path rather than
+  // cancelling if the PR-merged webhook is simply late.
+  if ((job.status === "pr_ci" || job.status === "waiting_on_you") && job.prNumber !== null) {
+    try {
+      if ((await ctx.gh.getPullRequest(ref, job.prNumber)).merged) return null;
+    } catch {
+      return null;
+    }
+  }
+  return transitionJob(ctx, job.id, "cancelled", {
+    reason: `source issue #${job.issueNumber} closed`,
+    from: [job.status as JobStatus],
+  });
+}
+
+/**
+ * Catch-up for a missed `issues.closed` webhook: stop every active job whose source issue is
+ * closed. Called from the worker and when opening a job page.
+ */
+export async function reconcileClosedIssues(ctx: ControlContext): Promise<string[]> {
+  const active = await ctx.db
+    .select()
+    .from(jobs)
+    .where(notInArray(jobs.status, ["merged", "cancelled", "failed"]));
+  const stopped: string[] = [];
+  for (const job of active) {
+    try {
+      if (await syncClosedIssue(ctx, job)) stopped.push(job.id);
+    } catch (err) {
+      ctx.log("closed-issue reconcile failed", { job: job.id, error: String(err) });
+    }
+  }
+  return stopped;
 }
 
 /**
