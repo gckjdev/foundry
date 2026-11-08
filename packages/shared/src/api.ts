@@ -52,6 +52,10 @@ export const HeartbeatResponseSchema = z.object({
   revokedJobIds: z.array(z.string()),
   /** Jobs this runner should keep parked locally: `needs_input` and in-progress (`RUNNING_STATUSES`). */
   keepJobIds: z.array(z.string()),
+  /** Per-job max execution time overrides, so a change reaches a job that is already running. */
+  jobLimits: z
+    .array(z.object({ jobId: z.string(), maxJobMinutes: z.number().int().positive().nullable() }))
+    .default([]),
   repos: z.array(
     z.object({
       id: z.string(),
@@ -91,6 +95,8 @@ export const ClaimedJobSchema = z.object({
   resumeMode: z.enum(["fresh", "sticky", "portable"]),
   loopCount: z.number().int(),
   costUsd: z.number(),
+  /** Per-job max execution time override in minutes; null follows the repo policy. */
+  maxJobMinutes: z.number().int().positive().nullable().default(null),
   pendingInputs: z.array(PendingInputSchema),
   mergeMode: z.enum(["off", "merge_when_confident"]),
 });

@@ -105,7 +105,7 @@ export async function heartbeat(
     .where(eq(runners.id, runner.id));
 
   const keepJobs = await ctx.db
-    .select({ id: jobs.id })
+    .select({ id: jobs.id, maxJobMinutes: jobs.maxJobMinutes })
     .from(jobs)
     .where(and(eq(jobs.runnerId, runner.id), inArray(jobs.status, [...RUNNING_STATUSES, "needs_input"])));
   const keepJobIds = keepJobs.map((j) => j.id);
@@ -133,6 +133,7 @@ export async function heartbeat(
     draining: runner.status === "draining",
     revokedJobIds,
     keepJobIds,
+    jobLimits: keepJobs.map((j) => ({ jobId: j.id, maxJobMinutes: j.maxJobMinutes })),
     repos: teamRepos.map((r) => ({
       id: r.id,
       fullName: r.fullName,

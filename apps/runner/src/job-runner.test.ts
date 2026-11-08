@@ -10,7 +10,7 @@ import {
   type HarnessSession,
   type SessionResult,
 } from "@foundry/harness-core";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { JobRunner, type JobRunnerDeps } from "./job-runner";
 import { PortLeases } from "./ports";
 import { LocalJobs } from "./state";
@@ -366,6 +366,37 @@ describe("JobRunner", () => {
     ).run();
     expect(outcome).toBe("failed");
     expect((api.named("stage").at(-1)!.body as { reason: string }).reason).toContain("max_cost_per_job_usd");
+  });
+
+  it("fails a job when its own max execution time is lowered below elapsed time", async () => {
+    // Fake only Date: the deadline timer stays real, and moving the clock past the new limit
+    // makes the re-arm fire immediately, proving a mid-run change takes effect.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const startedAt = Date.now();
+    try {
+      const harness = new FakeHarness("claude-code", [
+        {
+          events: [{ kind: "message", role: "agent", text: "still working" }],
+          act: () => new Promise<void>(() => {}),
+        },
+      ]);
+      const runner = new JobRunner(deps(harness), claimedJob({ maxJobMinutes: 2 }));
+      const running = runner.run();
+      // The first flushed event means drive() has armed the deadline.
+      for (let i = 0; i < 100 && api.named("events").length === 0; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(api.named("events").length).toBeGreaterThan(0);
+
+      vi.setSystemTime(startedAt + 61 * 60_000);
+      runner.setMaxJobMinutes(1);
+      expect(await running).toBe("failed");
+      expect((api.named("stage").at(-1)!.body as { reason: string }).reason).toContain(
+        "max execution time (1 minutes)",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("captures a screenshot when a UI change has none", async () => {

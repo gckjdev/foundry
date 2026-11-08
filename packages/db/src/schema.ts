@@ -191,6 +191,8 @@ export const jobs = pgTable(
     uiChanged: boolean("ui_changed").notNull().default(false),
     changedLines: integer("changed_lines").notNull().default(0),
     plan: text("plan"),
+    /** Per-job wall-clock limit in minutes; null follows `.foundry/policy.yaml` (`max_job_minutes`). */
+    maxJobMinutes: integer("max_job_minutes"),
     confidence: jsonb("confidence"),
     gateResult: jsonb("gate_result"),
     assignedReviewers: jsonb("assigned_reviewers").notNull().default(sql`'[]'::jsonb`),

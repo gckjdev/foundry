@@ -12,6 +12,7 @@ import {
   requireMember,
   retryJob,
   sendMessage,
+  setJobMaxMinutes,
   setRunnerStatus,
   startOnboarding,
   syncUnlinkedInstallations,
@@ -112,6 +113,15 @@ export async function messageAction(form: FormData) {
   const { ctx, user, job } = await teamJob(str(form, "jobId"));
   const text = str(form, "text");
   if (text) await sendMessage(ctx, job.id, text, user.login);
+  revalidatePath(`/jobs/${job.id}`);
+}
+
+export async function maxMinutesAction(form: FormData) {
+  const { ctx, team, job } = await teamJob(str(form, "jobId"));
+  const raw = str(form, "maxMinutes");
+  const minutes = raw === "" ? null : Number(raw);
+  if (minutes !== null && (!Number.isInteger(minutes) || minutes < 1)) return;
+  await setJobMaxMinutes(ctx, team.id, job.id, minutes);
   revalidatePath(`/jobs/${job.id}`);
 }
 

@@ -29,6 +29,13 @@
       "when": 1794028500000,
       "tag": "0003_github_comment_ids",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794100000000,
+      "tag": "0004_job_max_minutes",
+      "breakpoints": true
     }
   ]
 }
