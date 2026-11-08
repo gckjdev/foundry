@@ -14,6 +14,7 @@ const aliases = {
   "@": fileURLToPath(new URL("./apps/web/src", import.meta.url)),
   "server-only": fileURLToPath(new URL("./tests/shims/server-only.ts", import.meta.url)),
   "next/server": fileURLToPath(new URL("./tests/shims/next-server.ts", import.meta.url)),
+  "next/cache": fileURLToPath(new URL("./tests/shims/next-cache.ts", import.meta.url)),
 };
 
 const nodeTest = {
