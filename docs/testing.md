@@ -1,5 +1,7 @@
 # Testing architecture
 
+> 中文版本: [testing.zh-CN.md](testing.zh-CN.md)
+
 Foundry uses three layers. Shared fakes and fixtures live in `tests/helpers.ts` (re-exports of `@foundry/control/testing`, `@foundry/db/testing`, `FakeGitHub`, `FakeHarness`). Prefer those over one-off Postgres or GitHub setup.
 
 | Layer               | What it proves                                                                 | How to run                                  | Needs                                   |

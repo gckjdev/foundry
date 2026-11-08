@@ -1,5 +1,7 @@
 # ADR 001: Runner runtime and packaging
 
+> 中文版本: [001-runner-runtime.zh-CN.md](001-runner-runtime.zh-CN.md)
+
 Status: accepted · Date: 2026-11-06
 
 ## Context

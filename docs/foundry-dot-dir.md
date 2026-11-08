@@ -1,5 +1,7 @@
 # `.foundry/` directory reference
 
+> 中文版本: [foundry-dot-dir.zh-CN.md](foundry-dot-dir.zh-CN.md)
+
 `docs/onboarding.md` explains how Foundry creates these files. This page is the field reference: every file
 Foundry reads from `.foundry/`, every field in `recipe.yaml` and `policy.yaml`, and what the runner and the
 confidence gate do with it.

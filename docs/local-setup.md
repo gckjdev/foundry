@@ -1,5 +1,7 @@
 # Configuration, install, and deploy
 
+> 中文版本: [local-setup.zh-CN.md](local-setup.zh-CN.md)
+
 This is the runbook for the Foundry control plane on this machine, plus how to deploy it. Secrets live only in gitignored `.env` and `github-app.pem` — never copy those values into git.
 
 ## What is running locally

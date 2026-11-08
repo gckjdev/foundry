@@ -1,5 +1,7 @@
 # Onboarding a repo
 
+> 中文版本: [onboarding.zh-CN.md](onboarding.zh-CN.md)
+
 Onboarding is the first job Foundry runs on a repository. An agent writes `.foundry/recipe.yaml`, `.foundry/policy.yaml`, and a GitHub issue form, proves the recipe commands on your runner, and opens a pull request. You review and merge that PR. After that, labeling an issue `foundry` starts real work.
 
 The control plane (`pnpm dev`) does **not** run jobs. A joined runner does.
