@@ -65,6 +65,15 @@ export default async function Repos({ searchParams }: { searchParams: Promise<Re
       <div className="stack">
         {list.map(({ repo, recipePrUrl, readiness }) => {
           const ob = ONBOARDING[repo.onboardingStatus] ?? ONBOARDING.not_started!;
+          // React resets uncontrolled fields after a form action, and an uncontrolled select
+          // keeps the value it had before the save. Key the form by the saved settings so the
+          // fields remount with the values the action just persisted.
+          const settingsKey = [
+            repo.mergeMode,
+            repo.defaultHarness ?? "",
+            repo.defaultModel ?? "",
+            repo.ghProjectId ?? "",
+          ].join("|");
           return (
             <section key={repo.id} className="card">
               <div className="row" style={{ justifyContent: "space-between" }}>
@@ -123,15 +132,7 @@ export default async function Repos({ searchParams }: { searchParams: Promise<Re
               ) : null}
               {role === "admin" ? (
                 <form
-                  // React resets uncontrolled fields after a form action, and an uncontrolled
-                  // select keeps the value it had before the save. Re-key the form by the saved
-                  // settings so the fields remount with the values the action just persisted.
-                  key={[
-                    repo.mergeMode,
-                    repo.defaultHarness ?? "",
-                    repo.defaultModel ?? "",
-                    repo.ghProjectId ?? "",
-                  ].join("|")}
+                  key={settingsKey}
                   action={repoSettingsAction}
                   className="row"
                   style={{ marginTop: 10, alignItems: "flex-end" }}
