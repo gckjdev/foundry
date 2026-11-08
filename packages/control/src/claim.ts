@@ -169,6 +169,7 @@ export async function claimJob(ctx: ControlContext, runner: Runner): Promise<Cla
       loopCount: claimed.loopCount,
       costUsd: claimed.costUsd,
       maxJobMinutes: claimed.maxJobMinutes,
+      maxCostUsd: claimed.maxCostUsd,
       pendingInputs,
       mergeMode: effectiveMergeMode(repo),
     };

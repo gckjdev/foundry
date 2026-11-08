@@ -23,6 +23,7 @@ import {
   briefRef,
   type ClaimedJob,
   DEFAULT_POLICY,
+  effectiveMaxCostUsd,
   effectiveMaxJobMinutes,
   expandRecipeVars,
   type FoundryEvent,
@@ -128,6 +129,7 @@ export class JobRunner {
   private recipe: Recipe | null = null;
   private policy: Policy = DEFAULT_POLICY;
   private maxJobMinutes = 60;
+  private maxCostUsd = DEFAULT_POLICY.max_cost_per_job_usd;
   private driveStartedAt = 0;
   private deadlineTimer: ReturnType<typeof setTimeout> | null = null;
   private gitToken: { token: string; expiresAt: number } | null = null;
@@ -240,6 +242,7 @@ export class JobRunner {
     }
     this.policy = job.kind === "ticket" ? await loadPolicy(this.cwd) : DEFAULT_POLICY;
     this.maxJobMinutes = effectiveMaxJobMinutes(job.maxJobMinutes, this.policy);
+    this.maxCostUsd = effectiveMaxCostUsd(job.maxCostUsd, this.policy);
 
     const services =
       job.kind === "ticket" ? await provisionServices(job.id, this.recipe, deps.postgresUrl) : {};
@@ -404,6 +407,19 @@ export class JobRunner {
     if (this.driveStartedAt > 0) this.armDeadline();
   }
 
+  /** Apply a cost cap change from the control plane, including while the job is running. */
+  setMaxCostUsd(override: number | null): void {
+    this.maxCostUsd = effectiveMaxCostUsd(override, this.policy);
+    const total = this.job.costUsd + this.sessionCost;
+    if (total > this.maxCostUsd && !this.stopReason) {
+      void this.halt({ kind: "budget", reason: this.costBudgetReason(total) });
+    }
+  }
+
+  private costBudgetReason(total: number): string {
+    return `job cost $${total.toFixed(2)} exceeded max cost ($${this.maxCostUsd})`;
+  }
+
   private armDeadline(): void {
     if (this.deadlineTimer) clearTimeout(this.deadlineTimer);
     const reason = `job exceeded max execution time (${this.maxJobMinutes} minutes)`;
@@ -476,11 +492,8 @@ export class JobRunner {
       if (e.kind === "usage") {
         this.sessionCost += e.costUsd;
         const total = this.job.costUsd + this.sessionCost;
-        if (total > this.policy.max_cost_per_job_usd && !this.stopReason) {
-          void this.halt({
-            kind: "budget",
-            reason: `job cost $${total.toFixed(2)} exceeded max_cost_per_job_usd ($${this.policy.max_cost_per_job_usd})`,
-          });
+        if (total > this.maxCostUsd && !this.stopReason) {
+          void this.halt({ kind: "budget", reason: this.costBudgetReason(total) });
         }
       }
     }
