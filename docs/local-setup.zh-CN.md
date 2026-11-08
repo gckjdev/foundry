@@ -220,6 +220,29 @@ pnpm dev:runner
 刷新 `/repos` 或点击 **Sync from GitHub**——Foundry 会列出 App 的安装并关联尚未关联的仓库。保持
 `pnpm dev:webhooks` 运行，以便后续 “add/remove repos” 事件保持同步。
 
+### Harness 与模型
+
+每个任务在一个 harness 上运行。**Claude Code** 使用 Anthropic 的模型 ID；**OpenCode** 可以连接
+你本地配置的任意 provider，但模型名必须写成 `provider/model`。一个 harness 的模型名不能直接
+拿到另一个 harness 上使用。
+
+在 **Settings → Team → Default harness / Default model** 设置默认值。**Repos** 里的仓库卡片可以
+为单个仓库覆盖这两项，issue 标签还可以按任务覆盖：`harness:opencode` 和
+`model:deepseek/deepseek-chat`。模型字段留空表示继承上一层的默认值。重试失败的任务时会重新读取
+这些设置（issue 上的覆盖标签仍然优先），所以 harness 报错后，改好 Repo 的 harness 或模型，再在任务
+上点击 **Retry** 即可。
+
+| Harness     | 模型格式                 | 示例                                                                                                           |
+| ----------- | ------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| Claude Code | Anthropic 模型 ID 或别名 | `claude-sonnet-4-5`, `claude-haiku-4-5`                                                                        |
+| OpenCode    | `provider/model`         | `anthropic/claude-sonnet-4-5`, `openai/gpt-5.4`, `deepseek/deepseek-chat`, `openrouter/deepseek/deepseek-chat` |
+
+OpenCode 的 provider 前缀是必需的。像 `deepseek-flash` 这样只写模型名，任务会在启动时失败并报
+`Model not found: deepseek-flash/.`——请使用 OpenCode 认识的 provider 和模型 ID，例如
+`deepseek/deepseek-chat` 而不是 `deepseek-flash`。该 provider 还必须在 runner 机器上完成认证：
+`opencode auth login`，或设置对应的环境变量（`DEEPSEEK_API_KEY`、`OPENAI_API_KEY`、
+`ANTHROPIC_API_KEY` 等），runner 会自动检测。
+
 ### 一台电脑上的多个 runner
 
 一个已加入的 runner 已经会检测 **Claude Code 和 OpenCode**（安装了哪个就检测哪个）。额外的 daemon

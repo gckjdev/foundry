@@ -564,6 +564,68 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
     });
   });
 
+  it("re-reads the repo harness and model on retry so a harness fix applies in place", async () => {
+    const { repo } = await seedTeam(env);
+    env.gh.addIssue("acme/app", { number: 11, title: "Fix the harness", labels: ["foundry"] });
+    await deliver(env, "issues", issueLabeledPayload({ number: 11, title: "Fix the harness" }));
+    const [job] = await env.ctx.db.query.jobs.findMany({ where: eq(jobs.repoId, repo.id) });
+    await env.ctx.db
+      .update(jobs)
+      .set({
+        status: "failed",
+        harness: "opencode",
+        model: "deepseek-flash",
+        harnessSessionId: "ses-old",
+      })
+      .where(eq(jobs.id, job!.id));
+    await env.ctx.db
+      .update(repos)
+      .set({ defaultHarness: "claude-code", defaultModel: "deepseek-flash[1m]" })
+      .where(eq(repos.id, repo.id));
+
+    const retried = await retryJob(env.ctx, job!.id, "triage", "alice");
+    expect(retried).toMatchObject({
+      id: job!.id,
+      status: "queued",
+      harness: "claude-code",
+      model: "deepseek-flash[1m]",
+      // The OpenCode session cannot be resumed by Claude Code.
+      harnessSessionId: null,
+    });
+  });
+
+  it("keeps issue harness and model labels when retrying", async () => {
+    const { repo } = await seedTeam(env);
+    env.gh.addIssue("acme/app", {
+      number: 12,
+      title: "Pinned to OpenCode",
+      labels: ["foundry", "harness:opencode", "model:openai/gpt-5.4"],
+    });
+    await deliver(
+      env,
+      "issues",
+      issueLabeledPayload({
+        number: 12,
+        title: "Pinned to OpenCode",
+        labels: ["foundry", "harness:opencode", "model:openai/gpt-5.4"],
+      }),
+    );
+    const [job] = await env.ctx.db.query.jobs.findMany({ where: eq(jobs.repoId, repo.id) });
+    await env.ctx.db
+      .update(jobs)
+      .set({ status: "failed", failureReason: "harness error" })
+      .where(eq(jobs.id, job!.id));
+    await env.ctx.db
+      .update(repos)
+      .set({ defaultHarness: "claude-code", defaultModel: "claude-sonnet-4-5" })
+      .where(eq(repos.id, repo.id));
+
+    expect(await retryJob(env.ctx, job!.id, "triage", "alice")).toMatchObject({
+      harness: "opencode",
+      model: "openai/gpt-5.4",
+    });
+  });
+
   it("revives a failed job in place when the trigger label is re-applied", async () => {
     const { repo } = await seedTeam(env);
     env.gh.addIssue("acme/app", { number: 10, title: "Fail then relabel", labels: ["foundry"] });

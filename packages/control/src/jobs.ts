@@ -167,6 +167,19 @@ async function anyJobForIssue(ctx: ControlContext, repoId: string, issueNumber: 
 /** Statuses where the job is no longer the live attempt for its issue. */
 const FINISHED_STATUSES: readonly string[] = ["merged", "cancelled", "failed"];
 
+/** Harness and model for a job: issue labels win, then repo defaults, then team defaults. */
+function resolveHarnessModel(
+  overrides: { harness?: string; model?: string },
+  repo: { defaultHarness: string | null; defaultModel: string | null } | null | undefined,
+  team: { defaultHarness: string | null; defaultModel: string | null } | null | undefined,
+  fallback: { harness: string; model: string | null },
+): { harness: string; model: string | null } {
+  return {
+    harness: overrides.harness ?? repo?.defaultHarness ?? team?.defaultHarness ?? fallback.harness,
+    model: overrides.model ?? repo?.defaultModel ?? team?.defaultModel ?? fallback.model,
+  };
+}
+
 /**
  * Create a job for an issue labeled `foundry`. One issue keeps one card on the board: a live job
  * is reused, and re-applying the label to a stopped job retries that job in place. Only a merged
@@ -199,6 +212,7 @@ export async function createJobFromIssue(
   const team = await ctx.db.query.teams.findFirst({ where: eq(teams.id, repo.teamId) });
   const author = await ctx.db.query.users.findFirst({ where: eq(users.ghLogin, issue.author.toLowerCase()) });
   const labels = parseLabels(issue.labels);
+  const config = resolveHarnessModel(labels, repo, team, { harness: "claude-code", model: null });
   const id = randomUUID();
   const [job] = await ctx.db
     .insert(jobs)
@@ -212,8 +226,8 @@ export async function createJobFromIssue(
       body: issue.body,
       authorLogin: issue.author,
       authorUserId: author?.id ?? null,
-      harness: labels.harness ?? repo.defaultHarness ?? team?.defaultHarness ?? "claude-code",
-      model: labels.model ?? repo.defaultModel ?? team?.defaultModel ?? null,
+      harness: config.harness,
+      model: config.model,
       playbook: labels.playbook ?? "default",
       pinnedRunnerName: labels.runner ?? null,
       branch: jobBranchName(id, issue.title),
@@ -325,10 +339,38 @@ export async function cancelJob(ctx: ControlContext, jobId: string, by: string):
   return transitionJob(ctx, jobId, "cancelled", { reason: `cancelled by @${by}` });
 }
 
-/** Re-queue a job from a chosen stage (panel "retry from stage"). */
+/**
+ * Re-queue a job from a chosen stage (panel "retry from stage").
+ *
+ * Re-reads the repo/team defaults and the issue's override labels so a harness or model fixed in
+ * the panel after a harness error applies to this job without creating a new one.
+ */
 export async function retryJob(ctx: ControlContext, jobId: string, stage: RunnerStage, by: string) {
+  const job = await getJob(ctx, jobId);
+  const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, job.repoId) });
+  const team = repo ? await ctx.db.query.teams.findFirst({ where: eq(teams.id, repo.teamId) }) : undefined;
+  let labels: { harness?: string; model?: string } = {};
+  if (repo && job.issueNumber !== null) {
+    try {
+      labels = parseLabels((await ctx.gh.getIssue(repoRef(repo), job.issueNumber)).labels);
+    } catch (err) {
+      // The repo/team defaults are still enough to retry; a deleted issue should not block it.
+      ctx.log("retry: could not read issue labels", { jobId, error: String(err) });
+    }
+  }
+  const config = resolveHarnessModel(labels, repo, team, job);
   return transitionJob(ctx, jobId, "queued", {
     reason: `retry from ${stage} by @${by}`,
-    patch: { resumeStage: stage, failureReason: null, loopCount: 0 },
+    patch: {
+      resumeStage: stage,
+      failureReason: null,
+      loopCount: 0,
+      harness: config.harness,
+      model: config.model,
+      // A native harness session belongs to the harness that created it.
+      ...(config.harness !== job.harness
+        ? { harnessSessionId: null, stickyRunnerId: null, stickyUntil: null }
+        : {}),
+    },
   });
 }
