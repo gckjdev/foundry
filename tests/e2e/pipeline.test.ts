@@ -66,11 +66,17 @@ function finishingTurn(opts: { world: E2E; path: string; content: string; summar
   };
 }
 
-/** Wait until the PR is open and CI is the only thing holding it, then send the green webhook. */
-async function deliverGreenCi(world: E2E): Promise<string> {
+/**
+ * Wait until the PR is open with a head sha, then send the green webhook for that sha.
+ *
+ * `statuses` must include every status the job can settle in before CI arrives. A risk-rule hit
+ * hands over as soon as the PR opens (`openPullRequest` evaluates the gate immediately), so the
+ * transient `pr_ci` can be gone before the first poll; waiting on `pr_ci` alone flakes there.
+ */
+async function deliverGreenCi(world: E2E, statuses: string[] = ["pr_ci"]): Promise<string> {
   const job = await waitFor(async () => {
     const j = await world.job();
-    return j.status === "pr_ci" && j.headSha ? j : null;
+    return statuses.includes(j.status) && j.headSha ? j : null;
   }, "pull request + head sha");
   const sha = job.headSha!;
   world.gh.repo("acme/app").ci.set(sha, "success");
@@ -187,7 +193,9 @@ describe.skipIf(!TEST_DATABASE_URL)("pipeline e2e", () => {
       ]),
     });
 
-    await deliverGreenCi(e2e);
+    // The risk rule fails the gate at PR-open time, so the job may already be waiting_on_you;
+    // the handover ignores a later green CI. Either way it must not merge.
+    await deliverGreenCi(e2e, ["pr_ci", "waiting_on_you"]);
     const job = await waitFor(async () => {
       const j = await e2e.job();
       return j.status === "waiting_on_you" ? j : null;
