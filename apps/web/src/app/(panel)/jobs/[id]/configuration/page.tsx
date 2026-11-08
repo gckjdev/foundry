@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { usd } from "@/components/status";
 import { requireTeam } from "@/server/session";
-import { maxCostAction, maxMinutesAction } from "../../../../actions";
+import { jobLimitsAction } from "../../../../actions";
 import { jobLimitValues } from "./limits";
 
 export default async function JobConfigurationPage({ params }: { params: Promise<{ id: string }> }) {
@@ -15,7 +15,7 @@ export default async function JobConfigurationPage({ params }: { params: Promise
   const policy = repoPolicy(repo);
   const policyMaxMinutes = policy.max_job_minutes;
   const policyMaxCost = policy.max_cost_per_job_usd;
-  const { maxJobMinutes, maxCostUsd, minutesKey, costKey } = jobLimitValues(job, policy);
+  const { maxJobMinutes, maxCostUsd, limitsKey } = jobLimitValues(job, policy);
 
   return (
     <>
@@ -31,7 +31,7 @@ export default async function JobConfigurationPage({ params }: { params: Promise
       <div className="grid grid-2" style={{ alignItems: "start" }}>
         <section className="card">
           <h2 style={{ marginBottom: 10 }}>Job limits</h2>
-          <form key={minutesKey} action={maxMinutesAction} className="stack">
+          <form key={limitsKey} action={jobLimitsAction} className="stack">
             <input type="hidden" name="jobId" value={job.id} />
             <label>
               Max execution time (minutes)
@@ -43,12 +43,6 @@ export default async function JobConfigurationPage({ params }: { params: Promise
                 : "Custom for this job."}{" "}
               The runner stops the job when it runs over. Changes apply to a running job too.
             </div>
-            <div>
-              <button type="submit">Save</button>
-            </div>
-          </form>
-          <form key={costKey} action={maxCostAction} className="stack" style={{ marginTop: 16 }}>
-            <input type="hidden" name="jobId" value={job.id} />
             <label>
               Max cost (USD)
               <input name="maxCost" type="number" min="0.01" step="0.01" defaultValue={maxCostUsd} />

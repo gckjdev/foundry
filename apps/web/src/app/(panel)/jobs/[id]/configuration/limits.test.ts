@@ -17,17 +17,17 @@ describe("job limit values", () => {
   });
 
   it("changes the form key when a saved limit changes", () => {
-    // The key remounts the uncontrolled form so the field adopts the value the action persisted.
+    // The key remounts the uncontrolled form so the fields adopt the values the action persisted.
     const before = jobLimitValues({ maxJobMinutes: null, maxCostUsd: null }, policy);
-    const after = jobLimitValues({ maxJobMinutes: 120, maxCostUsd: null }, policy);
-    expect(after.minutesKey).not.toBe(before.minutesKey);
-    expect(after.costKey).toBe(before.costKey);
+    const afterMinutes = jobLimitValues({ maxJobMinutes: 120, maxCostUsd: null }, policy);
+    const afterCost = jobLimitValues({ maxJobMinutes: null, maxCostUsd: 15 }, policy);
+    expect(afterMinutes.limitsKey).not.toBe(before.limitsKey);
+    expect(afterCost.limitsKey).not.toBe(before.limitsKey);
   });
 
-  it("keeps the key stable when the saved limit did not change", () => {
+  it("keeps the key stable when the saved limits did not change", () => {
     const before = jobLimitValues({ maxJobMinutes: 120, maxCostUsd: 8 }, policy);
     const after = jobLimitValues({ maxJobMinutes: 120, maxCostUsd: 8 }, policy);
-    expect(after.minutesKey).toBe(before.minutesKey);
-    expect(after.costKey).toBe(before.costKey);
+    expect(after.limitsKey).toBe(before.limitsKey);
   });
 });

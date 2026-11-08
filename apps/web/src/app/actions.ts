@@ -117,21 +117,17 @@ export async function messageAction(form: FormData) {
   revalidatePath(`/jobs/${job.id}`);
 }
 
-export async function maxMinutesAction(form: FormData) {
+/** The Job limits form saves both limits together; an empty field clears that override. */
+export async function jobLimitsAction(form: FormData) {
   const { ctx, team, job } = await teamJob(str(form, "jobId"));
-  const raw = str(form, "maxMinutes");
-  const minutes = raw === "" ? null : Number(raw);
+  const minutesRaw = str(form, "maxMinutes");
+  const costRaw = str(form, "maxCost");
+  const minutes = minutesRaw === "" ? null : Number(minutesRaw);
+  const cost = costRaw === "" ? null : Number(costRaw);
+  // All-or-nothing: an invalid field leaves both saved values untouched.
   if (minutes !== null && (!Number.isInteger(minutes) || minutes < 1)) return;
-  await setJobMaxMinutes(ctx, team.id, job.id, minutes);
-  revalidatePath(`/jobs/${job.id}`);
-  revalidatePath(`/jobs/${job.id}/configuration`);
-}
-
-export async function maxCostAction(form: FormData) {
-  const { ctx, team, job } = await teamJob(str(form, "jobId"));
-  const raw = str(form, "maxCost");
-  const cost = raw === "" ? null : Number(raw);
   if (cost !== null && (!Number.isFinite(cost) || cost <= 0)) return;
+  await setJobMaxMinutes(ctx, team.id, job.id, minutes);
   await setJobMaxCost(ctx, team.id, job.id, cost);
   revalidatePath(`/jobs/${job.id}`);
   revalidatePath(`/jobs/${job.id}/configuration`);
