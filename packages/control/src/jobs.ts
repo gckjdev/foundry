@@ -44,6 +44,25 @@ export async function setJobMaxMinutes(
   return row;
 }
 
+/** Set (or, with `null`, clear) a job's own max cost in US dollars. */
+export async function setJobMaxCost(
+  ctx: ControlContext,
+  teamId: string,
+  jobId: string,
+  maxCostUsd: number | null,
+): Promise<Job> {
+  if (maxCostUsd !== null && (!Number.isFinite(maxCostUsd) || maxCostUsd <= 0)) {
+    throw new RangeError("max cost must be a positive number of US dollars");
+  }
+  const [row] = await ctx.db
+    .update(jobs)
+    .set({ maxCostUsd, updatedAt: ctx.now() })
+    .where(and(eq(jobs.id, jobId), eq(jobs.teamId, teamId)))
+    .returning();
+  if (!row) throw new NotFoundError(`job ${jobId} not found`);
+  return row;
+}
+
 export async function recordEvents(
   ctx: ControlContext,
   job: Pick<Job, "id" | "teamId" | "status">,

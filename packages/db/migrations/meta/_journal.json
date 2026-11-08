@@ -36,6 +36,13 @@
       "when": 1794100000000,
       "tag": "0004_job_max_minutes",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794101162245,
+      "tag": "0005_job_max_cost",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,7 @@ import { evidence, type Job, jobs, repos } from "@foundry/db";
 import {
   type ConfidenceLevel,
   diffFromGitHubFiles,
+  effectiveMaxCostUsd,
   evaluateGate,
   type FoundryEvent,
   type GateResult,
@@ -133,6 +134,7 @@ export async function evaluateJobGate(ctx: ControlContext, jobId: string): Promi
       ? { level: confidence.level, uncertainties: confidence.uncertainties ?? [] }
       : null,
     costUsd: job.costUsd,
+    maxCostUsd: effectiveMaxCostUsd(job.maxCostUsd, policy),
   });
 
   await ctx.db

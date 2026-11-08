@@ -169,6 +169,7 @@ export function claimedJob(overrides: Partial<ClaimedJob> = {}): ClaimedJob {
     loopCount: 0,
     costUsd: 0,
     maxJobMinutes: null,
+    maxCostUsd: null,
     pendingInputs: [],
     mergeMode: "off",
     ...overrides,

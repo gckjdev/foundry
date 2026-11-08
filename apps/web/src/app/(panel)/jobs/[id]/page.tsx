@@ -15,6 +15,7 @@ import {
   answerAction,
   cancelAction,
   helpfulAction,
+  maxCostAction,
   maxMinutesAction,
   messageAction,
   retryAction,
@@ -74,8 +75,11 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const initialLog = d.timeline
     .slice(-200)
     .map((e) => ({ id: e.id, ts: e.ts.toISOString(), payload: e.payload as FoundryEvent }));
-  const policyMaxMinutes = repoPolicy(repo).max_job_minutes;
+  const policy = repoPolicy(repo);
+  const policyMaxMinutes = policy.max_job_minutes;
   const maxJobMinutes = job.maxJobMinutes ?? policyMaxMinutes;
+  const policyMaxCost = policy.max_cost_per_job_usd;
+  const maxCostUsd = job.maxCostUsd ?? policyMaxCost;
 
   return (
     <>
@@ -259,6 +263,22 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                   ? `Using the repo default (${policyMaxMinutes} minutes).`
                   : "Custom for this job."}{" "}
                 The runner stops the job when it runs over. Changes apply to a running job too.
+              </div>
+              <div>
+                <button type="submit">Save</button>
+              </div>
+            </form>
+            <form action={maxCostAction} className="stack" style={{ marginTop: 16 }}>
+              <input type="hidden" name="jobId" value={job.id} />
+              <label>
+                Max cost (USD)
+                <input name="maxCost" type="number" min="0.01" step="0.01" defaultValue={maxCostUsd} />
+              </label>
+              <div className="dim small">
+                {job.maxCostUsd === null
+                  ? `Using the repo default (${usd(policyMaxCost)}).`
+                  : "Custom for this job."}{" "}
+                The runner stops the job when it spends more. Changes apply to a running job too.
               </div>
               <div>
                 <button type="submit">Save</button>
