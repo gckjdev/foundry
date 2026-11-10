@@ -16,6 +16,7 @@ Related documents:
 - Core use cases and sequence diagrams: [`use-cases.md`](use-cases.md)
 - Runner runtime decision: [`docs/adr/001-runner-runtime.md`](../adr/001-runner-runtime.md)
 - Configuration and installation: [`docs/local-setup.md`](../local-setup.md)
+- Panel visual design system (tokens and rationale): [`DESIGN.md`](../../DESIGN.md)
 
 ---
 

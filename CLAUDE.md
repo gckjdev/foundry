@@ -24,6 +24,7 @@ Onboarding: only `.foundry/recipe.yaml`, `.foundry/policy.yaml`, `.github/ISSUE_
 - Default harness for _this_ product is Claude Code (`teams.defaultHarness` / repo override). Do not “fix” jobs onto OpenCode unless asked.
 - Jobs load **project** Claude settings only (`settingSources: ["project"]`). Do not rely on your personal `~/.claude` hooks leaking into unattended runs. API keys and `ANTHROPIC_BASE_URL` still come from the user’s Claude `env` on the runner machine (see `docs/adr/001-runner-runtime.md`).
 - Prefer `pnpm exec vitest run <file>` while iterating; set `FOUNDRY_TEST_DATABASE_URL` for control/db/runner tests.
+- Panel UI: follow `DESIGN.md`. Its tokens mirror `apps/web/src/app/globals.css` — change both together and lint with `pnpm dlx @google/design.md lint DESIGN.md`.
 
 ## Product source of truth
 
