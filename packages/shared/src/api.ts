@@ -74,11 +74,24 @@ export const HeartbeatResponseSchema = z.object({
 });
 export type HeartbeatResponse = z.infer<typeof HeartbeatResponseSchema>;
 
+/**
+ * An image a human attached to a panel message. `url` is a long-lived signed artifact URL so a
+ * runner can download the bytes even when it is not the machine that uploaded them.
+ */
+export const InputAttachmentSchema = z.object({
+  artifactId: z.string(),
+  name: z.string(),
+  contentType: z.string(),
+  url: z.string(),
+});
+export type InputAttachment = z.infer<typeof InputAttachmentSchema>;
+
 export const PendingInputSchema = z.object({
   kind: z.enum(["answer", "message"]),
   text: z.string(),
   by: z.string(),
   questionPrompt: z.string().optional(),
+  attachments: z.array(InputAttachmentSchema).optional(),
 });
 export type PendingInput = z.infer<typeof PendingInputSchema>;
 

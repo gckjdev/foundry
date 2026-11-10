@@ -16,6 +16,7 @@ import {
   setJobMaxMinutes,
   setRunnerStatus,
   startOnboarding,
+  storeArtifact,
   syncUnlinkedInstallations,
   updateRepoSettings,
 } from "@foundry/control";
@@ -110,11 +111,52 @@ export async function helpfulAction(form: FormData) {
   revalidatePath(`/jobs/${job.id}`);
 }
 
-export async function messageAction(form: FormData) {
+const MAX_MESSAGE_IMAGES = 5;
+const MAX_MESSAGE_IMAGE_BYTES = 5 * 1024 * 1024;
+const MESSAGE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+/** Normalize a browser File to an allowed image MIME type; pasted files may arrive without one. */
+function messageImageType(file: File): string | null {
+  const type = file.type.toLowerCase();
+  if (MESSAGE_IMAGE_TYPES.has(type)) return type;
+  const ext = file.name.toLowerCase().split(".").pop();
+  if (ext === "png") return "image/png";
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "webp") return "image/webp";
+  return null;
+}
+
+export type MessageResult = { ok: true } | { ok: false; error: string };
+
+export async function messageAction(form: FormData): Promise<MessageResult> {
   const { ctx, user, job } = await teamJob(str(form, "jobId"));
   const text = str(form, "text");
-  if (text) await sendMessage(ctx, job.id, text, user.login);
+  const files = form.getAll("images").filter((f): f is File => f instanceof File && f.size > 0);
+  if (!text && files.length === 0) return { ok: false, error: "Write a message or attach an image." };
+  if (files.length > MAX_MESSAGE_IMAGES)
+    return { ok: false, error: `Attach at most ${MAX_MESSAGE_IMAGES} images.` };
+
+  for (const file of files) {
+    if (!messageImageType(file)) return { ok: false, error: "Images must be PNG, JPEG or WebP." };
+    if (file.size > MAX_MESSAGE_IMAGE_BYTES)
+      return { ok: false, error: "Each image must be 5 MB or smaller." };
+  }
+
+  const attachmentIds: string[] = [];
+  for (const file of files) {
+    const contentType = messageImageType(file)!;
+    const row = await storeArtifact(ctx, {
+      teamId: job.teamId,
+      jobId: job.id,
+      name: file.name || "pasted-image",
+      contentType,
+      bytes: new Uint8Array(await file.arrayBuffer()),
+    });
+    attachmentIds.push(row.id);
+  }
+  await sendMessage(ctx, job.id, text, user.login, attachmentIds);
   revalidatePath(`/jobs/${job.id}`);
+  return { ok: true };
 }
 
 /** The Job limits form saves both limits together; an empty field clears that override. */

@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, readFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import {
   appendHarnessLog,
@@ -36,6 +36,7 @@ import {
   expandRecipeVars,
   type FoundryEvent,
   type HandoffBrief,
+  type InputAttachment,
   isUiChange,
   type Logger,
   type PendingInput,
@@ -416,6 +417,7 @@ export class JobRunner {
       this.qa = [...brief.qa, ...this.qa];
       this.uncertainties = [...brief.uncertainties];
     }
+    const pendingInputs = await this.materializeInputs(job.pendingInputs);
     const { systemPrompt, prompt } = assemblePrompt({
       job: {
         kind: job.kind,
@@ -430,16 +432,14 @@ export class JobRunner {
       },
       repo: files,
       brief,
-      inputs: job.pendingInputs,
+      inputs: pendingInputs,
       resumeStage: this.stage,
     });
 
     let session: HarnessSession;
     if (job.resumeMode === "sticky" && job.sessionId) {
       this.sessionId = job.sessionId;
-      const message = [resumeMessage(job.pendingInputs, this.stage), extraMessage]
-        .filter(Boolean)
-        .join("\n\n");
+      const message = [resumeMessage(pendingInputs, this.stage), extraMessage].filter(Boolean).join("\n\n");
       this.noteHarness("REQUEST resume", `${systemPrompt}\n\n---\n\n${message}`);
       session = await this.adapter.resume(job.sessionId, message, { ...opts, systemPrompt });
     } else {
@@ -461,6 +461,53 @@ export class JobRunner {
     const session = await this.adapter.resume(id, message, this.startOpts);
     this.track(session);
     return session;
+  }
+
+  /**
+   * Turn pending-input image attachments into files inside the worktree (`.foundry-local` is
+   * git-excluded) so the agent can open them with its Read tool. A failed download falls back to
+   * the signed URL rather than stalling the job.
+   */
+  private async materializeInputs(inputs: PendingInput[]): Promise<PendingInput[]> {
+    const out: PendingInput[] = [];
+    for (const input of inputs) {
+      if (!input.attachments?.length) {
+        out.push(input);
+        continue;
+      }
+      const lines: string[] = [];
+      for (const attachment of input.attachments) {
+        try {
+          lines.push(`- ${await this.downloadAttachment(attachment)} (${attachment.name})`);
+        } catch (err) {
+          this.logEvent("warn", "could not download message attachment", {
+            name: attachment.name,
+            ...errorFields(err),
+          });
+          lines.push(`- ${attachment.name}: ${attachment.url}`);
+        }
+      }
+      out.push({
+        ...input,
+        text: `${input.text}\n\nImages attached by the user (open them with the Read tool):\n${lines.join("\n")}`,
+      });
+    }
+    return out;
+  }
+
+  private async downloadAttachment(attachment: InputAttachment): Promise<string> {
+    const res = await fetch(attachment.url, { signal: AbortSignal.timeout(30_000) });
+    if (!res.ok) throw new Error(`artifact download failed: HTTP ${res.status}`);
+    const safeName = attachment.name.replace(/[^\w.-]+/g, "_").slice(0, 80) || "image";
+    const file = join(
+      this.cwd,
+      ".foundry-local",
+      "attachments",
+      `${attachment.artifactId.slice(0, 8)}-${safeName}`,
+    );
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, new Uint8Array(await res.arrayBuffer()));
+    return file;
   }
 
   private track(session: HarnessSession): void {
@@ -534,7 +581,7 @@ export class JobRunner {
         if (inputs.length) {
           this.recordAnswers(inputs);
           session = await this.resumeWith(
-            `${renderInputs(inputs)}\n\nTake this into account and continue with the playbook.`,
+            `${renderInputs(await this.materializeInputs(inputs))}\n\nTake this into account and continue with the playbook.`,
           );
           continue;
         }

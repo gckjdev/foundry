@@ -271,6 +271,8 @@ export const jobInputs = pgTable("job_inputs", {
   text: text("text").notNull(),
   by: text("by").notNull(),
   questionPrompt: text("question_prompt"),
+  /** Images attached to a panel message, resolved to artifacts when the agent resumes. */
+  attachments: jsonb("attachments").notNull().default(sql`'[]'::jsonb`),
   deliveredAt: ts("delivered_at"),
   createdAt: createdAt(),
 });

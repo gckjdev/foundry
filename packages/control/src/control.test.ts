@@ -3,9 +3,19 @@ import { TEST_DATABASE_URL } from "@foundry/db/testing";
 import { stageLabel } from "@foundry/shared";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { storeArtifact } from "./artifacts";
 import { claimJob } from "./claim";
 import { processWebhook, storeWebhook } from "./ingest";
-import { cancelJob, getJob, reconcileLabeledIssues, retryJob, setJobMaxCost, setJobMaxMinutes } from "./jobs";
+import {
+  cancelJob,
+  getJob,
+  reconcileLabeledIssues,
+  retryJob,
+  sendMessage,
+  setJobMaxCost,
+  setJobMaxMinutes,
+  takePendingInputs,
+} from "./jobs";
 import { evaluateJobGate, reconcileChangesRequestedReviews, reconcileOpenPullRequests } from "./merge-gate";
 import { capacityCard } from "./metrics";
 import { openPullRequest } from "./prs";
@@ -25,6 +35,12 @@ import {
   touchRunner,
 } from "./testing";
 
+/** A 1x1 transparent PNG: enough to exercise the attachment path. */
+const TINY_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+
 async function deliver(env: TestEnv, event: string, payload: unknown, id: string = crypto.randomUUID()) {
   const rowId = await storeWebhook(env.ctx, id, event, payload);
   if (rowId !== null) await processWebhook(env.ctx, rowId);
@@ -38,6 +54,55 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
   });
   afterEach(async () => {
     await env.drop();
+  });
+
+  it("carries images attached to a panel message through to the runner", async () => {
+    const { team } = await seedTeam(env);
+    env.gh.addIssue("acme/app", { number: 8, title: "Screenshot bug" });
+    await deliver(env, "issues", issueLabeledPayload({ number: 8, title: "Screenshot bug" }));
+    const job = (await env.ctx.db.query.jobs.findFirst())!;
+    const artifact = await storeArtifact(env.ctx, {
+      teamId: team.id,
+      jobId: job.id,
+      name: "before.png",
+      contentType: "image/png",
+      bytes: TINY_PNG,
+    });
+
+    await sendMessage(env.ctx, job.id, "It looks like this", "alice", [artifact.id]);
+
+    const [input] = await takePendingInputs(env.ctx, job.id);
+    expect(input).toMatchObject({ kind: "message", text: "It looks like this", by: "alice" });
+    expect(input!.attachments).toEqual([
+      {
+        artifactId: artifact.id,
+        name: "before.png",
+        contentType: "image/png",
+        url: expect.stringContaining(`/api/artifacts/${artifact.id}?t=`),
+      },
+    ]);
+  });
+
+  it("rejects an attachment that belongs to another job", async () => {
+    const { team } = await seedTeam(env);
+    env.gh.addIssue("acme/app", { number: 18, title: "First" });
+    env.gh.addIssue("acme/app", { number: 19, title: "Second" });
+    await deliver(env, "issues", issueLabeledPayload({ number: 18, title: "First" }));
+    await deliver(env, "issues", issueLabeledPayload({ number: 19, title: "Second" }));
+    const first = (await env.ctx.db.query.jobs.findFirst({ where: eq(jobs.issueNumber, 18) }))!;
+    const second = (await env.ctx.db.query.jobs.findFirst({ where: eq(jobs.issueNumber, 19) }))!;
+    const artifact = await storeArtifact(env.ctx, {
+      teamId: team.id,
+      jobId: first.id,
+      name: "other.png",
+      contentType: "image/png",
+      bytes: TINY_PNG,
+    });
+
+    await expect(sendMessage(env.ctx, second.id, "Wrong job", "alice", [artifact.id])).rejects.toThrow(
+      /not found/,
+    );
+    expect(await takePendingInputs(env.ctx, second.id)).toEqual([]);
   });
 
   it("creates one job per labeled issue and dedupes deliveries", async () => {

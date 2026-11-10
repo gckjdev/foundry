@@ -71,7 +71,9 @@ beforeEach(() => {
   dataDir = mkdtempSync(join(tmpdir(), "foundry-runner-"));
 });
 
-afterEach(() => {});
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function deps(
   harness: HarnessAdapter,
@@ -196,6 +198,44 @@ describe("JobRunner", () => {
     expect(said.text).toContain("[redacted]");
     expect(events.some((e) => e.kind === "usage")).toBe(true);
     expect(existsSync(join(dataDir, "worktrees", job.id))).toBe(false);
+  });
+
+  it("downloads images attached to a human message into the worktree", async () => {
+    const job = claimedJob({ id: "77777777-0000-0000-0000-000000000000", branch: "foundry/7" });
+    const attachment = {
+      artifactId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      name: "bug shot.png",
+      contentType: "image/png",
+      url: "https://foundry.test/api/artifacts/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee?t=x",
+    };
+    let materializedDuringTurn = false;
+    const turn: FakeTurn = {
+      ...implementTurn,
+      act: async (args) => {
+        materializedDuringTurn = existsSync(
+          join(args.cwd, ".foundry-local", "attachments", "aaaaaaaa-bug_shot.png"),
+        );
+        await implementTurn.act!(args);
+      },
+    };
+    const harness = new FakeHarness("claude-code", [turn, approveReview, finishTurn()]);
+    const fetchMock = vi.fn(async () => new Response(TINY_PNG));
+    vi.stubGlobal("fetch", fetchMock);
+    const resumed = claimedJob({
+      ...job,
+      resumeMode: "sticky",
+      sessionId: "fake-session-1",
+      pendingInputs: [
+        { kind: "message", text: "This is what I meant", by: "alice", attachments: [attachment] },
+      ],
+    });
+
+    expect(await new JobRunner(deps(harness), resumed).run()).toBe("pr_opened");
+    expect(fetchMock).toHaveBeenCalledWith(attachment.url, expect.anything());
+    const prompt = harness.calls[0]!.prompt;
+    expect(prompt).toContain("This is what I meant");
+    expect(prompt).toContain("aaaaaaaa-bug_shot.png");
+    expect(materializedDuringTurn).toBe(true);
   });
 
   it("sends failing checks back to implementing, re-reviews, then opens the PR once they pass", async () => {
