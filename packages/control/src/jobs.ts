@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { events, type Job, jobInputs, jobs, repos, teams, users } from "@foundry/db";
+import { artifacts, events, type Job, jobInputs, jobs, repos, teams, users } from "@foundry/db";
 import type { GhIssue } from "@foundry/github";
 import {
   assertTransition,
   errorFields,
   type FoundryEvent,
+  type InputAttachment,
   isRunnerStage,
   type JobStatus,
   jobBranchName,
@@ -14,7 +15,8 @@ import {
   TERMINAL_STATUSES,
   TRIGGER_LABEL,
 } from "@foundry/shared";
-import { and, asc, desc, eq, isNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
+import { artifactUrl } from "./artifacts";
 import { bestEffort, type ControlContext } from "./context";
 import { repoRef, syncJobToGitHub } from "./github-sync";
 
@@ -297,6 +299,7 @@ export async function addInput(
     text: input.text,
     by: input.by,
     questionPrompt: input.questionPrompt ?? null,
+    attachments: input.attachments ?? [],
   });
 }
 
@@ -308,20 +311,52 @@ export async function takePendingInputs(ctx: ControlContext, jobId: string): Pro
     .where(and(eq(jobInputs.jobId, jobId), isNull(jobInputs.deliveredAt)))
     .returning();
   rows.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-  return rows.map((r) => ({
+  return rows.map(toPendingInput);
+}
+
+function toPendingInput(r: typeof jobInputs.$inferSelect): PendingInput {
+  const attachments = r.attachments as InputAttachment[] | null;
+  return {
     kind: r.kind as PendingInput["kind"],
     text: r.text,
     by: r.by,
     ...(r.questionPrompt ? { questionPrompt: r.questionPrompt } : {}),
-  }));
+    ...(attachments?.length ? { attachments } : {}),
+  };
 }
 
-export async function listPendingInputs(ctx: ControlContext, jobId: string) {
-  return ctx.db
+export async function listPendingInputs(ctx: ControlContext, jobId: string): Promise<PendingInput[]> {
+  const rows = await ctx.db
     .select()
     .from(jobInputs)
     .where(and(eq(jobInputs.jobId, jobId), isNull(jobInputs.deliveredAt)))
     .orderBy(asc(jobInputs.createdAt));
+  return rows.map(toPendingInput);
+}
+
+/** Verify uploaded images belong to this job and turn them into runner-downloadable attachments. */
+async function resolveAttachments(
+  ctx: ControlContext,
+  job: Pick<Job, "id" | "teamId">,
+  ids: string[],
+): Promise<InputAttachment[]> {
+  const unique = [...new Set(ids)];
+  if (!unique.length) return [];
+  const rows = await ctx.db
+    .select()
+    .from(artifacts)
+    .where(and(inArray(artifacts.id, unique), eq(artifacts.jobId, job.id), eq(artifacts.teamId, job.teamId)));
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  return unique.map((id) => {
+    const row = byId.get(id);
+    if (!row) throw new NotFoundError(`attachment ${id} not found for this job`);
+    return {
+      artifactId: row.id,
+      name: row.name,
+      contentType: row.contentType,
+      url: artifactUrl(ctx, row.id),
+    };
+  });
 }
 
 /**
@@ -333,10 +368,13 @@ export async function sendMessage(
   jobId: string,
   text: string,
   by: string,
+  attachmentIds: string[] = [],
 ): Promise<Job> {
   const job = await getJob(ctx, jobId);
-  await addInput(ctx, job, { kind: "message", text, by });
-  await recordEvents(ctx, job, [{ kind: "message", role: "human", text: `@${by}: ${text}` }]);
+  const attachments = await resolveAttachments(ctx, job, attachmentIds);
+  await addInput(ctx, job, { kind: "message", text, by, attachments });
+  const note = attachments.length ? `\n\n${attachments.map((a) => `[image: ${a.name}]`).join("\n")}` : "";
+  await recordEvents(ctx, job, [{ kind: "message", role: "human", text: `@${by}: ${text}${note}` }]);
   if (["pr_ci", "waiting_on_you", "failed"].includes(job.status)) {
     const moved = await transitionJob(ctx, jobId, "queued", {
       reason: `message from @${by}`,

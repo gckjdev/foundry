@@ -160,7 +160,7 @@ export async function runnerCheckpoint(
 export async function runnerInputs(ctx: ControlContext, runner: Runner, jobId: string, take: boolean) {
   await ownedJob(ctx, runner, jobId);
   if (take) return takePendingInputs(ctx, jobId);
-  return (await listPendingInputs(ctx, jobId)).map((r) => ({ kind: r.kind, text: r.text, by: r.by }));
+  return listPendingInputs(ctx, jobId);
 }
 
 /** Short-lived installation token so the runner can fetch and push the job branch. */

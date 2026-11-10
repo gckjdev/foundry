@@ -12,8 +12,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ago, StatusPill, usd } from "@/components/status";
 import { requireTeam } from "@/server/session";
-import { answerAction, cancelAction, helpfulAction, messageAction, retryAction } from "../../../actions";
+import { answerAction, cancelAction, helpfulAction, retryAction } from "../../../actions";
 import { LiveLog } from "./live-log";
+import { MessageComposer } from "./message-composer";
 
 function describe(e: FoundryEvent): string | null {
   switch (e.kind) {
@@ -188,16 +189,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           </section>
           <section className="card">
             <h2 style={{ marginBottom: 10 }}>Message the agent</h2>
-            <form action={messageAction} className="stack">
-              <input type="hidden" name="jobId" value={job.id} />
-              <textarea
-                name="text"
-                placeholder="Guidance, a correction, or a follow-up change. Parked jobs resume at Implementing."
-              />
-              <div>
-                <button type="submit">Send</button>
-              </div>
-            </form>
+            <MessageComposer jobId={job.id} />
           </section>
           {d.questions.filter((q) => q.answeredAt).length > 0 ? (
             <section className="card">
