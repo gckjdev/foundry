@@ -20,6 +20,8 @@ export interface PermissionPolicy {
   /** Shell command prefixes the agent may never run. */
   denyCommands: string[];
   allowWebFetch: boolean;
+  /** False for read-only sessions (the independent code reviewer). Defaults to true. */
+  allowEdits?: boolean;
 }
 
 export interface StartOpts {
@@ -80,6 +82,7 @@ export function permissionsFromPolicy(policy: Policy): PermissionPolicy {
   return {
     denyCommands: policy.permissions.deny_commands,
     allowWebFetch: policy.permissions.allow_web_fetch,
+    allowEdits: true,
   };
 }
 

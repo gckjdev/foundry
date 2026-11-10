@@ -4,6 +4,7 @@ import bugfix from "./playbooks/bugfix.md" with { type: "text" };
 import defaultPlaybook from "./playbooks/default.md" with { type: "text" };
 import feature from "./playbooks/feature.md" with { type: "text" };
 import onboarding from "./playbooks/onboarding.md" with { type: "text" };
+import reviewer from "./playbooks/reviewer.md" with { type: "text" };
 
 /** Built-in playbooks. A repo can override any of them with `.foundry/playbook[.<name>].md`. */
 export const BUILTIN_PLAYBOOKS: Record<string, string> = {
@@ -49,6 +50,46 @@ export function basePlaybook(job: Pick<PromptJob, "kind" | "playbook">, repo?: R
   if (named) return named;
   if (job.playbook === "default" && repo?.playbook) return repo.playbook;
   return BUILTIN_PLAYBOOKS[job.playbook] ?? repo?.playbook ?? BUILTIN_PLAYBOOKS.default!;
+}
+
+export interface ReviewPromptInput {
+  repoFullName: string;
+  title: string;
+  body: string;
+  issueNumber: number | null;
+  branch: string;
+  defaultBranch: string;
+  plan: string | null;
+  summary: string | null;
+}
+
+/**
+ * The independent reviewer is a separate harness session with no context from the implementer.
+ * It gets the ticket, the plan and a clean checkout of the branch, and reports through `review`.
+ */
+export function assembleReviewPrompt(
+  input: ReviewPromptInput,
+  repo?: RepoPlaybookFiles,
+): {
+  systemPrompt: string;
+  prompt: string;
+} {
+  const parts = [reviewer];
+  for (const skill of repo?.skills ?? []) {
+    parts.push(`## Repo knowledge: ${skill.name}\n\n${skill.content.trim()}`);
+  }
+  const lines = [
+    `# Code review for ${input.repoFullName}`,
+    "",
+    `Review branch \`${input.branch}\` against \`origin/${input.defaultBranch}\`.`,
+    "",
+    input.issueNumber ? `## Ticket #${input.issueNumber}: ${input.title}` : `## Ticket: ${input.title}`,
+    "",
+    input.body.trim() || "_The ticket has no description._",
+  ];
+  if (input.plan) lines.push("", "## The implementer's plan", "", input.plan.trim());
+  if (input.summary) lines.push("", "## The implementer's summary", "", input.summary.trim());
+  return { systemPrompt: parts.join("\n\n"), prompt: lines.join("\n") };
 }
 
 export function renderInputs(inputs: PendingInput[]): string {

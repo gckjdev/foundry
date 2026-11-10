@@ -6,6 +6,7 @@ export const JOB_STATUSES = [
   "needs_input",
   "investigating",
   "implementing",
+  "reviewing",
   "verifying",
   "pr_ci",
   "waiting_on_you",
@@ -18,7 +19,7 @@ export const JobStatusSchema = z.enum(JOB_STATUSES);
 export type JobStatus = z.infer<typeof JobStatusSchema>;
 
 /** Stages a runner drives, in playbook order. A re-queued job resumes at one of these. */
-export const RUNNER_STAGES = ["triage", "investigating", "implementing", "verifying"] as const;
+export const RUNNER_STAGES = ["triage", "investigating", "implementing", "reviewing", "verifying"] as const;
 export type RunnerStage = (typeof RUNNER_STAGES)[number];
 export const RunnerStageSchema = z.enum(RUNNER_STAGES);
 
@@ -27,11 +28,12 @@ export const TERMINAL_STATUSES: readonly JobStatus[] = ["merged", "cancelled"];
 export const RUNNING_STATUSES: readonly JobStatus[] = RUNNER_STAGES;
 
 const TRANSITIONS: Record<JobStatus, readonly JobStatus[]> = {
-  queued: ["triage", "investigating", "implementing", "verifying", "cancelled"],
+  queued: ["triage", "investigating", "implementing", "reviewing", "verifying", "cancelled"],
   triage: ["needs_input", "investigating", "failed", "queued", "cancelled"],
   needs_input: ["queued", "cancelled"],
   investigating: ["implementing", "needs_input", "failed", "queued", "cancelled"],
-  implementing: ["verifying", "needs_input", "failed", "queued", "cancelled"],
+  implementing: ["reviewing", "needs_input", "failed", "queued", "cancelled"],
+  reviewing: ["implementing", "verifying", "needs_input", "failed", "queued", "cancelled"],
   verifying: ["implementing", "pr_ci", "failed", "queued", "cancelled"],
   pr_ci: ["queued", "merged", "waiting_on_you", "failed", "cancelled"],
   waiting_on_you: ["queued", "merged", "cancelled"],
@@ -79,6 +81,7 @@ export const STATUS_TITLES: Record<JobStatus, string> = {
   needs_input: "Needs input",
   investigating: "Investigating",
   implementing: "Implementing",
+  reviewing: "Reviewing",
   verifying: "Verifying",
   pr_ci: "PR / CI",
   waiting_on_you: "Waiting on you",

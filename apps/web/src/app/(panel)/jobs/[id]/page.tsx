@@ -276,7 +276,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                             style={{ maxWidth: "100%", marginTop: 8, borderRadius: 4 }}
                           />
                         ) : null}
-                        {e.outputTail && e.status === "failed" ? (
+                        {e.outputTail && (e.status === "failed" || e.kind === "review") ? (
                           <pre className="log small">{e.outputTail}</pre>
                         ) : null}
                       </td>

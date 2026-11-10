@@ -13,6 +13,7 @@ const base = (): GateInput => ({
   uiChanged: false,
   ci: "success",
   aiReview: { present: false, blocking: false },
+  codeReview: { present: true, blocking: false },
   riskMatches: [],
   changedLines: 120,
   confidence: { level: "high", uncertainties: [] },
@@ -32,6 +33,12 @@ describe("evaluateGate", () => {
     ["no checks in recipe", (g) => (g.requiredChecks = []), "checks"],
     ["ui change without screenshot", (g) => (g.uiChanged = true), "screenshot"],
     ["ci failure", (g) => (g.ci = "failure"), "ci"],
+    ["no independent review", (g) => (g.codeReview = { present: false, blocking: false }), "code_review"],
+    [
+      "independent review requested changes",
+      (g) => (g.codeReview = { present: true, blocking: true }),
+      "code_review",
+    ],
     [
       "risk rule hit",
       (g) => (g.riskMatches = [{ rule: "schema", files: ["db/migrations/1.sql"], reviewers: ["@alice"] }]),

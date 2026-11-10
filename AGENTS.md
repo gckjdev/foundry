@@ -90,7 +90,7 @@ Recipe CI (`.foundry/recipe.yaml`) runs typecheck with `--incremental false` on 
 
 Job statuses and legal transitions: `packages/shared/src/states.ts`. Do not invent transitions; use `assertTransition` / `transitionJob`.
 
-Runner stages in order: `triage` → `investigating` → `implementing` → `verifying` → PR.
+Runner stages in order: `triage` → `investigating` → `implementing` → `reviewing` → `verifying` → PR. In `reviewing`, a fresh read-only harness session reviews the diff and can send the job back to `implementing`.
 
 ## Conventions
 

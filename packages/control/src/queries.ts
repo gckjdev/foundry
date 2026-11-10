@@ -276,7 +276,7 @@ export async function runningJobsByRunner(ctx: ControlContext, runnerIds: string
     .where(
       and(
         inArray(jobs.runnerId, runnerIds),
-        inArray(jobs.status, ["triage", "investigating", "implementing", "verifying"]),
+        inArray(jobs.status, ["triage", "investigating", "implementing", "reviewing", "verifying"]),
       ),
     );
 }

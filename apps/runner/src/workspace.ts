@@ -75,13 +75,17 @@ export class Workspace {
   }
 
   /**
-   * Check out a throwaway detached worktree of `origin/<branch>` (readiness checks). It shares
-   * the repo mirror with job worktrees but has no branch, so it can never collide with a job.
+   * Check out a throwaway detached worktree of `origin/<branch>` (readiness checks) or of a
+   * specific commit (the independent reviewer, which must see the job's local HEAD even before it
+   * is pushed). It shares the repo mirror with job worktrees but has no branch, so it can never
+   * collide with a job.
    */
   async createDetachedWorktree(opts: {
     fullName: string;
     branch: string;
     id: string;
+    /** Start point; defaults to `origin/<branch>`. */
+    commit?: string;
     token?: string;
   }): Promise<string> {
     const mirror = await this.ensureMirror(opts.fullName, opts.token);
@@ -89,7 +93,7 @@ export class Workspace {
     if (existsSync(path)) await this.removeWorktree(opts.fullName, opts.id);
     await mkdir(join(this.root, "worktrees"), { recursive: true });
     await git(["worktree", "prune"], { cwd: mirror });
-    await git(["worktree", "add", "--force", "--detach", path, `origin/${opts.branch}`], {
+    await git(["worktree", "add", "--force", "--detach", path, opts.commit ?? `origin/${opts.branch}`], {
       cwd: mirror,
     });
     return path;

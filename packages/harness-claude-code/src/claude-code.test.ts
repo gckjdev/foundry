@@ -80,6 +80,24 @@ describe("permissions", () => {
   it("builds disallowed tool rules", () => {
     expect(disallowedTools(opts)).toEqual(["Bash(git push:*)", "Bash(sudo:*)", "WebFetch", "WebSearch"]);
   });
+  it("removes edit tools from a read-only reviewer session", async () => {
+    const readonly = {
+      permissions: { denyCommands: ["git push"], allowWebFetch: false, allowEdits: false },
+    };
+    expect(disallowedTools(readonly)).toEqual([
+      "Bash(git push:*)",
+      "WebFetch",
+      "WebSearch",
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "MultiEdit",
+    ]);
+    const check = canUseTool(readonly);
+    expect((await check("Edit", { file_path: "a.ts" })).behavior).toBe("deny");
+    expect((await check("Write", { file_path: "a.ts" })).behavior).toBe("deny");
+    expect((await check("Read", { file_path: "a.ts" })).behavior).toBe("allow");
+  });
   it("denies policy-forbidden commands at runtime", async () => {
     const check = canUseTool(opts);
     expect((await check("Bash", { command: "git push origin x" })).behavior).toBe("deny");
