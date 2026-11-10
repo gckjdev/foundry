@@ -94,8 +94,8 @@ function deps(
   };
 }
 
-/** A whole well-behaved agent turn: stages in order, writes the file, verifies, finishes. */
-const happyTurn: FakeTurn = {
+/** A well-behaved implementation turn: stages through reviewing, then the runner reviews. */
+const implementTurn: FakeTurn = {
   events: [
     {
       kind: "message",
@@ -110,17 +110,45 @@ const happyTurn: FakeTurn = {
     await call("plan", { plan: "1. write done.txt" });
     await call("stage", { name: "implementing", summary: "Need one file" });
     writeFileSync(join(cwd, "done.txt"), "done\n");
-    await call("stage", { name: "verifying", summary: "Wrote done.txt" });
-    const checks = await call("run_checks");
-    expect(checks.text).toContain("All checks passed");
-    await call("confidence", { level: "high", reasons: ["trivial"] });
-    await call("stage", { name: "done", summary: "Adds done.txt" });
+    await call("stage", { name: "reviewing", summary: "Wrote done.txt" });
   },
 };
 
+/** The independent reviewer's own turn: report a verdict through its dedicated MCP registration. */
+const approveReview: FakeTurn = {
+  costUsd: 0.03,
+  act: async ({ cwd, env }) => {
+    // It sees a clean checkout with the base branch available for the diff.
+    expect(gitIn(cwd, "status", "--porcelain")).toBe("");
+    expect(gitIn(cwd, "rev-parse", "--verify", "origin/main")).toBeTruthy();
+    const reply = await agentTools(env)("review", {
+      verdict: "approve",
+      summary: "No blocking issues",
+      findings: [],
+    });
+    expect(reply.isError).toBeFalsy();
+  },
+};
+
+/** The implementer's resumed turn after the reviewer approves: verify and finish. */
+function finishTurn(summary = "Adds done.txt"): FakeTurn {
+  return {
+    act: async ({ env }) => {
+      const call = agentTools(env);
+      await call("stage", { name: "verifying", summary });
+      const checks = await call("run_checks");
+      expect(checks.text).toContain("All checks passed");
+      await call("confidence", { level: "high", reasons: ["trivial"] });
+      await call("stage", { name: "done", summary });
+    },
+  };
+}
+
+const happyTurns = (): FakeTurn[] => [implementTurn, approveReview, finishTurn()];
+
 describe("JobRunner", () => {
   it("drives a ticket through the stages to a pull request", async () => {
-    const harness = new FakeHarness("claude-code", [happyTurn]);
+    const harness = new FakeHarness("claude-code", happyTurns());
     const job = claimedJob();
     const outcome = await new JobRunner(deps(harness), job).run();
     expect(outcome).toBe("pr_opened");
@@ -128,6 +156,7 @@ describe("JobRunner", () => {
     expect(api.named("stage").map((c) => (c.body as { to: string }).to)).toEqual([
       "investigating",
       "implementing",
+      "reviewing",
       "verifying",
     ]);
     const pr = api.named("openPr")[0]!.body as {
@@ -142,14 +171,26 @@ describe("JobRunner", () => {
       changedLines: 1,
       uiChanged: false,
     });
-    // The agent's run_checks result at the same tree is reused: one check evidence, not two.
-    expect(api.named("evidence")).toHaveLength(1);
-    expect(api.named("checkpoint")).toHaveLength(3);
+    // The agent's run_checks result at the same tree is reused: one check evidence, not two,
+    // plus the reviewer's verdict note.
+    const evidence = api
+      .named("evidence")
+      .map((c) => c.body as { kind: string; name: string; status: string });
+    expect(evidence.filter((e) => e.kind === "check")).toHaveLength(1);
+    expect(evidence.find((e) => e.kind === "review")).toMatchObject({
+      name: "code review",
+      status: "passed",
+    });
+    expect(api.named("checkpoint")).toHaveLength(4);
+    // The reviewer ran in a throwaway detached worktree, not the job's.
+    expect(harness.calls[1]!.opts.cwd).not.toBe(join(dataDir, "worktrees", job.id));
+    expect(harness.calls[1]!.opts.permissions.allowEdits).toBe(false);
+    expect(existsSync(join(dataDir, "worktrees", `${job.id}-review`))).toBe(false);
 
     const origin = join(fixture.root, "acme/app.git");
     expect(gitIn(origin, "show", `${job.branch}:done.txt`)).toBe("done");
     expect(gitIn(origin, "show", `refs/foundry/${job.id}/brief:brief.md`)).toContain(
-      "Stage reached: **implementing**",
+      "Stage reached: **reviewing**",
     );
 
     const events = api.named("events").flatMap((c) => c.body as { kind: string; text?: string }[]);
@@ -169,15 +210,15 @@ describe("JobRunner", () => {
     };
     let materializedDuringTurn = false;
     const turn: FakeTurn = {
-      ...happyTurn,
+      ...implementTurn,
       act: async (args) => {
         materializedDuringTurn = existsSync(
           join(args.cwd, ".foundry-local", "attachments", "aaaaaaaa-bug_shot.png"),
         );
-        await happyTurn.act!(args);
+        await implementTurn.act!(args);
       },
     };
-    const harness = new FakeHarness("claude-code", [turn]);
+    const harness = new FakeHarness("claude-code", [turn, approveReview, finishTurn()]);
     const fetchMock = vi.fn(async () => new Response(TINY_PNG));
     vi.stubGlobal("fetch", fetchMock);
     const resumed = claimedJob({
@@ -197,13 +238,20 @@ describe("JobRunner", () => {
     expect(materializedDuringTurn).toBe(true);
   });
 
-  it("sends failing checks back to the agent, then opens the PR once they pass", async () => {
+  it("sends failing checks back to implementing, re-reviews, then opens the PR once they pass", async () => {
     const harness = new FakeHarness("claude-code", [
       {
         act: async ({ env }) => {
           const call = agentTools(env);
           await call("stage", { name: "investigating", summary: "ok" });
           await call("stage", { name: "implementing", summary: "ok" });
+          await call("stage", { name: "reviewing", summary: "forgot the file" });
+        },
+      },
+      approveReview,
+      {
+        act: async ({ env }) => {
+          const call = agentTools(env);
           await call("stage", { name: "verifying", summary: "forgot the file" });
           await call("stage", { name: "done", summary: "done (not really)" });
         },
@@ -213,10 +261,11 @@ describe("JobRunner", () => {
           expect(prompt).toContain("verify loop 1 of 3");
           writeFileSync(join(cwd, "done.txt"), "done\n");
           const call = agentTools(env);
-          await call("stage", { name: "verifying", summary: "fixed" });
-          await call("stage", { name: "done", summary: "Adds done.txt" });
+          await call("stage", { name: "reviewing", summary: "fixed" });
         },
       },
+      approveReview,
+      finishTurn(),
     ]);
     const outcome = await new JobRunner(
       deps(harness),
@@ -227,34 +276,51 @@ describe("JobRunner", () => {
     expect(stages.map((s) => s.to)).toEqual([
       "investigating",
       "implementing",
+      "reviewing",
       "verifying",
       "implementing",
+      "reviewing",
       "verifying",
     ]);
-    expect(stages[3]!.loopCount).toBe(1);
-    const checks = api.named("evidence").map((c) => (c.body as { status: string }).status);
-    expect(checks).toEqual(["failed", "passed"]);
-    expect(harness.calls.map((c) => c.kind)).toEqual(["start", "resume"]);
+    expect(stages[4]!.loopCount).toBe(1);
+    const evidence = api.named("evidence").map((c) => c.body as { kind: string; status: string });
+    expect(evidence.filter((e) => e.kind === "check").map((e) => e.status)).toEqual(["failed", "passed"]);
+    expect(evidence.filter((e) => e.kind === "review").map((e) => e.status)).toEqual(["passed", "passed"]);
   });
 
   it("fails the job instead of opening a PR when checks still fail after max verify loops", async () => {
-    const stuckTurn = (first: boolean): FakeTurn => ({
+    const implementTurn = (first: boolean): FakeTurn => ({
       act: async ({ env }) => {
         const call = agentTools(env);
         if (first) {
           await call("stage", { name: "investigating", summary: "ok" });
           await call("stage", { name: "implementing", summary: "ok" });
         }
+        await call("stage", { name: "reviewing", summary: "still broken" });
+      },
+    });
+    const verifyTurn: FakeTurn = {
+      act: async ({ env }) => {
+        const call = agentTools(env);
         await call("stage", { name: "verifying", summary: "still broken" });
         await call("stage", { name: "done", summary: "done (not really)" });
       },
-    });
-    // Default max_verify_loops is 3: the first verify plus three retries all fail.
+    };
+    // Default max_verify_loops is 3: the first verify plus three retries all fail, and each
+    // retry is reviewed again before it can verify.
     const harness = new FakeHarness("claude-code", [
-      stuckTurn(true),
-      stuckTurn(false),
-      stuckTurn(false),
-      stuckTurn(false),
+      implementTurn(true),
+      approveReview,
+      verifyTurn,
+      implementTurn(false),
+      approveReview,
+      verifyTurn,
+      implementTurn(false),
+      approveReview,
+      verifyTurn,
+      implementTurn(false),
+      approveReview,
+      verifyTurn,
     ]);
     const outcome = await new JobRunner(
       deps(harness),
@@ -266,6 +332,123 @@ describe("JobRunner", () => {
     expect(last.to).toBe("failed");
     expect(last.reason).toContain("marker");
     expect(last.reason).toContain("3 verify loops");
+  });
+
+  it("sends blocking review findings back to implementing and re-reviews the fix", async () => {
+    let resumePrompt = "";
+    const harness = new FakeHarness("claude-code", [
+      implementTurn,
+      {
+        act: async ({ env }) => {
+          await agentTools(env)("review", {
+            verdict: "request_changes",
+            summary: "The acceptance criterion is not covered by a test.",
+            findings: [
+              {
+                severity: "blocking",
+                file: "done.txt",
+                message: "Add a regression test for the marker.",
+              },
+            ],
+          });
+        },
+      },
+      {
+        act: async ({ cwd, env, prompt }) => {
+          resumePrompt = prompt;
+          writeFileSync(join(cwd, "review-fix.txt"), "fixed\n");
+          await agentTools(env)("stage", { name: "reviewing", summary: "addressed the review" });
+        },
+      },
+      approveReview,
+      finishTurn(),
+    ]);
+    const outcome = await new JobRunner(deps(harness), claimedJob()).run();
+    expect(outcome).toBe("pr_opened");
+    expect(resumePrompt).toContain("independent reviewer requested changes");
+    expect(resumePrompt).toContain("Add a regression test for the marker.");
+    expect(api.named("stage").map((c) => (c.body as { to: string }).to)).toEqual([
+      "investigating",
+      "implementing",
+      "reviewing",
+      "implementing",
+      "reviewing",
+      "verifying",
+    ]);
+    const reviews = api
+      .named("evidence")
+      .map((c) => c.body as { kind: string; status: string })
+      .filter((e) => e.kind === "review");
+    expect(reviews.map((e) => e.status)).toEqual(["failed", "passed"]);
+    // A pause while fixing a review finding must resume at implementing, not verifying.
+    const back = api
+      .named("stage")
+      .map((c) => c.body as { to: string; lastCompletedStage?: string })
+      .find((s) => s.to === "implementing");
+    expect(back?.lastCompletedStage).toBe("investigating");
+  });
+
+  it("continues to verifying but records a blocking review when the loop budget is spent", async () => {
+    fixture.seedRepo("acme/strict", {
+      ".foundry/recipe.yaml": TEST_RECIPE,
+      ".foundry/policy.yaml": "max_review_loops: 0\n",
+      "README.md": "# strict\n",
+    });
+    let resumePrompt = "";
+    const harness = new FakeHarness("claude-code", [
+      implementTurn,
+      {
+        act: async ({ env }) => {
+          await agentTools(env)("review", {
+            verdict: "request_changes",
+            summary: "Still wrong.",
+            findings: [{ severity: "blocking", message: "Fix it." }],
+          });
+        },
+      },
+      {
+        act: async ({ env, prompt }) => {
+          resumePrompt = prompt;
+          const call = agentTools(env);
+          await call("stage", { name: "verifying", summary: "review budget spent" });
+          await call("confidence", { level: "high" });
+          await call("stage", { name: "done", summary: "Adds done.txt" });
+        },
+      },
+    ]);
+    const job = claimedJob({
+      id: "cccccccc-0000-0000-0000-000000000000",
+      branch: "foundry/c",
+      repo: { id: "repo-strict", fullName: "acme/strict", defaultBranch: "main" },
+    });
+    expect(await new JobRunner(deps(harness), job).run()).toBe("pr_opened");
+    expect(resumePrompt).toContain("still requests changes after 0 review loops");
+    expect(resumePrompt).toContain("held for human review");
+    const review = api
+      .named("evidence")
+      .map((c) => c.body as { kind: string; name: string; status: string })
+      .find((e) => e.kind === "review" && e.name === "code review");
+    expect(review?.status).toBe("failed");
+  });
+
+  it("rejects stage(verifying) until the reviewer approves", async () => {
+    let reply = "";
+    const harness = new FakeHarness("claude-code", [
+      {
+        act: async ({ cwd, env }) => {
+          const call = agentTools(env);
+          await call("stage", { name: "investigating", summary: "clear" });
+          await call("stage", { name: "implementing", summary: "done" });
+          writeFileSync(join(cwd, "done.txt"), "done\n");
+          await call("stage", { name: "reviewing", summary: "done" });
+          reply = (await call("stage", { name: "verifying", summary: "skip the review" })).text;
+        },
+      },
+      approveReview,
+      finishTurn(),
+    ]);
+    expect(await new JobRunner(deps(harness), claimedJob()).run()).toBe("pr_opened");
+    expect(reply).toContain("independent review has not run yet");
   });
 
   it("rejects out-of-order stages", async () => {
@@ -296,7 +479,7 @@ describe("JobRunner", () => {
           await agentTools(env)("ask", { question: "CSV or XLSX?", options: ["CSV", "XLSX"] });
         },
       },
-      happyTurn,
+      ...happyTurns(),
     ]);
     const d = deps(harness);
     expect(await new JobRunner(d, job).run()).toBe("needs_input");
@@ -352,10 +535,11 @@ describe("JobRunner", () => {
           expect(prompt).toContain("write done.txt");
           expect(existsSync(join(cwd, "done.txt"))).toBe(true);
           const call = agentTools(env);
-          await call("stage", { name: "verifying", summary: "done" });
-          await call("stage", { name: "done", summary: "Adds done.txt" });
+          await call("stage", { name: "reviewing", summary: "done" });
         },
       },
+      approveReview,
+      finishTurn(),
     ]);
     const portable = claimedJob({ ...job, resumeMode: "portable", resumeStage: "implementing" });
     expect(await new JobRunner(deps(other), portable).run()).toBe("pr_opened");
@@ -466,6 +650,13 @@ describe("JobRunner", () => {
           mkdirSync(join(cwd, "apps/web/src/app"), { recursive: true });
           writeFileSync(join(cwd, "apps/web/src/app/page.tsx"), "export default () => null;\n");
           writeFileSync(join(cwd, "done.txt"), "done\n");
+          await call("stage", { name: "reviewing", summary: "page added" });
+        },
+      },
+      approveReview,
+      {
+        act: async ({ env }) => {
+          const call = agentTools(env);
           await call("stage", { name: "verifying", summary: "page added" });
           expect((await call("run_checks")).text).toContain("All checks passed");
           await call("confidence", { level: "high" });
@@ -507,6 +698,13 @@ describe("JobRunner", () => {
           writeFileSync(join(cwd, "done.txt"), "done\n");
           writeFileSync(join(cwd, "page.png"), TINY_PNG);
           await call("evidence", { kind: "screenshot", name: "page", path: "page.png" });
+          await call("stage", { name: "reviewing", summary: "page added" });
+        },
+      },
+      approveReview,
+      {
+        act: async ({ env }) => {
+          const call = agentTools(env);
           await call("stage", { name: "verifying", summary: "page added" });
           await call("confidence", { level: "high" });
           await call("stage", { name: "done", summary: "Adds a page" });
@@ -547,6 +745,13 @@ describe("JobRunner", () => {
           mkdirSync(join(cwd, "apps/web/src/app"), { recursive: true });
           writeFileSync(join(cwd, "apps/web/src/app/page.tsx"), "export default () => null;\n");
           writeFileSync(join(cwd, "done.txt"), "done\n");
+          await call("stage", { name: "reviewing", summary: "page added" });
+        },
+      },
+      approveReview,
+      {
+        act: async ({ env }) => {
+          const call = agentTools(env);
           await call("stage", { name: "verifying", summary: "page added" });
           await call("stage", { name: "done", summary: "Adds a page" });
         },
@@ -578,6 +783,13 @@ describe("JobRunner", () => {
             "checks:\n  - name: json\n    run: test -f package.json\n",
           );
           writeFileSync(join(cwd, ".foundry/policy.yaml"), "merge: off\n");
+          await call("stage", { name: "reviewing", summary: "files written" });
+        },
+      },
+      approveReview,
+      {
+        act: async ({ env }) => {
+          const call = agentTools(env);
           await call("stage", { name: "verifying", summary: "files written" });
           await call("stage", { name: "done", summary: "Recipe runs one check" });
         },

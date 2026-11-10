@@ -36,6 +36,14 @@ describe("opencode config", () => {
     });
     expect(splitModel("")).toBeUndefined();
   });
+
+  it("denies edits for a read-only reviewer session", () => {
+    const c = opencodeConfig({
+      mcpServers: [],
+      permissions: { denyCommands: ["git push"], allowWebFetch: false, allowEdits: false },
+    });
+    expect(c.permission).toMatchObject({ edit: "deny" });
+  });
 });
 
 describe("OpencodeEventMapper", () => {

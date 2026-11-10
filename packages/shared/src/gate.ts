@@ -13,6 +13,8 @@ export interface GateInput {
   uiChanged: boolean;
   ci: "success" | "failure" | "pending" | "none";
   aiReview: { present: boolean; blocking: boolean };
+  /** The independent reviewer that runs before verifying (spec: reviewing stage). */
+  codeReview: { present: boolean; blocking: boolean };
   riskMatches: RiskMatch[];
   changedLines: number;
   confidence: { level: ConfidenceLevel; uncertainties: string[] } | null;
@@ -27,6 +29,7 @@ export type GateRuleId =
   | "screenshot"
   | "ci"
   | "ai_review"
+  | "code_review"
   | "risk_rules"
   | "diff_size"
   | "confidence"
@@ -84,6 +87,12 @@ export function evaluateGate(input: GateInput): GateResult {
     else if (input.aiReview.blocking) {
       failed.push({ rule: "ai_review", detail: "AI review has unresolved blocking comments" });
     }
+  }
+
+  if (!input.codeReview.present) {
+    failed.push({ rule: "code_review", detail: "No independent code review evidence" });
+  } else if (input.codeReview.blocking) {
+    failed.push({ rule: "code_review", detail: "The independent review requested changes" });
   }
 
   for (const m of input.riskMatches) {

@@ -45,25 +45,42 @@ function shaOf(cwd: string): string {
   return gitIn(cwd, "rev-parse", "HEAD");
 }
 
-/**
- * A well-behaved turn: walks the stages, writes one file, then marks CI pending for the
- * checkpointed HEAD (GitHub does that when the branch is pushed) and finishes. The verifying
- * checkpoint is what commits and pushes the file, so `shaOf(cwd)` is the sha CI will report on.
- */
-function finishingTurn(opts: { world: E2E; path: string; content: string; summary: string }): FakeTurn {
+/** The independent reviewer's turn: approve through its dedicated MCP registration. */
+function reviewerApproval(): FakeTurn {
   return {
-    act: async ({ cwd, env }) => {
-      const call = agentTools(env);
-      await call("stage", { name: "investigating", summary: "Ticket is clear" });
-      await call("plan", { plan: `Write ${opts.path}` });
-      await call("stage", { name: "implementing", summary: `Writing ${opts.path}` });
-      writeFile(cwd, opts.path, opts.content);
-      await call("stage", { name: "verifying", summary: `Wrote ${opts.path}` });
-      opts.world.gh.repo("acme/app").ci.set(shaOf(cwd), "pending");
-      await call("confidence", { level: "high", reasons: ["trivial change"], uncertainties: [] });
-      await call("stage", { name: "done", summary: opts.summary });
+    act: async ({ env }) => {
+      await agentTools(env)("review", { verdict: "approve", summary: "Looks good", findings: [] });
     },
   };
+}
+
+/**
+ * A well-behaved job: implement, run the independent review, then verify. The reviewing
+ * checkpoint commits and pushes the file, so `shaOf(cwd)` is the sha CI will report on.
+ */
+function finishingTurns(opts: { world: E2E; path: string; content: string; summary: string }): FakeTurn[] {
+  return [
+    {
+      act: async ({ cwd, env }) => {
+        const call = agentTools(env);
+        await call("stage", { name: "investigating", summary: "Ticket is clear" });
+        await call("plan", { plan: `Write ${opts.path}` });
+        await call("stage", { name: "implementing", summary: `Writing ${opts.path}` });
+        writeFile(cwd, opts.path, opts.content);
+        await call("stage", { name: "reviewing", summary: `Wrote ${opts.path}` });
+      },
+    },
+    reviewerApproval(),
+    {
+      act: async ({ cwd, env }) => {
+        const call = agentTools(env);
+        opts.world.gh.repo("acme/app").ci.set(shaOf(cwd), "pending");
+        await call("stage", { name: "verifying", summary: `Wrote ${opts.path}` });
+        await call("confidence", { level: "high", reasons: ["trivial change"], uncertainties: [] });
+        await call("stage", { name: "done", summary: opts.summary });
+      },
+    },
+  ];
 }
 
 /**
@@ -109,7 +126,7 @@ describe.skipIf(!TEST_DATABASE_URL)("pipeline e2e", () => {
       name: "mac",
       os: "macos",
       harness: new FakeHarness("claude-code", [
-        finishingTurn({ world: e2e, path: "done.txt", content: "done\n", summary: "Adds done.txt" }),
+        ...finishingTurns({ world: e2e, path: "done.txt", content: "done\n", summary: "Adds done.txt" }),
       ]),
     });
 
@@ -137,7 +154,7 @@ describe.skipIf(!TEST_DATABASE_URL)("pipeline e2e", () => {
           });
         },
       },
-      finishingTurn({ world: e2e, path: "done.txt", content: "done\n", summary: "Adds done.txt" }),
+      ...finishingTurns({ world: e2e, path: "done.txt", content: "done\n", summary: "Adds done.txt" }),
     ]);
     const { daemon } = await e2e.startRunner({ name: "mac", os: "macos", harness });
 
@@ -170,8 +187,9 @@ describe.skipIf(!TEST_DATABASE_URL)("pipeline e2e", () => {
       return j.prNumber !== null && j.status === "waiting_on_you" ? j : null;
     }, "pull request to open");
     expect(finished.prNumber).not.toBeNull();
-    // Same machine and session: the runner resumes its own session with the answer.
-    expect(harness.calls.map((c) => c.kind)).toEqual(["start", "resume"]);
+    // Same machine and session: the runner resumes its own session with the answer, starts a
+    // separate reviewer session, then resumes the implementer to verify.
+    expect(harness.calls.map((c) => c.kind)).toEqual(["start", "resume", "start", "resume"]);
     expect(harness.calls[1]!.prompt).toContain("Alpha");
   });
 
@@ -184,7 +202,7 @@ describe.skipIf(!TEST_DATABASE_URL)("pipeline e2e", () => {
       name: "mac",
       os: "macos",
       harness: new FakeHarness("claude-code", [
-        finishingTurn({
+        ...finishingTurns({
           world: e2e,
           path: "db/migrations/001.sql",
           content: "create table things (id int);\n",
@@ -238,11 +256,18 @@ describe.skipIf(!TEST_DATABASE_URL)("pipeline e2e", () => {
     const prompts: string[] = [];
     const second = new FakeHarness("claude-code", [
       {
-        act: async ({ cwd, env, prompt }) => {
+        act: async ({ env, prompt }) => {
           prompts.push(prompt);
           const call = agentTools(env);
-          await call("stage", { name: "verifying", summary: "Continuing from the brief" });
+          await call("stage", { name: "reviewing", summary: "Continuing from the brief" });
+        },
+      },
+      reviewerApproval(),
+      {
+        act: async ({ cwd, env }) => {
+          const call = agentTools(env);
           e2e.gh.repo("acme/app").ci.set(shaOf(cwd), "pending");
+          await call("stage", { name: "verifying", summary: "Continuing from the brief" });
           await call("confidence", { level: "high", reasons: ["the brief is enough"], uncertainties: [] });
           await call("stage", { name: "done", summary: "Adds done.txt" });
         },
@@ -292,10 +317,17 @@ describe.skipIf(!TEST_DATABASE_URL)("pipeline e2e", () => {
 
     const second = new FakeHarness("claude-code", [
       {
+        act: async ({ env }) => {
+          const call = agentTools(env);
+          await call("stage", { name: "reviewing", summary: "Continuing on Linux" });
+        },
+      },
+      reviewerApproval(),
+      {
         act: async ({ cwd, env }) => {
           const call = agentTools(env);
-          await call("stage", { name: "verifying", summary: "Continuing on Linux" });
           e2e.gh.repo("acme/app").ci.set(shaOf(cwd), "pending");
+          await call("stage", { name: "verifying", summary: "Continuing on Linux" });
           await call("confidence", { level: "high", reasons: ["the brief is enough"], uncertainties: [] });
           await call("stage", { name: "done", summary: "Adds done.txt" });
         },

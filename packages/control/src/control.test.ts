@@ -452,12 +452,18 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
       for (const [to, last] of [
         ["investigating", "triage"],
         ["implementing", "investigating"],
-        ["verifying", "implementing"],
+        ["reviewing", "implementing"],
+        ["verifying", "reviewing"],
       ] as const) {
         await runnerStage(env.ctx, runner, c.id, { to, lastCompletedStage: last });
       }
       for (const name of ["test", "lint"])
         await runnerEvidence(env.ctx, runner, c.id, { kind: "check", name, status: "passed" });
+      await runnerEvidence(env.ctx, runner, c.id, {
+        kind: "review",
+        name: "code review",
+        status: "passed",
+      });
       await runnerConfidence(env.ctx, runner, c.id, {
         level: "high",
         reasons: ["tests cover it"],

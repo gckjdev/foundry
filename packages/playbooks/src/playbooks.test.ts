@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assemblePrompt, basePlaybook, resumeMessage } from "./index";
+import { assemblePrompt, assembleReviewPrompt, basePlaybook, resumeMessage } from "./index";
 
 const job = {
   kind: "ticket" as const,
@@ -18,8 +18,37 @@ describe("assemblePrompt", () => {
     const { systemPrompt, prompt } = assemblePrompt({ job });
     expect(systemPrompt).toContain("# Foundry playbook");
     expect(systemPrompt).toContain("Asking instead of guessing");
+    expect(systemPrompt).toContain("**Reviewing.**");
     expect(prompt).toContain("# Ticket #12: Export CSV");
     expect(prompt).not.toContain("no explicit acceptance criteria");
+  });
+
+  it("builds a reviewer prompt from the ticket, plan and summary", () => {
+    const { systemPrompt, prompt } = assembleReviewPrompt(
+      {
+        repoFullName: "acme/app",
+        title: "Export CSV",
+        body: "### Acceptance criteria\n\nA download button",
+        issueNumber: 12,
+        branch: "foundry/abcd1234-export-csv",
+        defaultBranch: "main",
+        plan: "1. add the button",
+        summary: "implementing: added the button",
+      },
+      { skills: [{ name: "architecture", content: "Use the repository layer for SQL." }] },
+    );
+    expect(systemPrompt).toContain("# Foundry code review playbook");
+    expect(systemPrompt).toContain("### 1. Code quality");
+    expect(systemPrompt).toContain("### 2. UI design");
+    expect(systemPrompt).toContain("### 3. Security");
+    expect(systemPrompt).toContain("foundry.review");
+    expect(systemPrompt).toContain("## Repo knowledge: architecture");
+    expect(systemPrompt).toContain("Use the repository layer for SQL.");
+    expect(prompt).toContain("# Code review for acme/app");
+    expect(prompt).toContain("origin/main");
+    expect(prompt).toContain("A download button");
+    expect(prompt).toContain("1. add the button");
+    expect(prompt).toContain("implementing: added the button");
   });
 
   it("applies repo overrides, harness notes and skills", () => {

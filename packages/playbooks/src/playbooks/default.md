@@ -19,11 +19,26 @@ Work through these stages in order. Call `stage` when you start the next one.
    `stage(implementing)`.
 3. **Implementing.** Make the smallest change that meets the acceptance criteria. Follow the code style
    around you. Add or update tests that would fail without your change. Do not refactor unrelated code,
-   upgrade dependencies, or change CI unless the ticket asks for it. Call `stage(verifying)` when done.
-4. **Verifying.** Call `run_checks`. If anything fails, fix it and run the checks again. If you changed
+   upgrade dependencies, or change CI unless the ticket asks for it. Call `stage(reviewing)` when done.
+4. **Reviewing.** Call `stage(reviewing)` and end your turn. The runner starts an independent reviewer
+   on a clean checkout of your branch; it has its own context and cannot edit files. If it requests
+   changes, you will be resumed with the blocking findings: fix them, then call `stage(reviewing)` again
+   to request another review. If it approves, you will be resumed to continue with Verifying. Do not
+   call `stage(verifying)` until the reviewer has approved; the runner rejects it.
+5. **Verifying.** Call `run_checks`. If anything fails, fix it and run the checks again. If you changed
    UI, start the dev server on `$FOUNDRY_PORT`, take a screenshot of the changed screen with Playwright
    and attach it with `evidence(kind: screenshot)`. When every check passes, call `confidence`, then
    `stage(done)` with a summary that becomes the pull request description.
+
+## Reviewing
+
+- The reviewer covers **code quality**, **UI design** and **security**. Fix every blocking finding in
+  any area; you may decline non-blocking nits when they conflict with the repo's conventions, and say
+  why in your summary.
+- UI findings should follow the repo's design system (`DESIGN.md`, token files or the style guide
+  where present). Security findings are never nits.
+- After a verify failure sends you back to Implementing, call `stage(reviewing)` again when the fix is
+  ready so the new change is reviewed too.
 
 ## Asking instead of guessing
 

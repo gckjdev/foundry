@@ -184,6 +184,7 @@ export async function evaluateJobGate(ctx: ControlContext, jobId: string): Promi
   const diff = diffFromGitHubFiles(files);
   const botReviews = reviews.filter((r) => policy.ai_review_bots.includes(r.author));
   const lastBot = botReviews.at(-1);
+  const review = ev.find((e) => e.kind === "review" && e.name === "code review");
   const confidence = job.confidence as { level: ConfidenceLevel; uncertainties: string[] } | null;
   const riskMatches = matchRiskRules(diff, policy.risk_rules);
 
@@ -199,6 +200,7 @@ export async function evaluateJobGate(ctx: ControlContext, jobId: string): Promi
     uiChanged: job.uiChanged,
     ci,
     aiReview: { present: !!lastBot, blocking: lastBot?.state === "CHANGES_REQUESTED" },
+    codeReview: { present: !!review, blocking: review?.status === "failed" },
     riskMatches,
     changedLines: diff.changedLines,
     confidence: confidence

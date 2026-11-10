@@ -145,7 +145,7 @@ export const AskRequestSchema = z.object({
 export const AskResponseSchema = z.object({ questionId: z.string() });
 
 export const EvidenceRequestSchema = z.object({
-  kind: z.enum(["check", "screenshot", "note"]),
+  kind: z.enum(["check", "screenshot", "note", "review"]),
   name: z.string(),
   status: EvidenceStatusSchema,
   command: z.string().nullable().optional(),
