@@ -58,6 +58,7 @@ export async function askQuestion(
     },
   });
   await ctx.notifier.notify(ctx, { event: "question_asked", job, detail: q.prompt });
+  ctx.log.info("question posted", { jobId: job.id, questionId: q.id });
   return q;
 }
 
@@ -87,6 +88,7 @@ export async function answerQuestion(
     .returning();
   if (!q) return null; // already answered
   const job = await getJob(ctx, q.jobId);
+  ctx.log.info("question answered", { jobId: job.id, questionId: q.id, by: a.by, via: a.via });
   await addInput(ctx, job, { kind: "answer", text: a.text, by: a.by, questionPrompt: q.prompt });
   await recordEvents(ctx, job, [{ kind: "answer", questionId: q.id, text: a.text, by: a.by }]);
 

@@ -100,6 +100,7 @@ Runner stages in order: `triage` → `investigating` → `implementing` → `ver
 - **Proxy every outbound HTTP** through `FOUNDRY_HTTP_PROXY` (then `HTTPS_PROXY` / `HTTP_PROXY`, then macOS `scutil`). Localhost is excluded (`FOUNDRY_NO_PROXY`). Implementation: `@foundry/shared/proxy`, web `retry-fetch`, runner `git.ts`. **Do not** send `file://` git remotes (tests set `FOUNDRY_GIT_BASE`) through the HTTP proxy.
 - **GitHub tokens** stay in `http.extraheader`, never in the remote URL or argv that error messages print.
 - **Secrets:** `.env`, `github-app.pem`, `*.pem` are gitignored. Never commit them, never paste them into docs or logs. Redact proxy userinfo.
+- **Logging:** operational logs go through `createLogger` from `@foundry/shared` as one structured JSON record per line (`ts`, `level`, `service`, `message`, fields). Use `ctx.log` in control-plane code and `deps.logger` in the runner; reserve `console.log` for CLI output. Standard: `docs/logging.md`.
 - **Generated files:** `next-env.d.ts` and `*.tsbuildinfo` are gitignored. Do not add them back.
 - **UI:** verify in the browser when you change panel behavior (user rule). `pnpm dev` does not include the runner.
 - **UI tokens:** `DESIGN.md` is the visual identity source of truth for the panel, and its tokens mirror `apps/web/src/app/globals.css`. Change both together and run `pnpm dlx @google/design.md lint DESIGN.md`.
@@ -118,6 +119,7 @@ Runner stages in order: `triage` → `investigating` → `implementing` → `ver
 | Harness                              | `packages/harness-core`, `harness-claude-code`, `harness-opencode`                  |
 | Recipe / policy schemas              | `packages/shared/src/recipe.ts`, `policy.ts`                                        |
 | Outbound proxy                       | `packages/shared/src/proxy.ts`                                                      |
+| Logging / log levels / log fields    | `packages/shared/src/log.ts`, `docs/logging.md`                                     |
 | Tests (unit / API / e2e)             | `docs/testing.md`, `tests/helpers.ts`, `tests/api`, `tests/e2e`, `tests/playwright` |
 
 ## Do not

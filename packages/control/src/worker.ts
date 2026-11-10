@@ -20,13 +20,13 @@ export function startWorker(ctx: ControlContext, transports: Transports, opts: {
     try {
       await processPendingWebhooks(ctx);
       const merged = await reconcileOpenPullRequests(ctx);
-      if (merged.length) ctx.log("marked jobs merged from GitHub PRs", { jobs: merged });
+      if (merged.length) ctx.log.info("marked jobs merged from GitHub PRs", { jobs: merged });
       const reviewed = await reconcileChangesRequestedReviews(ctx);
-      if (reviewed.length) ctx.log("re-queued jobs from changes-requested reviews", { jobs: reviewed });
+      if (reviewed.length) ctx.log.info("re-queued jobs from changes-requested reviews", { jobs: reviewed });
       const tickets = await reconcileLabeledIssues(ctx);
-      if (tickets.length) ctx.log("created jobs from labeled GitHub issues", { jobs: tickets });
+      if (tickets.length) ctx.log.info("created jobs from labeled GitHub issues", { jobs: tickets });
       const requeued = await requeueLostJobs(ctx);
-      if (requeued.length) ctx.log("re-queued jobs from offline runners", { jobs: requeued });
+      if (requeued.length) ctx.log.info("re-queued jobs from offline runners", { jobs: requeued });
       const now = ctx.now();
       const day = now.toISOString().slice(0, 10);
       if (now.getHours() >= (opts.digestHour ?? 9) && day !== lastDigestDay) {
@@ -34,7 +34,7 @@ export function startWorker(ctx: ControlContext, transports: Transports, opts: {
         await sendDigests(ctx, transports);
       }
     } catch (err) {
-      ctx.log("worker tick failed", { error: String(err) });
+      ctx.log.error("worker tick failed", { error: err instanceof Error ? err.message : String(err) });
     } finally {
       running = false;
     }

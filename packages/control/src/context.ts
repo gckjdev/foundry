@@ -1,5 +1,6 @@
 import type { Db } from "@foundry/db";
 import type { GitHubClient } from "@foundry/github";
+import { errorFields, type Logger } from "@foundry/shared";
 import type { Sql } from "postgres";
 import type { Notifier } from "./notify";
 
@@ -15,7 +16,8 @@ export interface ControlContext {
   /** HMAC secret for realtime, join and artifact tokens. */
   secret: string;
   now: () => Date;
-  log: (message: string, extra?: Record<string, unknown>) => void;
+  /** Structured process logger (see docs/logging.md). */
+  log: Logger;
 }
 
 export function jobUrl(ctx: ControlContext, jobId: string): string {
@@ -31,6 +33,6 @@ export async function bestEffort(
   try {
     await fn();
   } catch (err) {
-    ctx.log(`${what} failed`, { error: err instanceof Error ? err.message : String(err) });
+    ctx.log.warn(`${what} failed`, errorFields(err));
   }
 }

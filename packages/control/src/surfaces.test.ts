@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { jobs, questions, repos, teams, users } from "@foundry/db";
 import { TEST_DATABASE_URL } from "@foundry/db/testing";
+import { createLogger } from "@foundry/shared";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { artifactUrl, readArtifact, storeArtifact } from "./artifacts";
@@ -251,7 +252,7 @@ describe.skipIf(!TEST_DATABASE_URL)("panel and side-effect surfaces", () => {
   it("runs one worker tick and stops", async () => {
     await seedTeam(env);
     const lines: string[] = [];
-    env.ctx.log = (message) => lines.push(message);
+    env.ctx.log = createLogger({ service: "test", sink: (line) => lines.push(line) });
     const stop = startWorker(env.ctx, {}, { digestHour: 24 });
     await new Promise((r) => setTimeout(r, 100));
     stop();

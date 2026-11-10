@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FakeHarness } from "@foundry/harness-core";
 import type { OsAdapter } from "@foundry/os-adapters";
-import { LAPTOP_DEFAULT_SCHEDULE, parseRecipeYaml } from "@foundry/shared";
+import { LAPTOP_DEFAULT_SCHEDULE, noopLogger, parseRecipeYaml } from "@foundry/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { applyScheduleArgs } from "./config";
 import { Daemon } from "./daemon";
@@ -93,7 +93,7 @@ describe("Daemon", () => {
       mcpCommand: { command: "foundry", args: ["mcp"] },
       socketPath: testSocketPath(),
       heartbeatMs: 60_000,
-      log: () => {},
+      logger: noopLogger,
     });
     await daemon.start();
     await until(() => daemon.running.size === 1 && !!release);
@@ -124,7 +124,7 @@ describe("Daemon", () => {
       mcpCommand: { command: "foundry", args: ["mcp"] },
       socketPath: testSocketPath(),
       heartbeatMs: 60_000,
-      log: () => {},
+      logger: noopLogger,
     });
     await daemon.start();
     await until(() => daemon.running.size === 1);

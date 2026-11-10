@@ -296,6 +296,19 @@ runner starts at login (there is no launchd/systemd equivalent to manage). Run
 | `pnpm test:report`  | Coverage snapshot → `docs/testing-report.md`                                   |
 | `pnpm typecheck`    | `tsc` across the workspace                                                     |
 
+### Reading logs
+
+Every process writes one JSON record per line; the format and field names are in
+[docs/logging.md](logging.md). Two variables change the output:
+
+```bash
+FOUNDRY_LOG_LEVEL=debug pnpm dev      # include per-stage detail
+FOUNDRY_LOG_FORMAT=pretty pnpm dev    # human-readable single lines
+```
+
+Filter while developing: `pnpm dev 2>&1 | jq -c 'select(.level == "error")'`. The runner prints to
+its own terminal; as a launchd/systemd service it writes to `$FOUNDRY_HOME/logs`.
+
 ### Restart `pnpm dev`
 
 Do this after changing `.env` (including `FOUNDRY_HTTP_PROXY`), after pulling code that touches the web or realtime apps, or if the panel looks stuck.
@@ -311,7 +324,7 @@ cd /Users/pipi/foundry
 pnpm dev
 ```
 
-You should see Next on `http://localhost:3000` and realtime on `ws://localhost:3001`. If `FOUNDRY_HTTP_PROXY` is set, the web process logs `[foundry] HTTP proxy http://127.0.0.1:8118`.
+You should see Next on `http://localhost:3000` and realtime on `ws://localhost:3001`. If `FOUNDRY_HTTP_PROXY` is set, the logs include a `"message":"HTTP proxy configured"` record with the redacted proxy URL.
 
 If Ctrl+C does not free the ports:
 

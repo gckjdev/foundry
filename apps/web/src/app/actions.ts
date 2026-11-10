@@ -20,7 +20,7 @@ import {
   updateRepoSettings,
 } from "@foundry/control";
 import { questions, repos, runners, teams, users } from "@foundry/db";
-import { isRunnerStage } from "@foundry/shared";
+import { errorFields, isRunnerStage } from "@foundry/shared";
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
@@ -55,7 +55,7 @@ export async function createTeamAction(form: FormData) {
     }
     await syncUnlinkedInstallations(ctx, team.id);
   } catch (err) {
-    console.error("[foundry] GitHub installation sync after create team failed", err);
+    ctx.log.warn("github installation sync after create team failed", errorFields(err));
   }
   redirect("/repos");
 }

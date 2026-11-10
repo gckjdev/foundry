@@ -8,6 +8,7 @@ import {
 } from "@foundry/control";
 import { getDatabase } from "@foundry/db";
 import { getGitHub } from "@foundry/github";
+import { createLogger } from "@foundry/shared";
 
 const g = globalThis as unknown as {
   __foundryCtx?: Promise<{ ctx: ControlContext; transports: Transports }>;
@@ -36,7 +37,7 @@ async function build() {
     realtimeUrl: env("FOUNDRY_REALTIME_URL", `${publicUrl.replace(/^http/, "ws")}/realtime`),
     secret: env("FOUNDRY_SECRET"),
     now: () => new Date(),
-    log: (message, extra) => console.log(JSON.stringify({ level: "info", message, ...extra })),
+    log: createLogger({ service: "control" }),
   };
   return { ctx, transports };
 }

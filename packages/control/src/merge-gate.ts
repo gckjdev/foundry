@@ -4,6 +4,7 @@ import {
   type ConfidenceLevel,
   diffFromGitHubFiles,
   effectiveMaxCostUsd,
+  errorFields,
   evaluateGate,
   type FoundryEvent,
   type GateResult,
@@ -47,6 +48,7 @@ export async function markJobMerged(
     from: ["pr_ci", "waiting_on_you"],
   });
   if (!merged) return null;
+  ctx.log.info("job merged", { jobId: merged.id, reason });
   await ctx.notifier.notify(ctx, { event: "merged", job: merged, detail: notifyDetail });
   if (merged.kind === "onboarding") {
     const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, merged.repoId) });
@@ -149,7 +151,7 @@ export async function reconcileChangesRequestedReviews(ctx: ControlContext): Pro
     try {
       if (await syncChangesRequestedReview(ctx, job)) requeued.push(job.id);
     } catch (err) {
-      ctx.log("changes-requested reconcile failed", { job: job.id, error: String(err) });
+      ctx.log.error("changes-requested reconcile failed", { job: job.id, ...errorFields(err) });
     }
   }
   return requeued;
@@ -210,6 +212,12 @@ export async function evaluateJobGate(ctx: ControlContext, jobId: string): Promi
     .update(jobs)
     .set({ gateResult: result, ciStatus: ci, headSha: pr.headSha, changedLines: diff.changedLines })
     .where(eq(jobs.id, job.id));
+  ctx.log.info("gate evaluated", {
+    jobId: job.id,
+    pass: result.pass,
+    pending: result.pending,
+    failed: result.failed.map((f) => f.rule),
+  });
   if (result.pending) return result;
   const gateEvent: FoundryEvent = { kind: "gate", pass: result.pass, failed: result.failed };
   await recordEvents(ctx, job, [gateEvent]);
@@ -225,6 +233,7 @@ export async function evaluateJobGate(ctx: ControlContext, jobId: string): Promi
   const { users, teams } = splitReviewers(handles);
   await bestEffort(ctx, "request reviewers", () => ctx.gh.requestReviewers(ref, job.prNumber!, users, teams));
   const detail = result.failed.map((f) => f.detail).join("; ");
+  ctx.log.info("gate handed job to a human", { jobId: job.id, reviewers: handles });
   const handed = await transitionJob(ctx, job.id, "waiting_on_you", {
     reason: detail,
     from: ["pr_ci"],

@@ -3,6 +3,7 @@ import { events, type Job, jobInputs, jobs, repos, teams, users } from "@foundry
 import type { GhIssue } from "@foundry/github";
 import {
   assertTransition,
+  errorFields,
   type FoundryEvent,
   isRunnerStage,
   type JobStatus,
@@ -197,7 +198,10 @@ export async function createJobFromIssue(
       notInArray(jobs.status, [...FINISHED_STATUSES]),
     ),
   });
-  if (live) return live;
+  if (live) {
+    ctx.log.debug("job already exists for issue", { jobId: live.id, issue: issue.number });
+    return live;
+  }
   const previous = await anyJobForIssue(ctx, repoId, issue.number);
   if (previous && previous.status !== "merged") {
     // Re-labelling a cancelled/failed issue is a retry, not a second job for the same issue.
@@ -205,7 +209,10 @@ export async function createJobFromIssue(
       reason: "foundry label re-applied",
       patch: { resumeStage: "triage", failureReason: null, loopCount: 0 },
     });
-    if (revived) return revived;
+    if (revived) {
+      ctx.log.info("job revived by label", { jobId: revived.id, issue: issue.number });
+      return revived;
+    }
   }
   const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, repoId) });
   if (!repo) throw new NotFoundError(`repo ${repoId} not found`);
@@ -242,6 +249,12 @@ export async function createJobFromIssue(
   await recordEvents(ctx, job, [
     { kind: "stage_changed", from: null, to: "queued", reason: "issue labeled foundry" },
   ]);
+  ctx.log.info("job created", {
+    jobId: job.id,
+    repo: repo.fullName,
+    issue: issue.number,
+    harness: config.harness,
+  });
   await bestEffort(ctx, "github sync", () => syncJobToGitHub(ctx, job, null));
   return job;
 }
@@ -258,7 +271,7 @@ export async function reconcileLabeledIssues(ctx: ControlContext): Promise<strin
     try {
       issues = await ctx.gh.listIssues(repoRef(repo), { labels: [TRIGGER_LABEL], state: "open" });
     } catch (err) {
-      ctx.log("list labeled issues failed", { repo: repo.fullName, error: String(err) });
+      ctx.log.error("list labeled issues failed", { repo: repo.fullName, ...errorFields(err) });
       continue;
     }
     for (const issue of issues) {
@@ -336,7 +349,9 @@ export async function sendMessage(
 }
 
 export async function cancelJob(ctx: ControlContext, jobId: string, by: string): Promise<Job | null> {
-  return transitionJob(ctx, jobId, "cancelled", { reason: `cancelled by @${by}` });
+  const job = await transitionJob(ctx, jobId, "cancelled", { reason: `cancelled by @${by}` });
+  if (job) ctx.log.info("job cancelled", { jobId, by });
+  return job;
 }
 
 /**
@@ -355,11 +370,11 @@ export async function retryJob(ctx: ControlContext, jobId: string, stage: Runner
       labels = parseLabels((await ctx.gh.getIssue(repoRef(repo), job.issueNumber)).labels);
     } catch (err) {
       // The repo/team defaults are still enough to retry; a deleted issue should not block it.
-      ctx.log("retry: could not read issue labels", { jobId, error: String(err) });
+      ctx.log.warn("retry: could not read issue labels", { jobId, ...errorFields(err) });
     }
   }
   const config = resolveHarnessModel(labels, repo, team, job);
-  return transitionJob(ctx, jobId, "queued", {
+  const retried = await transitionJob(ctx, jobId, "queued", {
     reason: `retry from ${stage} by @${by}`,
     patch: {
       resumeStage: stage,
@@ -373,4 +388,6 @@ export async function retryJob(ctx: ControlContext, jobId: string, stage: Runner
         : {}),
     },
   });
+  if (retried) ctx.log.info("job retried", { jobId, stage, by, harness: config.harness });
+  return retried;
 }

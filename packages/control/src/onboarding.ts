@@ -53,6 +53,7 @@ export async function startOnboarding(
   await recordEvents(ctx, job!, [
     { kind: "stage_changed", from: null, to: "queued", reason: `onboarding started by @${byLogin}` },
   ]);
+  ctx.log.info("onboarding started", { jobId: job!.id, repo: repo.fullName, by: byLogin });
   return job!;
 }
 
@@ -63,6 +64,7 @@ export async function completeOnboarding(
 ) {
   if (!result.ok || !result.headSha) {
     await ctx.db.update(repos).set({ onboardingStatus: "failed" }).where(eq(repos.id, job.repoId));
+    ctx.log.warn("onboarding failed", { jobId: job.id, reason: result.reason });
     await transitionJob(ctx, job.id, "failed", {
       reason: result.reason ?? "onboarding failed",
       patch: { failureReason: result.reason ?? "onboarding failed" },

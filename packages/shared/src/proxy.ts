@@ -1,4 +1,5 @@
 import { execSync } from "node:child_process";
+import { createLogger } from "./log";
 
 export const DEFAULT_NO_PROXY = "localhost,127.0.0.1,::1";
 
@@ -162,7 +163,9 @@ export function applyHttpProxyEnv(opts: ResolveHttpProxyOpts = {}): string | und
   for (const [key, value] of Object.entries(httpProxyEnv({ ...opts, env }))) env[key] = value;
   if (env === process.env && !appliedToProcess) {
     appliedToProcess = true;
-    console.info(`[foundry] HTTP proxy ${redactProxyUrl(proxy)}`);
+    createLogger({ service: "proxy" }).info("HTTP proxy configured", {
+      proxy: redactProxyUrl(proxy),
+    });
   }
   return proxy;
 }

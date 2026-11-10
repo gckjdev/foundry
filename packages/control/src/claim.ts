@@ -149,6 +149,12 @@ export async function claimJob(ctx: ControlContext, runner: Runner): Promise<Cla
     });
     if (!claimed) continue;
 
+    ctx.log.info("job claimed", {
+      jobId: claimed.id,
+      runner: runner.name,
+      resumeMode,
+      stage: resumeStage,
+    });
     await bestEffort(ctx, "github sync", () => syncJobToGitHub(ctx, claimed, "queued"));
     const pendingInputs = await takePendingInputs(ctx, claimed.id);
     return {

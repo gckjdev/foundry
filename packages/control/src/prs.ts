@@ -64,6 +64,12 @@ export async function openPullRequest(ctx: ControlContext, job: Job, input: Open
     })
     .where(eq(jobs.id, job.id));
   await recordEvents(ctx, job, [{ kind: "message", role: "system", text: `Pull request ${pr.url}` }]);
+  ctx.log.info("pull request opened", {
+    jobId: job.id,
+    repo: repo.fullName,
+    pr: pr.number,
+    url: pr.url,
+  });
   await transitionJob(ctx, job.id, "pr_ci", { reason: "pull request opened", from: ["verifying"] });
   await evaluateJobGate(ctx, job.id);
   return { prNumber: pr.number, url: pr.url };

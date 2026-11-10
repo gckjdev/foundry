@@ -1,5 +1,5 @@
 import { exec, which } from "@foundry/os-adapters";
-import { type Os, parseRecipeYaml, type Recipe } from "@foundry/shared";
+import { errorFields, type Logger, type Os, parseRecipeYaml, type Recipe } from "@foundry/shared";
 import { httpProxyEnv } from "@foundry/shared/proxy";
 import type { ControlPlane } from "./api";
 import { type CommandResult, runCommand, tail } from "./checks";
@@ -166,7 +166,7 @@ export class ReadinessReporter {
     private readonly os: Os,
     private readonly opts: {
       postgresUrl?: string;
-      log: (m: string) => void;
+      logger: Logger;
       /** Daemon resource-limit prefix; a getter because `start()` sets it after construction. */
       wrap?: () => string[] | undefined;
     },
@@ -183,7 +183,8 @@ export class ReadinessReporter {
         const result = await this.check(repo);
         await this.api.readiness({ repoId: repo.id, recipeSha: repo.recipeSha, ...result });
         this.reported.set(repo.id, repo.recipeSha);
-        this.opts.log(`readiness ${repo.fullName}: ${result.ready ? "ready" : result.reason}`);
+        if (result.ready) this.opts.logger.info("repo readiness passed", { repo: repo.fullName });
+        else this.opts.logger.warn("repo readiness failed", { repo: repo.fullName, reason: result.reason });
       }
     } finally {
       this.checking = false;
@@ -225,7 +226,10 @@ export class ReadinessReporter {
       });
     } finally {
       await this.workspace.removeWorktree(repo.fullName, id).catch((err) => {
-        this.opts.log(`readiness: could not remove ${repo.fullName} worktree: ${String(err)}`);
+        this.opts.logger.warn("readiness worktree removal failed", {
+          repo: repo.fullName,
+          ...errorFields(err),
+        });
       });
     }
   }

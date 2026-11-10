@@ -8,9 +8,11 @@ import {
   UnauthorizedError,
 } from "@foundry/control";
 import type { Runner } from "@foundry/db";
-import { InvalidTransitionError } from "@foundry/shared";
+import { createLogger, errorFields, InvalidTransitionError } from "@foundry/shared";
 import { z } from "zod";
 import { getContext } from "./context";
+
+const log = createLogger({ service: "web" });
 
 export function json(body: unknown, status = 200) {
   return Response.json(body, { status });
@@ -23,7 +25,7 @@ export function errorResponse(err: unknown): Response {
   if (err instanceof NotFoundError) return json({ error: err.message }, 404);
   if (err instanceof ConflictError || err instanceof InvalidTransitionError)
     return json({ error: err.message }, 409);
-  console.error(err);
+  log.error("request failed", errorFields(err));
   return json({ error: "internal error" }, 500);
 }
 
