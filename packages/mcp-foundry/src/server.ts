@@ -13,9 +13,13 @@ export const FOUNDRY_TOOL_NAMES = [
 ] as const;
 export type FoundryToolName = (typeof FOUNDRY_TOOL_NAMES)[number];
 
+/** The three review areas, plus a fallback. */
+export const ReviewCategorySchema = z.enum(["code_quality", "ui_design", "security", "other"]);
+
 /** What the independent reviewer reports through the `review` tool. */
 export const ReviewFindingSchema = z.object({
   severity: z.enum(["blocking", "non_blocking"]),
+  category: ReviewCategorySchema.default("other").describe("code_quality, ui_design, security, or other"),
   file: z.string().optional(),
   line: z.number().int().positive().optional(),
   message: z.string().min(1),
@@ -132,7 +136,7 @@ export function createFoundryMcpServer(bridge: ToolBridge, version = "0.1.0"): M
     "review",
     {
       description:
-        "Report the independent code review result. Only the reviewer session calls this, exactly once. Use blocking findings only for issues that must be fixed before merge.",
+        "Report the independent code review result. Only the reviewer session calls this, exactly once. Cover code quality, UI design and security; classify each finding and use blocking only for issues that must be fixed before merge.",
       inputSchema: {
         verdict: z.enum(["approve", "request_changes"]),
         summary: z.string().min(1),

@@ -792,6 +792,7 @@ export class JobRunner {
         findings: [
           {
             severity: "blocking",
+            category: "other",
             message: "The independent reviewer ended without calling review.",
           },
         ],
@@ -824,6 +825,7 @@ export class JobRunner {
     if (parsed.verdict === "request_changes" && !blocking) {
       parsed.findings.push({
         severity: "blocking",
+        category: "other",
         message: parsed.summary || "The reviewer requested changes.",
       });
     }
@@ -861,7 +863,8 @@ export class JobRunner {
     const lines = [`Verdict: ${report.verdict}`, report.summary];
     for (const f of report.findings) {
       const at = f.file ? ` ${f.file}${f.line ? `:${f.line}` : ""}` : "";
-      lines.push(`- [${f.severity}]${at}: ${f.message}`);
+      const category = f.category && f.category !== "other" ? ` · ${f.category.replaceAll("_", " ")}` : "";
+      lines.push(`- [${f.severity}${category}]${at}: ${f.message}`);
     }
     return lines.filter(Boolean).join("\n");
   }

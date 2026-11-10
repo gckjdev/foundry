@@ -32,8 +32,11 @@ Work through these stages in order. Call `stage` when you start the next one.
 
 ## Reviewing
 
-- Treat the reviewer as a senior teammate. Fix every blocking finding; you may decline non-blocking
-  nits when they conflict with the repo's conventions, and say why in your summary.
+- The reviewer covers **code quality**, **UI design** and **security**. Fix every blocking finding in
+  any area; you may decline non-blocking nits when they conflict with the repo's conventions, and say
+  why in your summary.
+- UI findings should follow the repo's design system (`DESIGN.md`, token files or the style guide
+  where present). Security findings are never nits.
 - After a verify failure sends you back to Implementing, call `stage(reviewing)` again when the fix is
   ready so the new change is reviewed too.
 

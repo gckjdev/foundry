@@ -38,6 +38,9 @@ describe("assemblePrompt", () => {
       { skills: [{ name: "architecture", content: "Use the repository layer for SQL." }] },
     );
     expect(systemPrompt).toContain("# Foundry code review playbook");
+    expect(systemPrompt).toContain("### 1. Code quality");
+    expect(systemPrompt).toContain("### 2. UI design");
+    expect(systemPrompt).toContain("### 3. Security");
     expect(systemPrompt).toContain("foundry.review");
     expect(systemPrompt).toContain("## Repo knowledge: architecture");
     expect(systemPrompt).toContain("Use the repository layer for SQL.");

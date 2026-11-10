@@ -52,7 +52,15 @@ describe("foundry MCP server", () => {
       arguments: {
         verdict: "request_changes",
         summary: "One blocker",
-        findings: [{ severity: "blocking", file: "src/a.ts", line: 3, message: "NPE" }],
+        findings: [
+          {
+            severity: "blocking",
+            category: "security",
+            file: "src/a.ts",
+            line: 3,
+            message: "NPE",
+          },
+        ],
       },
     });
     expect(review.content).toEqual([{ type: "text", text: "ok review" }]);
@@ -61,7 +69,15 @@ describe("foundry MCP server", () => {
       {
         verdict: "request_changes",
         summary: "One blocker",
-        findings: [{ severity: "blocking", file: "src/a.ts", line: 3, message: "NPE" }],
+        findings: [
+          {
+            severity: "blocking",
+            category: "security",
+            file: "src/a.ts",
+            line: 3,
+            message: "NPE",
+          },
+        ],
       },
     ]);
     await client.close();

@@ -58,6 +58,23 @@ The implementer calls `stage(reviewing)` and ends its turn. The runner then:
 The implementer is resumed only after the reviewer finishes. If it calls `stage(verifying)` before a
 review has cleared the stage, the runner rejects the call and tells it to end its turn.
 
+### Review scope
+
+Every review covers three areas. The reviewer states in its summary which areas it checked and which
+did not apply (for example, no UI files changed):
+
+- **Code quality:** correctness, acceptance criteria, tests (including a failing regression test for
+  a bug fix), scope, maintainability, error handling, performance and repository conventions.
+- **UI design:** the design system (`DESIGN.md` and the panel tokens in `globals.css`), layout,
+  spacing, typography, colour and contrast, light/dark themes, responsive behaviour, empty/loading/
+  error states, accessibility and consistency with adjacent screens. It inspects any screenshot in
+  the worktree; final screenshots are captured during verifying.
+- **Security:** secrets, injection, authentication and authorization, tenant scoping, input/output
+  validation, data exposure, unsafe defaults, dependency changes and risky migrations.
+
+A finding that breaks the design system, accessibility or security is blocking; subjective taste is
+not.
+
 ### Reporting contract
 
 The reviewer reports exactly once through a dedicated MCP tool:
@@ -65,9 +82,15 @@ The reviewer reports exactly once through a dedicated MCP tool:
 ```jsonc
 {
   "verdict": "approve" | "request_changes",
-  "summary": "one or two sentences",
+  "summary": "one or two sentences, including which review areas applied",
   "findings": [
-    { "severity": "blocking" | "non_blocking", "file": "src/a.ts", "line": 12, "message": "..." }
+    {
+      "severity": "blocking" | "non_blocking",
+      "category": "code_quality" | "ui_design" | "security" | "other",
+      "file": "src/a.ts",
+      "line": 12,
+      "message": "..."
+    }
   ]
 }
 ```
