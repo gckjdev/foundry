@@ -1,7 +1,7 @@
 import { memberships, repos, runnerRepoReadiness, runners, teams, users } from "@foundry/db";
 import { createTestDatabase } from "@foundry/db/testing";
 import { FakeGitHub } from "@foundry/github";
-import { sha256 } from "@foundry/shared";
+import { noopLogger, sha256 } from "@foundry/shared";
 import { eq } from "drizzle-orm";
 import type { ControlContext } from "./context";
 import { MemoryNotifier } from "./notify";
@@ -43,7 +43,7 @@ export async function createTestEnv(): Promise<TestEnv> {
     realtimeUrl: "wss://foundry.test/realtime",
     secret: "test-secret",
     now: () => clock.now,
-    log: () => {},
+    log: noopLogger,
   };
   return { ctx, gh, notifier, clock, drop: database.drop };
 }

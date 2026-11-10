@@ -3,9 +3,12 @@ import { join } from "node:path";
 import type { HarnessAdapter } from "@foundry/harness-core";
 import type { OsAdapter, SleepInhibitor } from "@foundry/os-adapters";
 import {
+  createLogger,
+  errorFields,
   type HarnessInfo,
   HEARTBEAT_INTERVAL_MS,
   type LocalSchedule,
+  type Logger,
   scheduleAllows,
   VERSION,
 } from "@foundry/shared";
@@ -31,7 +34,7 @@ export interface DaemonOptions {
   postgresUrl?: string;
   limits?: { memMb?: number; cpuPercent?: number };
   socketPath?: string;
-  log?: (message: string, data?: Record<string, unknown>) => void;
+  logger?: Logger;
   heartbeatMs?: number;
   /** Override for tests. */
   createSocket?: (
@@ -63,17 +66,17 @@ export class Daemon {
   private claiming = false;
   private harnessInfo: HarnessInfo[] = [];
   private wrap: string[] | undefined;
-  private readonly log: (message: string, data?: Record<string, unknown>) => void;
+  private readonly logger: Logger;
 
   constructor(private readonly opts: DaemonOptions) {
     this.workspace = new Workspace(opts.dataDir);
     this.ports = new PortLeases(join(opts.dataDir, "ports.json"));
     this.localJobs = new LocalJobs(join(opts.dataDir, "jobs"));
     this.tools = new ToolServer(opts.socketPath ?? join(opts.dataDir, "foundry.sock"));
-    this.log = opts.log ?? ((m, d) => console.log(`[foundry] ${m}`, d ?? ""));
+    this.logger = opts.logger ?? createLogger({ service: "runner" });
     this.readiness = new ReadinessReporter(opts.api, this.workspace, opts.os.os, {
       postgresUrl: opts.postgresUrl,
-      log: (m) => this.log(m),
+      logger: this.logger,
       wrap: () => this.wrap,
     });
   }
@@ -135,9 +138,9 @@ export class Daemon {
         running: new Set(this.running.keys()),
         keep: this.keepJobIds ? new Set(this.keepJobIds) : null,
       });
-      if (removed.length) this.log(`gc removed ${removed.length} worktree(s)`);
+      if (removed.length) this.logger.info("gc removed worktrees", { count: removed.length });
     } catch (err) {
-      this.log(`gc failed: ${String(err)}`);
+      this.logger.error("gc failed", errorFields(err));
     }
   }
 
@@ -181,7 +184,7 @@ export class Daemon {
       for (const id of res.revokedJobIds) {
         const r = this.running.get(id);
         if (r) {
-          this.log(`job ${id} was revoked by the control plane`);
+          this.logger.warn("job revoked by the control plane", { jobId: id });
           void r.runner.revoke();
         }
       }
@@ -200,7 +203,7 @@ export class Daemon {
       await this.claimLoop();
       this.writeStatus();
     } catch (err) {
-      this.log(`heartbeat failed: ${String(err)}`);
+      this.logger.error("heartbeat failed", errorFields(err));
     }
   }
 
@@ -232,7 +235,7 @@ export class Daemon {
       };
       this.socket = ws;
     } catch (err) {
-      this.log(`realtime connect failed: ${String(err)}`);
+      this.logger.warn("realtime connect failed", errorFields(err));
       this.socketUrl = "";
     }
   }
@@ -245,11 +248,16 @@ export class Daemon {
       while (!this.stopped && this.accepting.ok && this.running.size < this.opts.maxConcurrency) {
         const job = await this.opts.api.claim();
         if (!job) break;
-        this.log(`claimed job ${job.id} (${job.resumeMode}) at ${job.resumeStage}: ${job.title}`);
-        const runner = new JobRunner(this.jobDeps(), job);
+        this.logger.info("job claimed", {
+          jobId: job.id,
+          resumeMode: job.resumeMode,
+          stage: job.resumeStage,
+          title: job.title,
+        });
+        const runner = new JobRunner(this.jobDeps(job.id), job);
         const done = runner
           .run()
-          .catch((err) => this.log(`job ${job.id} crashed: ${String(err)}`))
+          .catch((err) => this.logger.error("job crashed", { jobId: job.id, ...errorFields(err) }))
           .finally(() => {
             this.running.delete(job.id);
             this.updateInhibitor();
@@ -259,13 +267,13 @@ export class Daemon {
         this.updateInhibitor();
       }
     } catch (err) {
-      this.log(`claim failed: ${String(err)}`);
+      this.logger.error("claim failed", errorFields(err));
     } finally {
       this.claiming = false;
     }
   }
 
-  private jobDeps(): JobRunnerDeps {
+  private jobDeps(jobId: string): JobRunnerDeps {
     return {
       api: this.opts.api,
       harnesses: this.opts.harnesses,
@@ -274,7 +282,7 @@ export class Daemon {
       tools: this.tools,
       localJobs: this.localJobs,
       mcpCommand: this.opts.mcpCommand,
-      log: this.log,
+      logger: this.logger.child({ jobId }),
       postgresUrl: this.opts.postgresUrl,
       wrap: this.wrap,
       baseEnv: httpProxyEnv(),

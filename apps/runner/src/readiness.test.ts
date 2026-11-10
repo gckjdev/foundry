@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { noopLogger } from "@foundry/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ReadinessReporter, type ReadinessResult } from "./readiness";
 import { createGitFixture, RecordingControlPlane } from "./testing";
@@ -41,7 +42,7 @@ function makeReporter(api: RecordingControlPlane) {
   const root = mkdtempSync(join(tmpdir(), "foundry-readiness-"));
   return {
     root,
-    reporter: new ReadinessReporter(api, new Workspace(root), "macos", { log: () => {} }),
+    reporter: new ReadinessReporter(api, new Workspace(root), "macos", { logger: noopLogger }),
   };
 }
 

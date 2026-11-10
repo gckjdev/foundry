@@ -1,5 +1,5 @@
 import { jobs, repos, users, webhookInbox } from "@foundry/db";
-import { findMarker, parseFoundryCommand, TRIGGER_LABEL } from "@foundry/shared";
+import { errorFields, findMarker, parseFoundryCommand, TRIGGER_LABEL } from "@foundry/shared";
 import { and, asc, eq, isNull, lt, notInArray, or } from "drizzle-orm";
 import type { ControlContext } from "./context";
 import { cancelJob, createJobFromIssue, retryJob, sendMessage } from "./jobs";
@@ -29,9 +29,15 @@ export async function processWebhook(ctx: ControlContext, id: number): Promise<v
       .update(webhookInbox)
       .set({ processedAt: ctx.now(), error: null, attempts: row.attempts + 1 })
       .where(eq(webhookInbox.id, id));
+    ctx.log.debug("webhook processed", { id, event: row.event, attempts: row.attempts + 1 });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    ctx.log("webhook processing failed", { id, event: row.event, error: message });
+    ctx.log.error("webhook processing failed", {
+      id,
+      event: row.event,
+      attempts: row.attempts + 1,
+      ...errorFields(err),
+    });
     await ctx.db
       .update(webhookInbox)
       .set({ error: message, attempts: row.attempts + 1 })
@@ -48,6 +54,7 @@ export async function processPendingWebhooks(ctx: ControlContext, limit = 50): P
     .orderBy(asc(webhookInbox.id))
     .limit(limit);
   for (const r of rows) await processWebhook(ctx, r.id);
+  if (rows.length) ctx.log.debug("processed pending webhooks", { count: rows.length });
   return rows.length;
 }
 

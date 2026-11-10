@@ -340,6 +340,18 @@ Windows 上 runner 通过 PowerShell 运行 recipe 的 `install` / `checks` / `d
 | `pnpm test:report`  | 覆盖率快照 → `docs/testing-report.md`                                              |
 | `pnpm typecheck`    | 对整个工作区运行 `tsc`                                                             |
 
+### 查看日志
+
+每个进程每行输出一条 JSON 记录；格式和字段名见 [logging.zh-CN.md](logging.zh-CN.md)。两个变量控制输出：
+
+```bash
+FOUNDRY_LOG_LEVEL=debug pnpm dev      # 包含每个阶段的细节
+FOUNDRY_LOG_FORMAT=pretty pnpm dev    # 单行易读文本
+```
+
+开发时可过滤：`pnpm dev 2>&1 | jq -c 'select(.level == "error")'`。runner 输出在自己的终端；
+作为 launchd/systemd 服务运行时写入 `$FOUNDRY_HOME/logs`。
+
 ### 重启 `pnpm dev`
 
 在修改 `.env`（包括 `FOUNDRY_HTTP_PROXY`）后、拉取涉及 web 或 realtime 的代码后，或面板看起来卡住时
@@ -358,7 +370,7 @@ pnpm dev
 ```
 
 你应该看到 Next 在 `http://localhost:3000`，realtime 在 `ws://localhost:3001`。如果设置了
-`FOUNDRY_HTTP_PROXY`，web 进程会记录 `[foundry] HTTP proxy http://127.0.0.1:8118`。
+`FOUNDRY_HTTP_PROXY`，日志中会出现一条 `"message":"HTTP proxy configured"`，并带有脱敏后的代理地址。
 
 如果 Ctrl+C 没有释放端口：
 

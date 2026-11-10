@@ -10,6 +10,7 @@ import {
   type HarnessSession,
   type SessionResult,
 } from "@foundry/harness-core";
+import { noopLogger } from "@foundry/shared";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { JobRunner, type JobRunnerDeps } from "./job-runner";
 import { PortLeases } from "./ports";
@@ -84,7 +85,7 @@ function deps(
     tools,
     localJobs: new LocalJobs(join(dataDir, "jobs")),
     mcpCommand: { command: "foundry", args: ["mcp"] },
-    log: () => {},
+    logger: noopLogger,
     eventFlushMs: 50,
     askGraceMs: 200,
     screenshot,

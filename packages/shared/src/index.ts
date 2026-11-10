@@ -5,6 +5,7 @@ export * from "./diff";
 export * from "./events";
 export * from "./gate";
 export * from "./install-script";
+export * from "./log";
 export * from "./notify";
 export * from "./policy";
 export * from "./pricing";

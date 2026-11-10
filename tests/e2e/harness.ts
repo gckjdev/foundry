@@ -33,7 +33,12 @@ import { FakeGitHub, type GhPrFile, type RepoRef } from "@foundry/github";
 import type { HarnessAdapter } from "@foundry/harness-core";
 import type { OsAdapter } from "@foundry/os-adapters";
 import { type ControlPlane, Daemon, JobRevokedError } from "@foundry/runner";
-import { InvalidTransitionError, LAPTOP_DEFAULT_SCHEDULE, type LocalSchedule } from "@foundry/shared";
+import {
+  InvalidTransitionError,
+  LAPTOP_DEFAULT_SCHEDULE,
+  type LocalSchedule,
+  noopLogger,
+} from "@foundry/shared";
 import { eq } from "drizzle-orm";
 
 function git(cwd: string, ...args: string[]): string {
@@ -335,7 +340,7 @@ export async function createE2E(opts: { recipe: string; policy?: string; mergeMo
         mcpCommand: { command: "foundry", args: ["mcp"] },
         socketPath: `/tmp/fdr-e2e-${process.pid}-${socketSeq++}.sock`,
         heartbeatMs: 3_600_000,
-        log: () => {},
+        logger: noopLogger,
       });
       await daemon.start();
       daemons.push(daemon);

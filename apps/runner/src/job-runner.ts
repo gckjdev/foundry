@@ -25,10 +25,12 @@ import {
   DEFAULT_POLICY,
   effectiveMaxCostUsd,
   effectiveMaxJobMinutes,
+  errorFields,
   expandRecipeVars,
   type FoundryEvent,
   type HandoffBrief,
   isUiChange,
+  type Logger,
   type PendingInput,
   type Policy,
   parseUnifiedDiff,
@@ -58,7 +60,7 @@ export interface JobRunnerDeps {
   localJobs: LocalJobs;
   /** How harnesses start the per-job `foundry` MCP server (normally `foundry mcp`). */
   mcpCommand: { command: string; args: string[] };
-  log: (message: string, data?: Record<string, unknown>) => void;
+  logger: Logger;
   /** Extra env for every job (API keys, PATH). */
   baseEnv?: Record<string, string>;
   /** Prefix for job commands, e.g. resource limits from the OS adapter. */
@@ -191,7 +193,7 @@ export class JobRunner {
       this.deps.tools.unregister(this.jobId);
     }
     await this.cleanup(outcome);
-    this.deps.log(`job ${this.jobId} finished: ${outcome}`);
+    this.deps.logger.info("job finished", { outcome });
     return outcome;
   }
 
@@ -215,6 +217,12 @@ export class JobRunner {
     const adapter = deps.harnesses[job.harness];
     if (!adapter) throw new FailJob(`harness ${job.harness} is not available on this runner`);
     this.adapter = adapter;
+    this.logEvent("info", "job started", {
+      repo: job.repo.fullName,
+      branch: job.branch,
+      harness: job.harness,
+      resumeMode: job.resumeMode,
+    });
 
     const local = deps.localJobs.get(job.id);
     const token = await this.token();
@@ -256,7 +264,7 @@ export class JobRunner {
       FOUNDRY_BRANCH: job.branch,
     };
     this.secrets.push(...secretEnvValues(this.env));
-    this.deps.log("harness transcript", { file: this.deps.localJobs.harnessLog(job.id) });
+    this.deps.logger.debug("harness transcript", { file: this.deps.localJobs.harnessLog(job.id) });
     this.noteHarness(
       "JOB start",
       harnessLogJson({
@@ -277,7 +285,7 @@ export class JobRunner {
     this.flushTimer = setInterval(() => void this.flush().catch(() => {}), deps.eventFlushMs ?? 1_000);
 
     if (job.kind === "ticket" && this.recipe?.install && job.resumeMode !== "sticky") {
-      this.log("info", `Installing: ${this.recipe.install}`);
+      this.logEvent("info", "recipe install started", { command: this.recipe.install });
       const r = await runCommand(this.recipe.install, {
         cwd: this.cwd,
         env: this.env,
@@ -469,7 +477,7 @@ export class JobRunner {
         }
         if (nudges < (this.deps.maxNudges ?? 2)) {
           nudges++;
-          this.log("info", "Agent stopped before finishing; nudging it to continue");
+          this.logEvent("info", "agent stopped before finishing; nudging it to continue");
           session = await this.resumeWith(NUDGE_MESSAGE);
           continue;
         }
@@ -580,6 +588,7 @@ export class JobRunner {
     });
     this.lastCompleted = from;
     this.stage = name as RunnerStage;
+    this.logEvent("info", "stage changed", { from, to: name });
     await this.checkpoint();
     return { text: `Now in ${name}.` };
   }
@@ -595,6 +604,7 @@ export class JobRunner {
     await this.flush();
     await this.deps.api.ask(this.jobId, question, options);
     this.asked = true;
+    this.logEvent("info", "waiting for an answer", { options: options.length });
     const grace = this.deps.askGraceMs ?? 20_000;
     setTimeout(() => {
       if (this.session) void this.adapter.stop(this.session).catch(() => {});
@@ -641,7 +651,7 @@ export class JobRunner {
     const readyPath = dev.ready_path.startsWith("/") ? dev.ready_path : `/${dev.ready_path}`;
     const url = `http://127.0.0.1:${this.portBase}${readyPath}`;
     const command = expandRecipeVars(dev.run, this.env);
-    this.log("info", `Starting dev server for screenshot: ${command}`);
+    this.logEvent("info", "starting dev server for screenshot", { command });
     const server = startCommand(command, { cwd: this.cwd, env: this.env, wrap: this.deps.wrap });
     try {
       await this.waitForDevServer(url, server, dev.timeout_sec);
@@ -722,6 +732,12 @@ export class JobRunner {
         r.timedOut ? `${r.output}\n[timed out after ${check.timeout_sec}s]` : r.output,
       );
       results.push({ name: check.name, command: check.run, status, exitCode: r.exitCode, output });
+      this.logEvent(status === "passed" ? "info" : "warn", "check finished", {
+        check: check.name,
+        status,
+        exitCode: r.exitCode,
+        durationMs: r.durationMs,
+      });
       await this.deps.api.evidence(this.jobId, {
         kind: "check",
         name: check.name,
@@ -762,6 +778,11 @@ export class JobRunner {
   private async retryOrGiveUp(failures: CheckRun[]): Promise<{ retry: string } | null> {
     if (this.loop >= this.policy.max_verify_loops) return null;
     this.loop++;
+    this.logEvent("warn", "checks failed", {
+      loop: this.loop,
+      maxLoops: this.policy.max_verify_loops,
+      failed: failures.map((f) => f.name),
+    });
     await this.flush();
     await this.deps.api.stage(this.jobId, {
       to: "implementing",
@@ -812,6 +833,11 @@ export class JobRunner {
       headSha,
       uiChanged,
       changedLines: diff.changedLines,
+    });
+    this.logEvent("info", "pull request opened", {
+      changedLines: diff.changedLines,
+      uiChanged,
+      headSha,
     });
     return "pr_opened";
   }
@@ -888,6 +914,7 @@ export class JobRunner {
       headSha,
       summary: this.doneSummary ?? "",
     });
+    this.logEvent("info", "onboarding pull request opened", { headSha });
     return "onboarded";
   }
 
@@ -924,7 +951,7 @@ export class JobRunner {
       await pushBrief(this.cwd, this.brief(), token);
     } catch (err) {
       if (err instanceof JobRevokedError) throw err;
-      this.log("warn", `checkpoint push failed: ${this.scrub(String(err))}`);
+      this.logEvent("warn", "checkpoint push failed", { error: this.scrub(String(err)) });
     }
     await this.deps.api.checkpoint(this.jobId, {
       stage: this.lastCompleted,
@@ -963,7 +990,7 @@ export class JobRunner {
     if (err instanceof JobRevokedError || this.stopReason?.kind === "revoked") return "revoked";
     const reason = err instanceof FailJob ? err.message : `runner error: ${String(err)}`;
     this.noteHarness("JOB failed", reason);
-    this.deps.log(`job ${this.jobId} failed: ${reason}`);
+    this.deps.logger.error("job failed", { reason: this.scrub(reason) });
     try {
       this.push({ kind: "error", message: this.scrub(reason) });
       await this.flush();
@@ -974,7 +1001,7 @@ export class JobRunner {
       });
     } catch (e) {
       if (e instanceof JobRevokedError) return "revoked";
-      this.deps.log(`could not report failure: ${String(e)}`);
+      this.deps.logger.error("could not report failure", errorFields(e));
     }
     return "failed";
   }
@@ -1015,8 +1042,15 @@ export class JobRunner {
     this.buffer.push(e);
   }
 
-  private log(level: "info" | "warn" | "error", message: string): void {
-    this.push({ kind: "log", level, message: this.scrub(message) });
+  /** Write a log line to the job's live log (panel) and to the runner process log. */
+  private logEvent(
+    level: "info" | "warn" | "error",
+    message: string,
+    fields?: Record<string, unknown>,
+  ): void {
+    const scrubbed = this.scrub(message);
+    this.push({ kind: "log", level, message: scrubbed });
+    this.deps.logger[level](scrubbed, fields);
   }
 
   private flushing: Promise<void> = Promise.resolve();

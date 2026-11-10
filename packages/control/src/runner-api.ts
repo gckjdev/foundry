@@ -65,6 +65,13 @@ export async function runnerStage(ctx: ControlContext, runner: Runner, jobId: st
     patch,
     from: [job.status as never],
   });
+  if (moved)
+    ctx.log.debug("job stage changed", {
+      jobId: job.id,
+      from: job.status,
+      to: req.to,
+      runner: runner.name,
+    });
   if (moved && req.to === "failed") {
     await ctx.notifier.notify(ctx, { event: "failed", job: moved, detail: req.reason ?? "" });
   }

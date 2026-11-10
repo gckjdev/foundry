@@ -1,6 +1,7 @@
 import { type Repo, repos } from "@foundry/db";
 import {
   DEFAULT_POLICY,
+  errorFields,
   type MergeMode,
   type Policy,
   parsePolicyYaml,
@@ -27,7 +28,7 @@ export async function refreshRepoConfig(ctx: ControlContext, repo: Repo): Promis
       parseRecipeYaml(recipe.content);
       valid = true;
     } catch (err) {
-      ctx.log("invalid recipe.yaml", { repo: repo.fullName, error: String(err) });
+      ctx.log.warn("invalid recipe.yaml", { repo: repo.fullName, ...errorFields(err) });
     }
   }
   const [updated] = await ctx.db

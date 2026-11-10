@@ -1,5 +1,11 @@
 import { type Job, notifications, repos, teams, type User, users } from "@foundry/db";
-import { buildWebhookPayload, type NotifyEventType, type NotifyJob, notificationLine } from "@foundry/shared";
+import {
+  buildWebhookPayload,
+  errorFields,
+  type NotifyEventType,
+  type NotifyJob,
+  notificationLine,
+} from "@foundry/shared";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { type ControlContext, jobUrl } from "./context";
 
@@ -84,7 +90,7 @@ export class ChannelNotifier implements Notifier {
     try {
       await this.deliver(ctx, input);
     } catch (err) {
-      ctx.log("notify failed", { error: String(err) });
+      ctx.log.warn("notify failed", { event: input.event, jobId: input.job.id, ...errorFields(err) });
     }
   }
 

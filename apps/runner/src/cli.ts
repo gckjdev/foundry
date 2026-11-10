@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { bridgeFromEnv, runStdioServer } from "@foundry/mcp-foundry";
 import { currentOsAdapter } from "@foundry/os-adapters";
-import { parseRecipeYaml, VERSION } from "@foundry/shared";
+import { createLogger, parseRecipeYaml, VERSION } from "@foundry/shared";
 import { loadGitHubEnvFromFile } from "@foundry/shared/github-host";
 import { applyHttpProxyEnv, loadHttpProxyFromEnvFile } from "@foundry/shared/proxy";
 import { HttpControlPlane, joinControlPlane } from "./api";
@@ -126,6 +126,7 @@ async function join_(
 
 async function start() {
   const { config, token } = await requireConfig();
+  const logger = createLogger({ service: "runner", fields: { runner: config.name } });
   const daemon = new Daemon({
     api: new HttpControlPlane(config.serverUrl, token),
     os: currentOsAdapter(),
@@ -137,14 +138,15 @@ async function start() {
     mcpCommand: selfCommand(["mcp"]),
     postgresUrl: config.postgresUrl,
     limits: config.limits,
+    logger,
   });
   await daemon.start();
-  console.log(`foundry runner "${config.name}" connected to ${config.serverUrl}`);
+  logger.info("runner connected", { serverUrl: config.serverUrl });
   let stopping = false;
   const shutdown = async () => {
     if (stopping) process.exit(1);
     stopping = true;
-    console.log("stopping: handing running jobs back…");
+    logger.info("stopping: handing running jobs back");
     await daemon.stop();
     process.exit(0);
   };
