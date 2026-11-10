@@ -116,7 +116,8 @@ export async function transitionJob(
   opts: TransitionOptions = {},
 ): Promise<Job | null> {
   const result = await ctx.db.transaction(async (tx) => {
-    const [current] = await tx.select().from(jobs).where(eq(jobs.id, jobId)).for("update");
+    const currentQuery = tx.select().from(jobs).where(eq(jobs.id, jobId));
+    const [current] = await (ctx.dialect === "sqlite" ? currentQuery : currentQuery.for("update"));
     if (!current) throw new NotFoundError(`job ${jobId} not found`);
     const from = current.status as JobStatus;
     if (opts.from && !opts.from.includes(from)) return null;

@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@foundry/shared": "workspace:*",
+    "@libsql/client": "^0.15.15",
     "drizzle-orm": "^0.45.0",
     "postgres": "^3.4.7"
   },

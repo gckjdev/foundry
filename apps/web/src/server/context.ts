@@ -22,12 +22,14 @@ function env(name: string, fallback?: string): string {
 }
 
 async function build() {
-  const { db, sql } = getDatabase();
+  const { db, sql, sqlite, dialect } = getDatabase();
   const transports = await defaultTransports();
   const publicUrl = env("FOUNDRY_PUBLIC_URL", "http://localhost:3000");
   const ctx: ControlContext = {
     db,
     sql,
+    sqlite,
+    dialect,
     get gh() {
       return getGitHub();
     },

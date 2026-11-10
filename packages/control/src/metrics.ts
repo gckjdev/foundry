@@ -1,4 +1,5 @@
-import { sql } from "drizzle-orm";
+import { events, jobs, memberships, questions, runners } from "@foundry/db";
+import { and, count, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 import type { ControlContext } from "./context";
 
 export interface MetricsFilter {
@@ -35,6 +36,25 @@ export interface TeamMetrics {
 }
 
 const num = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
+const avg = (nums: number[]): number | null =>
+  nums.length === 0 ? null : nums.reduce((a, b) => a + b, 0) / nums.length;
+const median = (nums: number[]): number | null => {
+  if (nums.length === 0) return null;
+  const sorted = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+};
+
+type EventPayload = {
+  kind?: string;
+  from?: string | null;
+  to?: string | null;
+  reason?: string | null;
+  role?: string;
+  mode?: string;
+};
+
+const FINAL_STATUSES = new Set(["merged", "failed", "waiting_on_you", "pr_ci", "cancelled"]);
 
 export interface CapacityCard {
   /** Hours in the window with at least one queued job and no machine awake to take it. */
@@ -67,6 +87,74 @@ export interface CapacityCard {
  * hours it would have saved.
  */
 export async function capacityCard(ctx: ControlContext, teamId: string, days = 7): Promise<CapacityCard> {
+  return ctx.dialect === "sqlite"
+    ? capacityCardSqlite(ctx, teamId, days)
+    : capacityCardPostgres(ctx, teamId, days);
+}
+
+/**
+ * SQLite: same number, computed in TS. The Postgres path does this with `::timestamptz` casts,
+ * `payload->>`, `extract(epoch …)` and window functions — none of which SQLite has — so fetch the
+ * team's `stage_changed` events and merge the queue-stay intervals here instead.
+ */
+async function capacityCardSqlite(ctx: ControlContext, teamId: string, days: number): Promise<CapacityCard> {
+  const now = ctx.now();
+  const sinceMs = now.getTime() - days * 24 * 3600_000;
+  const untilMs = now.getTime();
+
+  const rows = await ctx.db
+    .select({ id: events.id, jobId: events.jobId, ts: events.ts, payload: events.payload })
+    .from(events)
+    .where(and(eq(events.teamId, teamId), eq(events.kind, "stage_changed"), lt(events.ts, now)));
+
+  const byJob = new Map<string, { id: number; ts: number; payload: EventPayload }[]>();
+  for (const r of rows) {
+    const list = byJob.get(r.jobId) ?? [];
+    list.push({ id: r.id, ts: r.ts.getTime(), payload: r.payload as EventPayload });
+    byJob.set(r.jobId, list);
+  }
+
+  // Every stage_changed into `queued` opens an interval; the next stage_changed out of `queued`
+  // for the same job closes it (no closing event => still queued at `now`).
+  const intervals: { s: number; e: number }[] = [];
+  for (const list of byJob.values()) {
+    list.sort((a, b) => a.id - b.id);
+    for (let i = 0; i < list.length; i++) {
+      const open = list[i]!;
+      if (open.payload.to !== "queued") continue;
+      const close = list.find((n, j) => j > i && n.payload.from === "queued");
+      const s = Math.max(open.ts, sinceMs);
+      const e = Math.min(close ? close.ts : untilMs, untilMs);
+      if (e > s) intervals.push({ s, e });
+    }
+  }
+
+  // Clip is done above; now merge overlapping intervals (the pg `islands`/`merged` CTEs) and sum.
+  intervals.sort((a, b) => a.s - b.s || a.e - b.e);
+  const merged: { s: number; e: number }[] = [];
+  let cur = intervals[0];
+  for (const iv of intervals) {
+    if (!cur) {
+      cur = iv;
+      continue;
+    }
+    if (iv.s <= cur.e) cur.e = Math.max(cur.e, iv.e);
+    else {
+      merged.push(cur);
+      cur = iv;
+    }
+  }
+  if (cur) merged.push(cur);
+
+  const hours = Math.max(0, merged.reduce((sum, iv) => sum + (iv.e - iv.s), 0) / 3_600_000);
+  return {
+    hoursNoOnlineRunner: hours,
+    hoursQueueWithNoRunner: hours,
+    estimatedHoursSavedBySharedRunner: hours,
+  };
+}
+
+async function capacityCardPostgres(ctx: ControlContext, teamId: string, days = 7): Promise<CapacityCard> {
   const now = ctx.now();
   const since = new Date(now.getTime() - days * 24 * 3600_000).toISOString();
   const until = now.toISOString();
@@ -117,6 +205,218 @@ export async function capacityCard(ctx: ControlContext, teamId: string, days = 7
 
 /** Every metric in spec 5.11, computed from the metrics_* views over `events` and `jobs`. */
 export async function teamMetrics(ctx: ControlContext, f: MetricsFilter): Promise<TeamMetrics> {
+  return ctx.dialect === "sqlite" ? teamMetricsSqlite(ctx, f) : teamMetricsPostgres(ctx, f);
+}
+
+/** SQLite: no percentile_cont / FILTER / metrics_* views, so aggregate the same numbers in TS. */
+async function teamMetricsSqlite(ctx: ControlContext, f: MetricsFilter): Promise<TeamMetrics> {
+  const since = new Date(ctx.now().getTime() - f.days * 24 * 3600_000);
+  const weekAgo = new Date(ctx.now().getTime() - 7 * 24 * 3600_000);
+  const jobFilter = and(
+    eq(jobs.teamId, f.teamId),
+    eq(jobs.kind, "ticket"),
+    gte(jobs.createdAt, since),
+    ...(f.repoId ? [eq(jobs.repoId, f.repoId)] : []),
+  );
+
+  const [jobRows, eventRows, handoverEvents, allStageChanges, questionRows, memberRows, filerRows] =
+    await Promise.all([
+      ctx.db
+        .select({
+          id: jobs.id,
+          status: jobs.status,
+          costUsd: jobs.costUsd,
+          createdAt: jobs.createdAt,
+          claimedAt: jobs.claimedAt,
+          finishedAt: jobs.finishedAt,
+          revertedAt: jobs.revertedAt,
+          harness: jobs.harness,
+          model: jobs.model,
+          originOs: runners.os,
+        })
+        .from(jobs)
+        .leftJoin(runners, eq(runners.id, jobs.originRunnerId))
+        .where(jobFilter),
+      ctx.db
+        .select({
+          jobId: events.jobId,
+          id: events.id,
+          ts: events.ts,
+          kind: events.kind,
+          payload: events.payload,
+        })
+        .from(events)
+        .innerJoin(jobs, eq(jobs.id, events.jobId))
+        .where(jobFilter),
+      ctx.db
+        .select({ jobId: events.jobId, id: events.id, ts: events.ts, payload: events.payload })
+        .from(events)
+        .where(and(eq(events.teamId, f.teamId), eq(events.kind, "stage_changed"), gte(events.ts, since))),
+      ctx.db
+        .select({ jobId: events.jobId, id: events.id, ts: events.ts, payload: events.payload })
+        .from(events)
+        .where(and(eq(events.teamId, f.teamId), eq(events.kind, "stage_changed"))),
+      ctx.db
+        .select({ helpful: questions.helpful })
+        .from(questions)
+        .where(
+          and(eq(questions.teamId, f.teamId), isNotNull(questions.helpful), gte(questions.createdAt, since)),
+        ),
+      ctx.db.select({ n: count() }).from(memberships).where(eq(memberships.teamId, f.teamId)),
+      ctx.db
+        .select({ authorUserId: jobs.authorUserId })
+        .from(jobs)
+        .where(and(eq(jobs.teamId, f.teamId), gte(jobs.createdAt, weekAgo), isNotNull(jobs.authorUserId))),
+    ]);
+
+  const eventsByJob = new Map<string, EventPayload[]>();
+  for (const e of eventRows) {
+    const list = eventsByJob.get(e.jobId) ?? [];
+    list.push(e.payload as EventPayload);
+    eventsByJob.set(e.jobId, list);
+  }
+
+  const facts = jobRows.map((j) => {
+    const evs = eventsByJob.get(j.id) ?? [];
+    const has = (kind: string, pred: (p: EventPayload) => boolean) =>
+      evs.some((e) => (e.kind ?? "") === kind && pred(e));
+    const reachedPr = has("stage_changed", (p) => p.to === "pr_ci");
+    const autoMerged =
+      j.status === "merged" &&
+      has("stage_changed", (p) => p.to === "merged" && p.reason === "confidence gate passed");
+    const humanEvents = evs.filter(
+      (e) => e.kind === "answer" || (e.kind === "message" && e.role === "human"),
+    ).length;
+    const requeuedOffline = has(
+      "stage_changed",
+      (p) =>
+        p.to === "queued" &&
+        typeof p.reason === "string" &&
+        p.reason.startsWith("runner ") &&
+        p.reason.endsWith(" offline"),
+    );
+    return {
+      status: j.status,
+      costUsd: j.costUsd,
+      revertedAt: j.revertedAt,
+      harness: j.harness,
+      model: j.model,
+      originOs: j.originOs,
+      reachedPr,
+      autoMerged,
+      humanTouches: humanEvents + (j.status === "merged" && !autoMerged ? 1 : 0),
+      requeuedOffline,
+      leadTimeMin: j.finishedAt ? (j.finishedAt.getTime() - j.createdAt.getTime()) / 60000 : null,
+      firstQueueMin: j.claimedAt ? (j.claimedAt.getTime() - j.createdAt.getTime()) / 60000 : null,
+    };
+  });
+
+  const merged = facts.filter((x) => x.status === "merged");
+  const autoMergedRows = facts.filter((x) => x.autoMerged);
+  const portableDenom = facts.filter((x) => x.requeuedOffline && FINAL_STATUSES.has(x.status));
+
+  // Handover waits: for each stage_changed into waiting_on_you, the next stage_changed out of it.
+  const waitsByJob = new Map<string, { id: number; ts: Date; payload: EventPayload }[]>();
+  for (const e of handoverEvents) {
+    const list = waitsByJob.get(e.jobId) ?? [];
+    list.push({ id: e.id, ts: e.ts, payload: e.payload as EventPayload });
+    waitsByJob.set(e.jobId, list);
+  }
+  const waits: number[] = [];
+  for (const list of waitsByJob.values()) {
+    list.sort((a, b) => a.id - b.id);
+    for (let i = 0; i < list.length; i++) {
+      if (list[i]!.payload.to !== "waiting_on_you") continue;
+      const acted = list.find((n, j) => j > i && n.payload.from === "waiting_on_you");
+      if (acted) waits.push((acted.ts.getTime() - list[i]!.ts.getTime()) / 60000);
+    }
+  }
+
+  // Runner busy: from a claim ("stage_changed" out of queued) to the next release, per runner name.
+  const claimsByJob = new Map<string, { id: number; ts: Date; payload: EventPayload }[]>();
+  for (const e of allStageChanges) {
+    const list = claimsByJob.get(e.jobId) ?? [];
+    list.push({ id: e.id, ts: e.ts, payload: e.payload as EventPayload });
+    claimsByJob.set(e.jobId, list);
+  }
+  const releaseTo = new Set(["queued", "needs_input", "pr_ci", "failed", "cancelled"]);
+  const busyByRunner = new Map<string, number>();
+  const now = ctx.now();
+  for (const list of claimsByJob.values()) {
+    list.sort((a, b) => a.id - b.id);
+    for (let i = 0; i < list.length; i++) {
+      const claim = list[i]!;
+      if (claim.payload.from !== "queued") continue;
+      const reason = claim.payload.reason ?? "";
+      const name = reason.startsWith("claimed by ") ? reason.slice("claimed by ".length) : null;
+      if (!name) continue;
+      const release = list.find(
+        (n, j) => j > i && n.payload.to !== null && n.payload.to !== undefined && releaseTo.has(n.payload.to),
+      );
+      const start = claim.ts.getTime();
+      const end = release ? release.ts.getTime() : now.getTime();
+      const overlap = Math.min(end, now.getTime()) - Math.max(start, since.getTime());
+      if (overlap > 0) busyByRunner.set(name, (busyByRunner.get(name) ?? 0) + overlap / 3_600_000);
+    }
+  }
+  const runnerRows = await ctx.db
+    .select({ id: runners.id, name: runners.name })
+    .from(runners)
+    .where(eq(runners.teamId, f.teamId));
+  const workingHours = Math.max(1, Math.round((f.days * 5) / 7) * 8);
+
+  const breakdown = (key: (x: (typeof facts)[number]) => string): Breakdown[] => {
+    const byKey = new Map<string, (typeof facts)[number][]>();
+    for (const fact of facts) {
+      const k = key(fact);
+      const list = byKey.get(k) ?? [];
+      list.push(fact);
+      byKey.set(k, list);
+    }
+    return [...byKey.entries()]
+      .map(([k, list]) => {
+        const m = list.filter((x) => x.status === "merged");
+        const denom = list.filter((x) => FINAL_STATUSES.has(x.status));
+        return {
+          key: k,
+          jobs: list.length,
+          merged: m.length,
+          successRate: avg(denom.map((x) => (x.status === "merged" ? 1 : 0))),
+          medianCostPerMerged: median(m.map((x) => x.costUsd)),
+        };
+      })
+      .sort((a, b) => b.jobs - a.jobs);
+  };
+
+  return {
+    jobs: facts.length,
+    weeklyActiveFilers: {
+      active: new Set(filerRows.map((r) => r.authorUserId)).size,
+      members: Number(memberRows[0]?.n ?? 0),
+    },
+    ticketToPrRate: avg(facts.filter((x) => FINAL_STATUSES.has(x.status)).map((x) => (x.reachedPr ? 1 : 0))),
+    autoMergeRate: avg(merged.map((x) => (x.autoMerged ? 1 : 0))),
+    revertRate: avg(autoMergedRows.map((x) => (x.revertedAt ? 1 : 0))),
+    medianHumanTouches: median(merged.map((x) => x.humanTouches)),
+    medianLeadTimeMin: median(merged.map((x) => x.leadTimeMin).filter((x): x is number => x !== null)),
+    medianCostPerMerged: median(merged.map((x) => x.costUsd)),
+    goodQuestionRate: avg(questionRows.map((q) => (q.helpful ? 1 : 0))),
+    medianHandoverWaitMin: median(waits),
+    requeuedOfflineRate: avg(facts.map((x) => (x.requeuedOffline ? 1 : 0))),
+    portableResumeSuccessRate: avg(
+      portableDenom.map((x) => (x.status === "merged" && x.humanTouches === 0 ? 1 : 0)),
+    ),
+    medianQueueMin: median(facts.map((x) => x.firstQueueMin).filter((x): x is number => x !== null)),
+    byOs: breakdown((x) => x.originOs ?? "unknown"),
+    byHarness: breakdown((x) => `${x.harness}${x.model ? ` / ${x.model}` : ""}`),
+    runnerUtilization: runnerRows.map((r) => {
+      const busyHours = busyByRunner.get(r.name) ?? 0;
+      return { runnerId: r.id, name: r.name, busyHours, utilization: Math.min(1, busyHours / workingHours) };
+    }),
+  };
+}
+
+async function teamMetricsPostgres(ctx: ControlContext, f: MetricsFilter): Promise<TeamMetrics> {
   // ISO strings, not Date: nested drizzle fragments stringify Date with the locale
   // (e.g. "Sat Oct 10 2026 … (中国标准时间)"), which Postgres rejects.
   const since = new Date(ctx.now().getTime() - f.days * 24 * 3600_000).toISOString();

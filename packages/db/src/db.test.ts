@@ -18,7 +18,7 @@ describe.skipIf(!TEST_DATABASE_URL)("db", () => {
 
   it("notifies job changes with the changed columns", async () => {
     const received: unknown[] = [];
-    const listener = await t.sql.listen("foundry_changes", (p) => received.push(JSON.parse(p)));
+    const listener = await t.sql!.listen("foundry_changes", (p) => received.push(JSON.parse(p)));
     const [team] = await t.db.insert(teams).values({ name: "acme" }).returning();
     const [repo] = await t.db
       .insert(repos)

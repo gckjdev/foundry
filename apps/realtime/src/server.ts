@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
+import type { SqliteClient } from "@foundry/db";
 import { type RealtimeClaims, verifyToken } from "@foundry/shared";
 import type { Sql } from "postgres";
 import { WebSocket, WebSocketServer } from "ws";
@@ -27,6 +28,17 @@ interface Client {
   alive: boolean;
 }
 
+/** `columns` is stored as a JSON array of changed column names; undefined means "unknown/empty". */
+function parseColumns(value: unknown): string[] | undefined {
+  if (typeof value !== "string" || value === "") return undefined;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function tokenFrom(req: IncomingMessage): string | null {
   const url = new URL(req.url ?? "/", "http://localhost");
   const fromQuery = url.searchParams.get("token");
@@ -38,14 +50,18 @@ function tokenFrom(req: IncomingMessage): string | null {
 }
 
 /**
- * One Postgres LISTEN connection, fanned out to WebSocket clients per team. Messages carry only
- * `{table, id, op}`; clients fetch rows through the authenticated API.
+ * One Postgres LISTEN connection (or, when `sqlite` is given, a poll of `_foundry_changes`),
+ * fanned out to WebSocket clients per team. Messages carry only `{table, id, op}`; clients fetch
+ * rows through the authenticated API.
  */
 export async function startRealtime(opts: {
   sql: Sql | null;
+  sqlite?: SqliteClient | null;
   secret: string;
   port: number;
+  pollIntervalMs?: number;
 }): Promise<RealtimeServer> {
+  const pollIntervalMs = opts.pollIntervalMs ?? 500;
   const clients = new Set<Client>();
   const server = createServer((req, res) => {
     if (req.url === "/healthz") {
@@ -120,6 +136,38 @@ export async function startRealtime(opts: {
       })
     : null;
 
+  let pollTimer: NodeJS.Timeout | null = null;
+  if (opts.sqlite) {
+    const sqlite = opts.sqlite;
+    let lastSeq = 0;
+    try {
+      const init = await sqlite.execute("select coalesce(max(seq), 0) as maxSeq from _foundry_changes");
+      lastSeq = Number((init.rows[0] as { maxSeq?: number } | undefined)?.maxSeq ?? 0);
+    } catch {
+      // not migrated yet; keep polling from 0
+    }
+    pollTimer = setInterval(async () => {
+      try {
+        const rs = await sqlite.execute({
+          sql: 'select seq, "table", id, team_id, op, columns from _foundry_changes where seq > ? order by seq',
+          args: [lastSeq],
+        });
+        for (const row of rs.rows) {
+          lastSeq = Number(row.seq);
+          broadcast({
+            table: String(row.table),
+            id: String(row.id),
+            team_id: String(row.team_id),
+            op: String(row.op),
+            columns: parseColumns(row.columns),
+          });
+        }
+      } catch {
+        // ignore transient poll errors (e.g. table not yet created)
+      }
+    }, pollIntervalMs);
+  }
+
   await new Promise<void>((resolve) => server.listen(opts.port, resolve));
 
   return {
@@ -128,6 +176,7 @@ export async function startRealtime(opts: {
     clientCount: () => clients.size,
     async close() {
       clearInterval(ping);
+      if (pollTimer) clearInterval(pollTimer);
       await listener?.unlisten();
       for (const c of clients) c.ws.terminate();
       wss.close();
