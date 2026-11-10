@@ -76,6 +76,17 @@ describe("Daemon", () => {
           const call = agentTools(env);
           for (const name of ["investigating", "implementing"]) await call("stage", { name, summary: "ok" });
           writeFileSync(join(cwd, "done.txt"), "x\n");
+          await call("stage", { name: "reviewing", summary: "ok" });
+        },
+      },
+      {
+        act: async ({ env }) => {
+          await agentTools(env)("review", { verdict: "approve", summary: "ok", findings: [] });
+        },
+      },
+      {
+        act: async ({ env }) => {
+          const call = agentTools(env);
           await call("stage", { name: "verifying", summary: "ok" });
           await call("stage", { name: "done", summary: "done" });
         },

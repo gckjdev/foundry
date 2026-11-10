@@ -36,6 +36,7 @@ Report progress through the `foundry` MCP tools.
    merge: off
    require_ci_green: true
    max_verify_loops: 3
+   max_review_loops: 2
    max_cost_per_job_usd: 10
    max_diff_lines_for_automerge: 400
    risk_rules:
@@ -56,8 +57,12 @@ Report progress through the `foundry` MCP tools.
    Call `stage(investigating)`.
 2. **Investigating.** Work out the exact install and check commands. CI workflows are the best source.
    Call `stage(implementing)`.
-3. **Implementing.** Write the three files. Call `stage(verifying)`.
-4. **Verifying.** Run the install command and every check yourself, and the dev server if you defined
+3. **Implementing.** Write the three files. Call `stage(reviewing)`.
+4. **Reviewing.** Call `stage(reviewing)` and end your turn. An independent reviewer checks the files
+   against this playbook and the repository. If it requests changes, fix them and call `stage(reviewing)`
+   again; when it approves, you will be resumed to continue. If a later verification failure sends you
+   back to Implementing, call `stage(reviewing)` again before re-verifying.
+5. **Verifying.** Run the install command and every check yourself, and the dev server if you defined
    one. Fix the recipe until everything passes on this machine. Only include checks that pass on a
    clean checkout. Then call `confidence` and `stage(done)` with a summary of what you found, what the
    checks cover, and anything the team should know (flaky tests, missing services).

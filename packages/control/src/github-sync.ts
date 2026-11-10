@@ -14,6 +14,7 @@ export const PROJECT_STATUS: Partial<Record<JobStatus, string>> = {
   triage: "In Progress",
   investigating: "In Progress",
   implementing: "In Progress",
+  reviewing: "In Progress",
   verifying: "In Progress",
   needs_input: "In Review",
   pr_ci: "In Review",

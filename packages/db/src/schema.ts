@@ -280,7 +280,7 @@ export const evidence = pgTable("evidence", {
   jobId: uuid("job_id")
     .notNull()
     .references(() => jobs.id, { onDelete: "cascade" }),
-  kind: text("kind").notNull(), // check | screenshot | note
+  kind: text("kind").notNull(), // check | screenshot | note | review
   name: text("name").notNull(),
   status: text("status").notNull(),
   command: text("command"),

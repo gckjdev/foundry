@@ -161,6 +161,7 @@ risk rule with neither `paths` nor `diff_regex` is invalid and invalidates the w
 | `require_ai_review_clean`      | boolean                         | `false`                            | When true, the gate waits until a review from one of `ai_review_bots` exists, and blocks if the latest such review is `CHANGES_REQUESTED`.                                      |
 | `ai_review_bots`               | array of GitHub logins          | `["cursor[bot]"]`                  | Reviews from these logins count as the AI review.                                                                                                                               |
 | `max_verify_loops`             | integer ≥ 0                     | `3`                                | How many times a failed verification may send the job back to implementing. `0` means fail immediately.                                                                         |
+| `max_review_loops`             | integer ≥ 0                     | `2`                                | How many times the independent reviewer may send a change back to implementing. Past the budget the job continues, but the gate holds the PR for a human.                       |
 | `max_cost_per_job_usd`         | positive number                 | `10`                               | Cost budget. The runner stops the job when cumulative cost exceeds it; the gate also fails auto-merge over it. A per-job override wins.                                         |
 | `max_diff_lines_for_automerge` | positive integer                | `400`                              | A larger diff blocks auto-merge and waits for a human.                                                                                                                          |
 | `max_job_minutes`              | positive integer                | `60`                               | Wall-clock limit. The runner stops the job when it exceeds it. A per-job override wins.                                                                                         |
@@ -196,6 +197,7 @@ require_ci_green: true
 require_ai_review_clean: false
 ai_review_bots: ["cursor[bot]"]
 max_verify_loops: 3
+max_review_loops: 2
 max_cost_per_job_usd: 10
 max_diff_lines_for_automerge: 400
 max_job_minutes: 60

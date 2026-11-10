@@ -8,12 +8,19 @@ import {
   type HarnessSession,
   harnessLogJson,
   type McpServerConfig,
+  type PermissionPolicy,
   permissionsFromPolicy,
   type SessionResult,
 } from "@foundry/harness-core";
-import type { FoundryToolName, ToolReply } from "@foundry/mcp-foundry";
+import {
+  type FoundryToolName,
+  type ReviewReport,
+  ReviewReportSchema,
+  type ToolReply,
+} from "@foundry/mcp-foundry";
 import {
   assemblePrompt,
+  assembleReviewPrompt,
   NUDGE_MESSAGE,
   renderInputs,
   resumeMessage,
@@ -90,6 +97,55 @@ interface CheckRun {
 
 const STAGE_ORDER = [...RUNNER_STAGES, "done"] as const;
 
+/** Evidence name the confidence gate reads for the independent review. */
+const REVIEW_EVIDENCE = "code review";
+
+/** Extra commands the read-only reviewer may not run, beyond the repo's own policy. */
+const REVIEWER_DENY_COMMANDS = [
+  "git add",
+  "git commit",
+  "git checkout",
+  "git switch",
+  "git restore",
+  "git reset",
+  "git clean",
+  "git stash",
+  "git apply",
+  "git am",
+  "git merge",
+  "git rebase",
+  "git cherry-pick",
+  "git push",
+  "git tag",
+  "rm",
+  "rmdir",
+  "mv",
+  "cp",
+  "mkdir",
+  "touch",
+  "chmod",
+  "chown",
+  "ln",
+  "tee",
+  "sed -i",
+  "perl -i",
+  "npm install",
+  "npm i",
+  "npm add",
+  "npm remove",
+  "pnpm install",
+  "pnpm add",
+  "pnpm remove",
+  "yarn install",
+  "yarn add",
+  "bun install",
+  "bun add",
+  "pip install",
+  "cargo add",
+  "go get",
+  "sudo",
+];
+
 function nextStage(stage: RunnerStage): (typeof STAGE_ORDER)[number] {
   return STAGE_ORDER[STAGE_ORDER.indexOf(stage) + 1]!;
 }
@@ -149,6 +205,12 @@ export class JobRunner {
   private keepWorktree = false;
   /** The agent already attached at least one screenshot via `evidence`. */
   private screenshotAttached = false;
+  /** The independent review for the current reviewing stage has been reported. */
+  private pendingReview: ReviewReport | null = null;
+  /** Changes-requested rounds already sent back to implementing in this review cycle. */
+  private reviewRounds = 0;
+  /** The reviewer approved (or the loop limit was reached), so verifying may start. */
+  private reviewCleared = false;
 
   constructor(
     private readonly deps: JobRunnerDeps,
@@ -310,9 +372,9 @@ export class JobRunner {
 
   // ---- the agent loop ------------------------------------------------------------------------
 
-  private mcpServers(mcpToken: string): McpServerConfig[] {
+  private mcpServersFor(jobKey: string, mcpToken: string): McpServerConfig[] {
     const env: Record<string, string> = {
-      FOUNDRY_JOB_ID: this.jobId,
+      FOUNDRY_JOB_ID: jobKey,
       FOUNDRY_MCP_TOKEN: mcpToken,
     };
     if (this.deps.tools.url) env.FOUNDRY_MCP_URL = this.deps.tools.url;
@@ -327,7 +389,11 @@ export class JobRunner {
     ];
   }
 
-  private async startSession(): Promise<HarnessSession> {
+  private mcpServers(mcpToken: string): McpServerConfig[] {
+    return this.mcpServersFor(this.jobId, mcpToken);
+  }
+
+  private async startSession(extraMessage?: string | null): Promise<HarnessSession> {
     const { job } = this;
     const mcpToken = this.deps.tools.register(this.jobId, (tool, args) => this.onTool(tool, args));
     const mcpServers = this.mcpServers(mcpToken);
@@ -371,12 +437,15 @@ export class JobRunner {
     let session: HarnessSession;
     if (job.resumeMode === "sticky" && job.sessionId) {
       this.sessionId = job.sessionId;
-      const message = resumeMessage(job.pendingInputs, this.stage);
+      const message = [resumeMessage(job.pendingInputs, this.stage), extraMessage]
+        .filter(Boolean)
+        .join("\n\n");
       this.noteHarness("REQUEST resume", `${systemPrompt}\n\n---\n\n${message}`);
       session = await this.adapter.resume(job.sessionId, message, { ...opts, systemPrompt });
     } else {
-      this.noteHarness("REQUEST start", `${systemPrompt}\n\n---\n\n${prompt}`);
-      session = await this.adapter.start({ ...opts, systemPrompt, prompt });
+      const fullPrompt = extraMessage ? `${prompt}\n\n---\n\n${extraMessage}` : prompt;
+      this.noteHarness("REQUEST start", `${systemPrompt}\n\n---\n\n${fullPrompt}`);
+      session = await this.adapter.start({ ...opts, systemPrompt, prompt: fullPrompt });
     }
     this.track(session);
     this.startOpts = { ...opts, systemPrompt };
@@ -446,7 +515,10 @@ export class JobRunner {
   }
 
   private async drive(): Promise<JobOutcome> {
-    let session = await this.startSession();
+    // A portable or sticky resume can land in the middle of the reviewing stage.
+    const pendingReview = await this.maybeRunReview();
+    if (this.stopReason) return await this.onStopped(this.stopReason);
+    let session = await this.startSession(pendingReview);
     let nudges = 0;
     this.driveStartedAt = Date.now();
     this.armDeadline();
@@ -465,6 +537,14 @@ export class JobRunner {
             `${renderInputs(inputs)}\n\nTake this into account and continue with the playbook.`,
           );
           continue;
+        }
+        if (this.stage === "reviewing" && !this.reviewCleared) {
+          const reviewMessage = await this.maybeRunReview();
+          if (this.stopReason) return await this.onStopped(this.stopReason);
+          if (reviewMessage) {
+            session = await this.resumeWith(reviewMessage);
+            continue;
+          }
         }
         if (this.doneSummary !== null) {
           const next =
@@ -548,6 +628,9 @@ export class JobRunner {
           reply = { text: `Confidence recorded: ${req.level}.` };
           break;
         }
+        case "review":
+          reply = { text: "Only the independent reviewer reports reviews.", isError: true };
+          break;
         default:
           reply = { text: `Unknown tool ${tool}`, isError: true };
       }
@@ -563,6 +646,12 @@ export class JobRunner {
 
   private async toolStage(name: string, summary: string): Promise<ToolReply> {
     const expected = nextStage(this.stage);
+    if (name === "verifying" && !this.reviewCleared) {
+      return {
+        text: "The independent review has not run yet. Call stage(reviewing) and end your turn; the runner starts the reviewer.",
+        isError: true,
+      };
+    }
     if (name !== expected) {
       return {
         text:
@@ -588,9 +677,201 @@ export class JobRunner {
     });
     this.lastCompleted = from;
     this.stage = name as RunnerStage;
+    if (name === "reviewing") {
+      this.reviewCleared = false;
+      this.pendingReview = null;
+    }
     this.logEvent("info", "stage changed", { from, to: name });
     await this.checkpoint();
+    if (name === "reviewing") {
+      return {
+        text: "Now in reviewing. End your turn now: the runner starts an independent reviewer on a clean checkout. If it requests changes you will be resumed with the findings; if it approves you will be resumed to continue with verifying.",
+      };
+    }
     return { text: `Now in ${name}.` };
+  }
+
+  /**
+   * Run the independent reviewer when the job is in `reviewing`. Returns the message to resume the
+   * implementer with, or null when no review was needed.
+   */
+  private async maybeRunReview(): Promise<string | null> {
+    if (this.stage !== "reviewing" || this.reviewCleared) return null;
+    const report = await this.runReview();
+    if (this.stopReason) return null;
+    const approved = report.verdict === "approve";
+    await this.deps.api.evidence(this.jobId, {
+      kind: "review",
+      name: REVIEW_EVIDENCE,
+      status: approved ? "passed" : "failed",
+      outputTail: this.scrub(this.formatReview(report)).slice(0, 20_000),
+    });
+    this.findings.push(`review: ${report.summary || report.verdict}`);
+    if (approved) {
+      this.reviewCleared = true;
+      this.reviewRounds = 0;
+      return "The independent reviewer approved the change. Call stage(verifying) to continue with verification.";
+    }
+    if (this.reviewRounds < this.policy.max_review_loops) {
+      this.reviewRounds++;
+      await this.flush();
+      await this.deps.api.stage(this.jobId, {
+        to: "implementing",
+        reason: `review loop ${this.reviewRounds}: independent review requested changes`,
+        // Like a verify loop, the next stage after a resume is implementing, not verifying.
+        lastCompletedStage: "investigating",
+        sessionId: this.sessionId,
+      });
+      this.stage = "implementing";
+      this.lastCompleted = "investigating";
+      this.reviewCleared = false;
+      await this.checkpoint();
+      return `The independent reviewer requested changes (review loop ${this.reviewRounds} of ${this.policy.max_review_loops}). Fix every blocking finding, then call stage(reviewing) again.\n\n${this.formatReview(report)}`;
+    }
+    // The loop budget is spent. Continue, but the gate will hold the pull request for a human.
+    this.reviewCleared = true;
+    return `The independent reviewer still requests changes after ${this.reviewRounds} review loops. Continue to verifying; the pull request will be held for human review.\n\n${this.formatReview(report)}\n\nCall stage(verifying) to continue.`;
+  }
+
+  /**
+   * A fresh harness session reviews a clean detached checkout of the job's HEAD. It gets its own
+   * MCP registration (so it can only report a review) and a read-only permission policy.
+   */
+  private async runReview(): Promise<ReviewReport> {
+    const reviewKey = `${this.jobId}:review`;
+    const reviewId = `${this.jobId}-review`;
+    const token = await this.token();
+    await this.deps.workspace.commitAll(
+      this.cwd,
+      `foundry: checkpoint before review ${this.reviewRounds + 1}`,
+    );
+    const head = await this.deps.workspace.headSha(this.cwd);
+    const dir = await this.deps.workspace.createDetachedWorktree({
+      fullName: this.job.repo.fullName,
+      branch: this.job.branch,
+      id: reviewId,
+      commit: head,
+      token,
+    });
+    this.pendingReview = null;
+    const reviewToken = this.deps.tools.register(reviewKey, (tool, args) => this.onReviewTool(tool, args));
+    let session: HarnessSession | null = null;
+    try {
+      const mcpServers = this.mcpServersFor(reviewKey, reviewToken);
+      const repo = await loadPlaybookFiles(this.cwd, []);
+      const { systemPrompt, prompt } = assembleReviewPrompt(
+        {
+          repoFullName: this.job.repo.fullName,
+          title: this.job.title,
+          body: this.job.body,
+          issueNumber: this.job.issueNumber,
+          branch: this.job.branch,
+          defaultBranch: this.job.repo.defaultBranch,
+          plan: this.plan,
+          summary: this.findings.at(-1) ?? null,
+        },
+        repo,
+      );
+      this.logEvent("info", "independent review started", { round: this.reviewRounds + 1, head });
+      session = await this.adapter.start({
+        cwd: dir,
+        model: this.job.model ?? "",
+        systemPrompt,
+        prompt,
+        env: { ...this.env, ...mcpServers[0]!.env },
+        mcpServers,
+        permissions: this.reviewerPermissions(),
+        harnessPort: this.portBase + 8,
+        logFile: this.deps.localJobs.harnessLog(this.jobId),
+        redact: (text) => this.scrub(text),
+      });
+      await this.consumeReview(session);
+      const report: ReviewReport = this.pendingReview ?? {
+        verdict: "request_changes",
+        summary: "The reviewer did not report a verdict.",
+        findings: [
+          {
+            severity: "blocking",
+            message: "The independent reviewer ended without calling review.",
+          },
+        ],
+      };
+      this.logEvent("info", "independent review finished", {
+        verdict: report.verdict,
+        findings: report.findings.length,
+      });
+      return report;
+    } finally {
+      if (session) await this.adapter.stop(session).catch(() => {});
+      await this.adapter.release?.(dir).catch(() => {});
+      await this.deps.workspace.removeWorktree(this.job.repo.fullName, reviewId).catch(() => {});
+      this.deps.tools.unregister(reviewKey);
+    }
+  }
+
+  private async onReviewTool(tool: FoundryToolName, args: Record<string, unknown>): Promise<ToolReply> {
+    if (tool !== "review") {
+      return { text: `The reviewer may only call review, not ${tool}.`, isError: true };
+    }
+    if (this.pendingReview) return { text: "The review was already recorded.", isError: true };
+    let parsed: ReviewReport;
+    try {
+      parsed = ReviewReportSchema.parse(args);
+    } catch (err) {
+      return { text: `Invalid review: ${String(err)}`, isError: true };
+    }
+    const blocking = parsed.findings.some((f) => f.severity === "blocking");
+    if (parsed.verdict === "request_changes" && !blocking) {
+      parsed.findings.push({
+        severity: "blocking",
+        message: parsed.summary || "The reviewer requested changes.",
+      });
+    }
+    this.pendingReview = {
+      verdict: parsed.verdict === "request_changes" || blocking ? "request_changes" : "approve",
+      summary: parsed.summary,
+      findings: parsed.findings,
+    };
+    return { text: "Review recorded. End your turn now." };
+  }
+
+  /** Forward the reviewer's events to the job log, and count its cost toward the budget. */
+  private async consumeReview(session: HarnessSession): Promise<void> {
+    for await (const e of session.events) {
+      const event = this.scrubEvent(e);
+      if (event.kind === "message") this.push({ ...event, text: `[reviewer] ${event.text}` });
+      else if (event.kind === "log") this.push({ ...event, message: `[reviewer] ${event.message}` });
+      else this.push(event);
+      if (e.kind === "usage") {
+        this.sessionCost += e.costUsd;
+        const total = this.job.costUsd + this.sessionCost;
+        if (total > this.maxCostUsd && !this.stopReason) {
+          this.stopReason = { kind: "budget", reason: this.costBudgetReason(total) };
+          await this.adapter.stop(session).catch(() => {});
+        }
+      }
+    }
+    const result = await session.done;
+    if (result.status === "error") {
+      throw new FailJob(`reviewer harness error: ${result.error ?? "unknown"}`);
+    }
+  }
+
+  private formatReview(report: ReviewReport): string {
+    const lines = [`Verdict: ${report.verdict}`, report.summary];
+    for (const f of report.findings) {
+      const at = f.file ? ` ${f.file}${f.line ? `:${f.line}` : ""}` : "";
+      lines.push(`- [${f.severity}]${at}: ${f.message}`);
+    }
+    return lines.filter(Boolean).join("\n");
+  }
+
+  private reviewerPermissions(): PermissionPolicy {
+    return {
+      denyCommands: [...this.policy.permissions.deny_commands, ...REVIEWER_DENY_COMMANDS],
+      allowWebFetch: false,
+      allowEdits: false,
+    };
   }
 
   private async toolAsk(question: string, options: string[]): Promise<ToolReply> {
@@ -792,6 +1073,8 @@ export class JobRunner {
     this.stage = "implementing";
     this.lastCompleted = "investigating";
     this.doneSummary = null;
+    this.reviewCleared = false;
+    this.pendingReview = null;
     return {
       retry: verifyFailedMessage(
         failures.map((f) => ({ name: f.name, command: f.command, outputTail: f.output })),
@@ -1010,6 +1293,7 @@ export class JobRunner {
     if (this.cwd) await this.adapter?.release?.(this.cwd).catch(() => {});
     if (this.keepWorktree && (outcome === "needs_input" || outcome === "paused")) return;
     const { deps } = this;
+    await deps.workspace.removeWorktree(this.job.repo.fullName, `${this.jobId}-review`).catch(() => {});
     await deps.workspace.removeWorktree(this.job.repo.fullName, this.jobId).catch(() => {});
     deps.ports.release(this.jobId);
     deps.localJobs.delete(this.jobId);

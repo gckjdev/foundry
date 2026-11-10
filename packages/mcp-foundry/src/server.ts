@@ -2,8 +2,31 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
-export const FOUNDRY_TOOL_NAMES = ["stage", "plan", "ask", "evidence", "run_checks", "confidence"] as const;
+export const FOUNDRY_TOOL_NAMES = [
+  "stage",
+  "plan",
+  "ask",
+  "evidence",
+  "run_checks",
+  "confidence",
+  "review",
+] as const;
 export type FoundryToolName = (typeof FOUNDRY_TOOL_NAMES)[number];
+
+/** What the independent reviewer reports through the `review` tool. */
+export const ReviewFindingSchema = z.object({
+  severity: z.enum(["blocking", "non_blocking"]),
+  file: z.string().optional(),
+  line: z.number().int().positive().optional(),
+  message: z.string().min(1),
+});
+export const ReviewReportSchema = z.object({
+  verdict: z.enum(["approve", "request_changes"]),
+  summary: z.string().min(1),
+  findings: z.array(ReviewFindingSchema).default([]),
+});
+export type ReviewFinding = z.infer<typeof ReviewFindingSchema>;
+export type ReviewReport = z.infer<typeof ReviewReportSchema>;
 
 export interface ToolReply {
   text: string;
@@ -37,10 +60,10 @@ export function createFoundryMcpServer(bridge: ToolBridge, version = "0.1.0"): M
     "stage",
     {
       description:
-        "Declare that you finished the current playbook stage and are moving to the next one. Stages run in order: triage → investigating → implementing → verifying → done. Call with name='done' after verification passes.",
+        "Declare that you finished the current playbook stage and are moving to the next one. Stages run in order: triage → investigating → implementing → reviewing → verifying → done. Call with name='done' after verification passes.",
       inputSchema: {
         name: z
-          .enum(["investigating", "implementing", "verifying", "done"])
+          .enum(["investigating", "implementing", "reviewing", "verifying", "done"])
           .describe("The stage you are starting"),
         summary: z.string().describe("Two or three sentences on what the finished stage established"),
       },
@@ -104,6 +127,19 @@ export function createFoundryMcpServer(bridge: ToolBridge, version = "0.1.0"): M
       },
     },
     forward("confidence"),
+  );
+  server.registerTool(
+    "review",
+    {
+      description:
+        "Report the independent code review result. Only the reviewer session calls this, exactly once. Use blocking findings only for issues that must be fixed before merge.",
+      inputSchema: {
+        verdict: z.enum(["approve", "request_changes"]),
+        summary: z.string().min(1),
+        findings: z.array(ReviewFindingSchema).default([]),
+      },
+    },
+    forward("review"),
   );
   return server;
 }

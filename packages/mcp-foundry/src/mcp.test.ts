@@ -36,6 +36,7 @@ describe("foundry MCP server", () => {
       "confidence",
       "evidence",
       "plan",
+      "review",
       "run_checks",
       "stage",
     ]);
@@ -45,6 +46,24 @@ describe("foundry MCP server", () => {
     });
     expect(res.content).toEqual([{ type: "text", text: "ok ask" }]);
     expect(calls).toEqual([["ask", { question: "CSV or XLSX?", options: ["CSV", "XLSX"] }]]);
+
+    const review = await client.callTool({
+      name: "review",
+      arguments: {
+        verdict: "request_changes",
+        summary: "One blocker",
+        findings: [{ severity: "blocking", file: "src/a.ts", line: 3, message: "NPE" }],
+      },
+    });
+    expect(review.content).toEqual([{ type: "text", text: "ok review" }]);
+    expect(calls.at(-1)).toEqual([
+      "review",
+      {
+        verdict: "request_changes",
+        summary: "One blocker",
+        findings: [{ severity: "blocking", file: "src/a.ts", line: 3, message: "NPE" }],
+      },
+    ]);
     await client.close();
   });
 

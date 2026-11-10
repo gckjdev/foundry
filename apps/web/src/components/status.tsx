@@ -5,6 +5,7 @@ const TONE: Record<JobStatus, string> = {
   triage: "live",
   investigating: "live",
   implementing: "live",
+  reviewing: "live",
   verifying: "live",
   needs_input: "warn",
   pr_ci: "info",

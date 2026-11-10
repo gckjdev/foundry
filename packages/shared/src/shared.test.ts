@@ -34,6 +34,10 @@ diff --git a/db/migrations/002.sql b/db/migrations/002.sql
 describe("state machine", () => {
   it("allows the playbook path and rejects skips", () => {
     expect(canTransition("queued", "triage")).toBe(true);
+    expect(canTransition("implementing", "reviewing")).toBe(true);
+    expect(canTransition("reviewing", "implementing")).toBe(true);
+    expect(canTransition("reviewing", "verifying")).toBe(true);
+    expect(canTransition("implementing", "verifying")).toBe(false);
     expect(canTransition("verifying", "implementing")).toBe(true);
     expect(canTransition("triage", "merged")).toBe(false);
     expect(() => assertTransition("merged", "queued")).toThrow();

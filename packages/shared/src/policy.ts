@@ -22,6 +22,8 @@ export const PolicySchema = z.object({
   /** GitHub logins whose reviews count as the AI review (e.g. Bugbot). */
   ai_review_bots: z.array(z.string()).default(["cursor[bot]"]),
   max_verify_loops: z.number().int().min(0).default(3),
+  /** How many times the independent reviewer may send a change back to implementing. */
+  max_review_loops: z.number().int().min(0).default(2),
   max_cost_per_job_usd: z.number().positive().default(10),
   max_diff_lines_for_automerge: z.number().int().positive().default(400),
   max_job_minutes: z.number().int().positive().default(60),

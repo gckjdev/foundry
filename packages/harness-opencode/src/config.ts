@@ -22,7 +22,7 @@ export function opencodeConfig(opts: {
     share: "disabled",
     autoupdate: false,
     permission: {
-      edit: "allow",
+      edit: opts.permissions.allowEdits === false ? "deny" : "allow",
       bash,
       webfetch: opts.permissions.allowWebFetch ? "allow" : "deny",
       doom_loop: "allow",

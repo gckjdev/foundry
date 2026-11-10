@@ -148,8 +148,8 @@ Target: 7–8 weeks for one experienced builder working with agents.
 | Repo host         | GitHub (GitHub App)                                                                                                                                                                                                                                                                                    | GitLab, Bitbucket, Cursor Origin                                                                         |
 | Harnesses         | **Claude Code** (Anthropic models) and **OpenCode** (any provider: Anthropic, OpenAI, Google, OpenRouter, or local models), both run headless behind one adapter interface (see 5.8.1)                                                                                                                 | Codex CLI, Cursor CLI, Gemini CLI/Antigravity, mixing harnesses and models per stage                     |
 | Workspaces        | **Local only, on macOS and Linux.** A team runner pool that is either laptops only or laptops plus shared always-on machine(s). Git worktree per job, per-job port and env allocation, checkpoints so jobs can move between machines                                                                   | Optional local Docker isolation per job (1.0); cloud sandboxes as an opt-in overflow (2.x)               |
-| Playbooks         | One built-in playbook (triage → investigate → implement ⇄ verify → PR) with bugfix and feature variants                                                                                                                                                                                                | Custom playbooks, deterministic steps, spec stage, spec→impl→respec                                      |
-| Verification      | Recipe checks (lint, types, tests, build) plus a headless-browser screenshot for UI repos                                                                                                                                                                                                              | Black-box acceptance suites, computer-use videos, adversarial reviewers                                  |
+| Playbooks         | One built-in playbook (triage → investigate → implement ⇄ review → verify → PR) with bugfix and feature variants                                                                                                                                                                                       | Custom playbooks, deterministic steps, spec stage, spec→impl→respec                                      |
+| Verification      | Recipe checks (lint, types, tests, build) plus a headless-browser screenshot for UI repos, and an independent read-only code review of the diff                                                                                                                                                        | Black-box acceptance suites, computer-use videos, multiple adversarial reviewer skills                   |
 | Merge policy      | `off` / `merge_when_confident` per repo, with fixed gate rules                                                                                                                                                                                                                                         | Programmable gates, tiered approvals, small-PR policies                                                  |
 | Risk rules        | Path globs and regexes in `.foundry/policy.yaml`, each mapped to a **required reviewer** (a GitHub user or team)                                                                                                                                                                                       | LLM-judge predicates, per-file review tracking                                                           |
 | Human-in-the-loop | Ask-instead-of-guess questions with options, routed to **the ticket's author** with an @mention on the issue. Answer by ticking a checkbox or replying in the issue, or with one click in the panel. Notifications come through GitHub's own notifications, plus email and browser push from the panel | Slack DMs with buttons (1.0), mobile app push, multiplayer threads, tagging teammates into a running job |
@@ -167,7 +167,9 @@ stateDiagram-v2
     NeedsInput --> Triage: human answers
     Triage --> Investigating: ticket clear
     Investigating --> Implementing
-    Implementing --> Verifying
+    Implementing --> Reviewing
+    Reviewing --> Implementing: changes requested (max N loops)
+    Reviewing --> Verifying: approved
     Verifying --> Implementing: checks fail (max N loops)
     Verifying --> PR_CI: checks pass
     PR_CI --> Implementing: CI or AI review fails
@@ -186,6 +188,7 @@ What each stage does:
 - **Triage:** classifies the ticket as feature, bug or chore and checks it has acceptance criteria. If it's unclear, it writes one question with two to four options plus a free-text answer and moves to `NeedsInput`.
 - **Investigating:** reads the code, writes a short plan into the job (files to touch, approach, risks). Plans in more depth when a risk rule is likely to fire, e.g. on schema changes.
 - **Implementing:** edits code on branch `foundry/<job-id>-<slug>`.
+- **Reviewing:** a fresh, read-only reviewer session inspects the diff in a throwaway worktree with the ticket, plan and summary. It reports blocking and non-blocking findings. Blocking findings loop back to Implementing up to `max_review_loops` times; a clean review (or an exhausted loop budget, which then fails the gate) moves to Verifying.
 - **Verifying:** runs the recipe checks. For UI changes it also starts the app and captures screenshots. Failures loop back to Implementing, up to 3 times by default. Every check's command, exit code and output tail is stored as evidence.
 - **PR/CI:** opens the PR with a template (summary, plan, evidence, a self-reported confidence and why), then waits for CI and the optional AI review (e.g. Bugbot). Failures loop back to Implementing.
 - **Gate:** see section 5.5.
@@ -266,10 +269,11 @@ A PR auto-merges **only if all of these hold**:
 2. Every recipe check passed in Verifying, and evidence exists for each one.
 3. UI-affecting change (detected from file types or paths): at least one screenshot was captured successfully.
 4. CI is green, and the AI review (if required) has no unresolved blocking comments.
-5. No risk rule matched the diff.
-6. Diff size ≤ `max_diff_lines_for_automerge`.
-7. The agent's self-assessment is `high`, and it lists no open uncertainties.
-8. Total job cost ≤ `max_cost_per_job_usd`.
+5. The independent reviewer approved the change. If its loop budget was exhausted, its failed evidence blocks the gate.
+6. No risk rule matched the diff.
+7. Diff size ≤ `max_diff_lines_for_automerge`.
+8. The agent's self-assessment is `high`, and it lists no open uncertainties.
+9. Total job cost ≤ `max_cost_per_job_usd`.
 
 Otherwise the job moves to **Waiting on you**, with the specific failed rules listed at the top of the job page, e.g. "Risk rule hit: database schema (2 files)". The handover is **routed**, not broadcast. If a risk rule fired, its `reviewers` are requested on the PR and notified. Otherwise the ticket's author is asked to review. Each team member's inbox shows only what's waiting on them, plus a team-wide "unassigned" lane.
 

@@ -6,7 +6,11 @@ import { requireTeam } from "@/server/session";
 
 const LANES: { title: string; statuses: JobStatus[]; hot?: boolean }[] = [
   { title: "Queued", statuses: ["queued"] },
-  { title: "Working", statuses: ["triage", "investigating", "implementing", "verifying"], hot: true },
+  {
+    title: "Working",
+    statuses: ["triage", "investigating", "implementing", "reviewing", "verifying"],
+    hot: true,
+  },
   { title: "Needs input", statuses: ["needs_input"] },
   { title: "PR / CI", statuses: ["pr_ci"] },
   { title: "Waiting on you", statuses: ["waiting_on_you"] },

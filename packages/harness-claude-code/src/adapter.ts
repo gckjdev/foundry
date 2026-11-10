@@ -23,10 +23,13 @@ type QueryFn = (params: { prompt: string; options?: Record<string, unknown> }) =
   interrupt?: () => Promise<unknown>;
 };
 
+const EDIT_TOOLS = ["Edit", "Write", "NotebookEdit", "MultiEdit"];
+
 /** Built-in tools removed from the model's context for policy reasons. */
 export function disallowedTools(opts: Pick<StartOpts, "permissions">): string[] {
   const out = opts.permissions.denyCommands.map((c) => `Bash(${c}:*)`);
   if (!opts.permissions.allowWebFetch) out.push("WebFetch", "WebSearch");
+  if (opts.permissions.allowEdits === false) out.push(...EDIT_TOOLS);
   return out;
 }
 
@@ -45,6 +48,9 @@ export function canUseTool(opts: Pick<StartOpts, "permissions">) {
     }
     if ((toolName === "WebFetch" || toolName === "WebSearch") && !opts.permissions.allowWebFetch) {
       return { behavior: "deny" as const, message: "Web access is disabled by this repo's policy." };
+    }
+    if (opts.permissions.allowEdits === false && EDIT_TOOLS.includes(toolName)) {
+      return { behavior: "deny" as const, message: "This session is read-only." };
     }
     return { behavior: "allow" as const, updatedInput: input };
   };
