@@ -2,7 +2,7 @@
 
 Foundry turns GitHub issues into verified, merged PRs. Coding agents (Claude Code or OpenCode) run on the team’s Mac/Linux machines, follow a fixed playbook, and a confidence gate decides auto-merge vs human review.
 
-This file is for **anyone changing this repository** (Cursor, Claude Code, OpenCode, Codex). Product behavior lives in `software-factory-product-spec.md`. Local runbook: `docs/local-setup.md`. Onboarding a repo: `docs/onboarding.md`. Runner packaging: `docs/adr/001-runner-runtime.md`.
+This file is for **anyone changing this repository** (Cursor, Claude Code, OpenCode, Codex). Product behavior lives in `software-factory-product-spec.md`. Local runbook: `docs/local-setup.md`. Onboarding a repo: `docs/onboarding.md`. Runner packaging: `docs/adr/001-runner-runtime.md`. Panel visual identity and design tokens: `DESIGN.md`.
 
 ## Two modes
 
@@ -102,6 +102,7 @@ Runner stages in order: `triage` → `investigating` → `implementing` → `ver
 - **Secrets:** `.env`, `github-app.pem`, `*.pem` are gitignored. Never commit them, never paste them into docs or logs. Redact proxy userinfo.
 - **Generated files:** `next-env.d.ts` and `*.tsbuildinfo` are gitignored. Do not add them back.
 - **UI:** verify in the browser when you change panel behavior (user rule). `pnpm dev` does not include the runner.
+- **UI tokens:** `DESIGN.md` is the visual identity source of truth for the panel, and its tokens mirror `apps/web/src/app/globals.css`. Change both together and run `pnpm dlx @google/design.md lint DESIGN.md`.
 
 ## Where to look
 
@@ -112,6 +113,7 @@ Runner stages in order: `triage` → `investigating` → `implementing` → `ver
 | Sign-in / App install                | `apps/web/src/auth.ts`, `apps/web/src/server/retry-fetch.ts`                        |
 | Merge gate                           | `packages/control/src/merge-gate.ts`, `packages/shared/src/gate.ts`                 |
 | Panel pages                          | `apps/web/src/app/(panel)/`                                                         |
+| Panel visual design / tokens         | `DESIGN.md`, `apps/web/src/app/globals.css`                                         |
 | Runner loop                          | `apps/runner/src/daemon.ts`, `job-runner.ts`, `git.ts`                              |
 | Harness                              | `packages/harness-core`, `harness-claude-code`, `harness-opencode`                  |
 | Recipe / policy schemas              | `packages/shared/src/recipe.ts`, `policy.ts`                                        |

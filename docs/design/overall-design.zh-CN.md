@@ -15,6 +15,7 @@
 - 核心用例与序列图：[`use-cases.zh-CN.md`](use-cases.zh-CN.md)
 - Runner 运行时决策：[`docs/adr/001-runner-runtime.zh-CN.md`](../adr/001-runner-runtime.zh-CN.md)
 - 配置与安装：[`docs/local-setup.zh-CN.md`](../local-setup.zh-CN.md)
+- 面板视觉设计系统（设计令牌与说明）：[`DESIGN.md`](../../DESIGN.md)
 
 ---
 

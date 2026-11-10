@@ -69,5 +69,6 @@ Every human-facing document has a Chinese version.
 | Testing architecture                  | [docs/testing.md](docs/testing.md)                                   | [docs/testing.zh-CN.md](docs/testing.zh-CN.md)                                   |
 | Testing coverage snapshot             | [docs/testing-report.md](docs/testing-report.md)                     | [docs/testing-report.zh-CN.md](docs/testing-report.zh-CN.md)                     |
 | ADR 001: runner runtime and packaging | [docs/adr/001-runner-runtime.md](docs/adr/001-runner-runtime.md)     | [docs/adr/001-runner-runtime.zh-CN.md](docs/adr/001-runner-runtime.zh-CN.md)     |
+| Panel visual design system            | [DESIGN.md](DESIGN.md)                                               | not translated (format specification)                                            |
 | Agent instructions                    | [AGENTS.md](AGENTS.md)                                               | not translated (per ticket)                                                      |
 | Claude Code notes                     | [CLAUDE.md](CLAUDE.md)                                               | not translated (per ticket)                                                      |

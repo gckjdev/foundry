@@ -79,5 +79,6 @@ GitHub App URL、`.env`（包括 `FOUNDRY_HTTP_PROXY`）、本地 Postgres 和 D
 | 测试架构                     | [docs/testing.md](docs/testing.md)                                   | [docs/testing.zh-CN.md](docs/testing.zh-CN.md)                                   |
 | 测试覆盖率快照               | [docs/testing-report.md](docs/testing-report.md)                     | [docs/testing-report.zh-CN.md](docs/testing-report.zh-CN.md)                     |
 | ADR 001：Runner 运行时与打包 | [docs/adr/001-runner-runtime.md](docs/adr/001-runner-runtime.md)     | [docs/adr/001-runner-runtime.zh-CN.md](docs/adr/001-runner-runtime.zh-CN.md)     |
+| 面板视觉设计系统             | [DESIGN.md](DESIGN.md)                                               | 不翻译（格式规范）                                                               |
 | Agent 开发说明               | [AGENTS.md](AGENTS.md)                                               | 不翻译（见工单约束）                                                             |
 | Claude Code 说明             | [CLAUDE.md](CLAUDE.md)                                               | 不翻译（见工单约束）                                                             |
