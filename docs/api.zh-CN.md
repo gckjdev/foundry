@@ -232,7 +232,8 @@ daemon 运行时按心跳间隔发送。它更新 runner 记录、返回当前�
     "maxJobMinutes": null,
     "maxCostUsd": null,
     "pendingInputs": [],
-    "mergeMode": "off"
+    "mergeMode": "off",
+    "prReview": null
   }
 }
 ```
@@ -240,12 +241,13 @@ daemon 运行时按心跳间隔发送。它更新 runner 记录、返回当前�
 | 已领取任务字段  | 含义                                                                       |
 | --------------- | -------------------------------------------------------------------------- |
 | `kind`          | `ticket` 或 `onboarding`                                                   |
-| `resumeStage`   | 开始（或重新开始）的阶段：`triage`、`investigating`……                      |
+| `resumeStage`   | 开始（或重新开始）的阶段：`triage`、`investigating`…… 或 `pr_review`       |
 | `resumeMode`    | `fresh`（新 worktree/会话）、`sticky`（该 runner 的原生会话）或 `portable` |
 | `sessionId`     | 可恢复的原生 harness 会话（当该 runner 能恢复时）                          |
 | `loopCount`     | 已使用的验证/修复循环次数                                                  |
 | `pendingInputs` | 任务挂起期间排队的回答和消息；领取时消费                                   |
 | `mergeMode`     | `off` 或 `merge_when_confident`——该仓库的生效策略                          |
+| `prReview`      | 仅 `pr_review` 领取时存在：PR head 与需要排查的失败 CI 检查                |
 
 ### 2.4 `POST /api/runner/readiness`
 
@@ -304,8 +306,8 @@ runner 不再持有的任务返回 `409`。
 
 用一个端点处理 runner 对其持有任务的所有上报。`id` 是任务 UUID；`action` 是下表中的名称。任务必须
 仍属于该 runner，且处于运行中状态（`triage`、`investigating`、`implementing`、`reviewing`、
-`verifying`）；否则返回 `409 { "error": "job is not held by this runner" }`（任务 ID 不存在时返回
-`404`）。未知 action 返回 `404 { "error": "unknown action <name>" }`。
+`verifying`、`pr_review`）；否则返回 `409 { "error": "job is not held by this runner" }`（任务 ID
+不存在时返回 `404`）。未知 action 返回 `404 { "error": "unknown action <name>" }`。
 
 | Action       | 请求 body                                                          | 成功响应                            | 作用                                         |
 | ------------ | ------------------------------------------------------------------ | ----------------------------------- | -------------------------------------------- |
@@ -317,6 +319,7 @@ runner 不再持有的任务返回 `409`。
 | `plan`       | `{ plan: string }`                                                 | `{ ok: true }`                      | 保存实现计划                                 |
 | `checkpoint` | `{ stage, sessionId, briefRef, headSha }`                          | `{ ok: true }`                      | 保存交接或迁移机器所需的恢复状态             |
 | `pr`         | `{ title, summary, headSha, uiChanged, changedLines }`             | `{ prNumber, url }`                 | 创建/更新 PR，然后转换到 `pr_ci` 并评估 gate |
+| `pr-review`  | `PrReviewRequest`                                                  | `{ status }`                        | 发布自动 PR 评审结果并推进任务               |
 | `onboarding` | `{ ok, reason, headSha, summary }`                                 | `{ pr: { prNumber, url } \| null }` | 完成 onboarding；`ok: false` 使任务失败      |
 | `inputs`     | `{ take?: boolean }`（默认 `true`）                                | `{ inputs: PendingInput[] }`        | 返回排队的人类回答/消息；`take` 标记为已投递 |
 
@@ -335,6 +338,26 @@ runner 不再持有的任务返回 `409`。
 runner 通常一次前进一个阶段。它也会发送 `queued` 交还任务（调度暂停或关闭——控制面会记录 sticky
 窗口和恢复阶段），以及带脱敏原因的 `failed`。`needs_input` 由 `ask` 或面板设置，不由 runner
 设置。`done` 只是 MCP 概念：runner 先验证、创建 PR，再通过 `pr` 上报。
+
+#### 自动 PR 评审
+
+当 `.foundry/policy.yaml` 设置 `auto_pr_review: true` 时，PR head 的 CI 检查结束后，处于 `pr_ci`
+的任务会以 `resumeStage: "pr_review"` 重新入队（每个 head SHA 只评审一次）。领取响应的
+`prReview` 字段携带 PR 信息和失败的检查：`{ prNumber, url, headSha, ciFailures }`，每个失败项包含
+`name`、`conclusion`、`summary`、`detailsUrl` 和 `annotations`（`path`、可选 `line`、`message`）。
+
+runner 在独立的只读 worktree 中评审已推送的 head，并通过 `pr-review` 上报：
+
+| 字段       | 类型                                              | 说明                                           |
+| ---------- | ------------------------------------------------- | ---------------------------------------------- |
+| `verdict`  | `approve` \| `request_changes`                    |                                                |
+| `summary`  | string                                            |                                                |
+| `findings` | `{ severity, category, file?, line?, message }[]` | `file` + `line` 有效时会成为行内评审评论        |
+
+控制面把结果作为 `COMMENT` 评审发布到 PR（Foundry App 是该 PR 的作者，GitHub 不接受它提交
+`APPROVE` 或 `REQUEST_CHANGES`），并记录 `code review` 证据。通过则把任务送回 `pr_ci` 交给
+gate。阻塞性问题会变成一条消息，把任务重新入队到 `implementing`，最多 `max_review_loops` 轮；
+超出后交给 issue 作者处理。
 
 #### `evidence` 请求
 
@@ -612,7 +635,7 @@ GitHub 主机不同。
 | `issue_comment`                      | `edited`                              | 问题复选框被勾选（人类编辑了 bot 评论）会回答问题                                                                           |
 | `pull_request`                       | `closed`                              | 合并则标记任务 merged；未合并关闭则取消；revert 会把原 merged 任务标记为 reverted                                           |
 | `pull_request_review`                | `submitted`                           | 人类的 `changes_requested` 评审会重新打开工作；其他评审在 `pr_ci` 时重新评估 gate                                           |
-| `check_suite`、`check_run`、`status` | `completed`（`status` 为任意 action） | 对处于 `pr_ci`、SHA 匹配的任务重新评估 gate                                                                                 |
+| `check_suite`、`check_run`、`status` | `completed`（`status` 为任意 action） | 对处于 `pr_ci`、SHA 匹配的任务：启用时启动自动 PR 评审，否则重新评估 gate                                                   |
 | `push`                               | —                                     | 默认分支上，当 `.foundry/` 变更或尚无 recipe 时刷新仓库配置                                                                 |
 | `installation`                       | `deleted`                             | 删除该安装对应的仓库                                                                                                        |
 | `installation_repositories`          | `added`/removed                       | 关联或取消关联仓库，并把已知安装关联到其团队                                                                                |

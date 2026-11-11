@@ -13,6 +13,7 @@ const LANES: { title: string; statuses: JobStatus[]; hot?: boolean }[] = [
   },
   { title: "Needs input", statuses: ["needs_input"] },
   { title: "PR / CI", statuses: ["pr_ci"] },
+  { title: "PR review", statuses: ["pr_review"], hot: true },
   { title: "Waiting on you", statuses: ["waiting_on_you"] },
   { title: "Done", statuses: ["merged"] },
   { title: "Stopped", statuses: ["failed", "cancelled"] },

@@ -242,7 +242,8 @@ scheduler. The daemon simply tries again on the next heartbeat.
     "maxJobMinutes": null,
     "maxCostUsd": null,
     "pendingInputs": [],
-    "mergeMode": "off"
+    "mergeMode": "off",
+    "prReview": null
   }
 }
 ```
@@ -250,12 +251,13 @@ scheduler. The daemon simply tries again on the next heartbeat.
 | Claimed job field | Meaning                                                                                |
 | ----------------- | -------------------------------------------------------------------------------------- |
 | `kind`            | `ticket` or `onboarding`                                                               |
-| `resumeStage`     | Stage to start (or restart) at: `triage`, `investigating`, …                           |
+| `resumeStage`     | Stage to start (or restart) at: `triage`, `investigating`, … or `pr_review`            |
 | `resumeMode`      | `fresh` (new worktree/session), `sticky` (this runner's native session), or `portable` |
 | `sessionId`       | Native harness session to resume, when this runner can                                 |
 | `loopCount`       | Verify/fix loops already used                                                          |
 | `pendingInputs`   | Answers and messages queued while the job was parked; claim consumes them              |
 | `mergeMode`       | `off` or `merge_when_confident` — the effective policy for this repo                   |
+| `prReview`        | Only on a `pr_review` claim: the PR head and failed CI checks to investigate            |
 
 ### 2.4 `POST /api/runner/readiness`
 
@@ -317,9 +319,9 @@ screenshots embedded in a PR body render for reviewers. A job the runner no long
 
 One endpoint for everything a runner reports about a job it holds. `id` is the job UUID; `action`
 is one of the names below. The runner must still own the job and the job must be in a running
-status (`triage`, `investigating`, `implementing`, `reviewing`, `verifying`); otherwise the call
-returns `409 { "error": "job is not held by this runner" }` (an unknown job id returns `404`). An
-unknown action returns `404 { "error": "unknown action <name>" }`.
+status (`triage`, `investigating`, `implementing`, `reviewing`, `verifying`, `pr_review`); otherwise
+the call returns `409 { "error": "job is not held by this runner" }` (an unknown job id returns
+`404`). An unknown action returns `404 { "error": "unknown action <name>" }`.
 
 | Action       | Request body                                                       | Success response                    | Effect                                                        |
 | ------------ | ------------------------------------------------------------------ | ----------------------------------- | ------------------------------------------------------------- |
@@ -331,6 +333,7 @@ unknown action returns `404 { "error": "unknown action <name>" }`.
 | `plan`       | `{ plan: string }`                                                 | `{ ok: true }`                      | Stores the implementation plan                                |
 | `checkpoint` | `{ stage, sessionId, briefRef, headSha }`                          | `{ ok: true }`                      | Saves resume state for a hand-back or machine move            |
 | `pr`         | `{ title, summary, headSha, uiChanged, changedLines }`             | `{ prNumber, url }`                 | Opens/updates the PR, then transitions to `pr_ci` and gates   |
+| `pr-review`  | `PrReviewRequest`                                                  | `{ status }`                        | Publishes the automatic PR review and moves the job on        |
 | `onboarding` | `{ ok, reason, headSha, summary }`                                 | `{ pr: { prNumber, url } \| null }` | Completes onboarding; `ok: false` fails the job               |
 | `inputs`     | `{ take?: boolean }` (default `true`)                              | `{ inputs: PendingInput[] }`        | Returns queued human answers/messages; `take` marks delivered |
 
@@ -350,6 +353,29 @@ The runner normally advances one stage at a time. It also sends `queued` to hand
 (schedule pause or shutdown — the control plane stamps the sticky window and resume stage) and
 `failed` with a scrubbed reason. `needs_input` is set by `ask` or the panel, not by the runner.
 `done` is an MCP-only concept: the runner verifies, opens the PR, and reports through `pr`.
+
+#### Automatic PR review
+
+When `.foundry/policy.yaml` sets `auto_pr_review: true`, a job in `pr_ci` is re-queued with
+`resumeStage: "pr_review"` once the PR head's CI checks finish (once per head SHA). The claim's
+`prReview` field carries the PR and the failed checks: `{ prNumber, url, headSha, ciFailures }`,
+where each failure has `name`, `conclusion`, `summary`, `detailsUrl` and `annotations`
+(`path`, optional `line`, `message`).
+
+The runner reviews the pushed head in a detached read-only worktree and reports through
+`pr-review`:
+
+| Field      | Type                                              | Notes                                                      |
+| ---------- | ------------------------------------------------- | ---------------------------------------------------------- |
+| `verdict`  | `approve` \| `request_changes`                    |                                                            |
+| `summary`  | string                                            |                                                            |
+| `findings` | `{ severity, category, file?, line?, message }[]` | `file` + `line` become inline review comments when valid.  |
+
+The control plane posts the result as a `COMMENT` review on the PR — the Foundry App authors the
+PR, so GitHub will not accept an `APPROVE` or `REQUEST_CHANGES` event from it — and records
+`code review` evidence. Approval returns the job to `pr_ci` for the gate. Blocking findings become
+a message and re-queue the job at `implementing` for up to `max_review_loops` rounds; after that
+the job is handed to the ticket author.
 
 #### `evidence` request
 
@@ -642,7 +668,7 @@ The raw payload is kept for diagnosis. Unhandled event types are stored and igno
 | `issue_comment`                      | `edited`                    | A question checkbox tick (the bot comment was edited by a human) answers the question                                                                 |
 | `pull_request`                       | `closed`                    | Merged marks the job merged; closed unmerged cancels it; a revert marks the original merged job reverted                                              |
 | `pull_request_review`                | `submitted`                 | A human `changes_requested` review re-opens work; others re-evaluate the gate at `pr_ci`                                                              |
-| `check_suite`, `check_run`, `status` | `completed` (`status`: any) | Re-evaluates the gate for jobs at that SHA while they are in `pr_ci`                                                                                  |
+| `check_suite`, `check_run`, `status` | `completed` (`status`: any) | For jobs at that SHA in `pr_ci`: starts the automatic PR review when enabled, otherwise re-evaluates the gate                                          |
 | `push`                               | —                           | On the default branch, refreshes repo config when `.foundry/` changed or no recipe is known                                                           |
 | `installation`                       | `deleted`                   | Removes the installation's repos                                                                                                                      |
 | `installation_repositories`          | `added`/removed             | Links or unlinks repos, and links a known installation to its team                                                                                    |

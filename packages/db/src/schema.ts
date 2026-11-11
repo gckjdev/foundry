@@ -188,6 +188,10 @@ export const jobs = pgTable(
     prUrl: text("pr_url"),
     ciStatus: text("ci_status").notNull().default("none"), // none | pending | success | failure
     aiReviewStatus: text("ai_review_status").notNull().default("none"), // none | clean | blocking
+    /** PR head SHA the automatic post-PR review already ran on; prevents re-reviewing a SHA. */
+    prReviewSha: text("pr_review_sha"),
+    /** Automatic post-PR review rounds that requested changes and were sent back to implementing. */
+    prReviewCount: integer("pr_review_count").notNull().default(0),
     uiChanged: boolean("ui_changed").notNull().default(false),
     changedLines: integer("changed_lines").notNull().default(0),
     plan: text("plan"),

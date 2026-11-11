@@ -5,6 +5,7 @@ import {
   type FoundryEvent,
   isRunnerStage,
   nextRunnerStage,
+  type PrReviewRequest,
   RUNNING_STATUSES,
   STICKY_WINDOW_MS,
   type StageRequest,
@@ -19,6 +20,8 @@ import {
   takePendingInputs,
   transitionJob,
 } from "./jobs";
+import { evaluateJobGate } from "./merge-gate";
+import { submitPrReview } from "./pr-review";
 import { askQuestion } from "./questions";
 
 export class ConflictError extends Error {}
@@ -76,6 +79,19 @@ export async function runnerStage(ctx: ControlContext, runner: Runner, jobId: st
     await ctx.notifier.notify(ctx, { event: "failed", job: moved, detail: req.reason ?? "" });
   }
   return moved;
+}
+
+/** Report the automatic post-PR review. Approval re-runs the confidence gate immediately. */
+export async function runnerPrReview(
+  ctx: ControlContext,
+  runner: Runner,
+  jobId: string,
+  req: PrReviewRequest,
+) {
+  const job = await ownedJob(ctx, runner, jobId);
+  const updated = await submitPrReview(ctx, job, req);
+  if (updated.status === "pr_ci") await evaluateJobGate(ctx, updated.id);
+  return { status: updated.status };
 }
 
 export async function runnerAsk(

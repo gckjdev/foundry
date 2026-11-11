@@ -18,10 +18,11 @@ import {
 } from "./jobs";
 import { evaluateJobGate, reconcileChangesRequestedReviews, reconcileOpenPullRequests } from "./merge-gate";
 import { capacityCard } from "./metrics";
+import { submitPrReview } from "./pr-review";
 import { openPullRequest } from "./prs";
 import { boardJobs, inbox, teamReposWithReadiness } from "./queries";
 import { answerFromCheckbox } from "./questions";
-import { runnerAsk, runnerConfidence, runnerEvidence, runnerStage } from "./runner-api";
+import { runnerAsk, runnerConfidence, runnerEvidence, runnerPrReview, runnerStage } from "./runner-api";
 import { createJoinToken, heartbeat, joinRunner } from "./runners";
 import { DROPPED_JOB_GRACE_MS, requeueDroppedJobs, requeueLostJobs } from "./sweeper";
 import { syncUnlinkedInstallations } from "./teams";
@@ -570,6 +571,117 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
       },
     });
     expect(await getJob(env.ctx, b.jobId)).toMatchObject({ status: "queued", resumeStage: "implementing" });
+  });
+
+  it("auto-reviews the PR after CI and sends blocking findings back to implementing", async () => {
+    const { team, repo } = await seedTeam(env, {
+      policyYaml: "auto_pr_review: true\nmerge: merge_when_confident\n",
+    });
+    const runner = await seedRunner(env, team.id, repo.id, { name: "mac", os: "macos" });
+    const fake = env.gh.repo("acme/app");
+    env.gh.addIssue("acme/app", { number: 20, title: "Auto review" });
+    await deliver(env, "issues", issueLabeledPayload({ number: 20, title: "Auto review" }));
+    const c = (await claimJob(env.ctx, runner))!;
+    for (const [to, last] of [
+      ["investigating", "triage"],
+      ["implementing", "investigating"],
+      ["reviewing", "implementing"],
+      ["verifying", "reviewing"],
+    ] as const) {
+      await runnerStage(env.ctx, runner, c.id, { to, lastCompletedStage: last });
+    }
+    for (const name of ["test", "lint"])
+      await runnerEvidence(env.ctx, runner, c.id, { kind: "check", name, status: "passed" });
+    await runnerEvidence(env.ctx, runner, c.id, { kind: "review", name: "code review", status: "passed" });
+    await runnerConfidence(env.ctx, runner, c.id, { level: "high", reasons: ["ok"], uncertainties: [] });
+    fake.branches.set(c.branch, "sha-20");
+    fake.ci.set("sha-20", "pending");
+    const pr = await openPullRequest(env.ctx, await getJob(env.ctx, c.id), {
+      title: "Auto review",
+      summary: "Done",
+      headSha: "sha-20",
+      uiChanged: false,
+      changedLines: 10,
+    });
+    fake.prFiles.set(pr.prNumber, [{ filename: "src/a.ts", additions: 5, deletions: 1 }]);
+    fake.ci.set("sha-20", "failure");
+    env.gh.seedCheckFailures("acme/app", "sha-20", [
+      {
+        name: "test",
+        conclusion: "failure",
+        summary: "1 test failed",
+        detailsUrl: null,
+        annotations: [{ path: "src/a.ts", line: 3, message: "expected 1" }],
+      },
+    ]);
+    await deliver(env, "check_suite", {
+      action: "completed",
+      repository: { id: 4242 },
+      check_suite: { head_sha: "sha-20" },
+    });
+    expect(await getJob(env.ctx, c.id)).toMatchObject({
+      status: "queued",
+      resumeStage: "pr_review",
+      prReviewSha: "sha-20",
+    });
+
+    const reviewJob = (await claimJob(env.ctx, runner))!;
+    expect(reviewJob.resumeStage).toBe("pr_review");
+    expect(reviewJob.prReview).toMatchObject({ prNumber: pr.prNumber, headSha: "sha-20" });
+    expect(reviewJob.prReview!.ciFailures[0]).toMatchObject({
+      name: "test",
+      annotations: [{ path: "src/a.ts", line: 3, message: "expected 1" }],
+    });
+
+    const result = await runnerPrReview(env.ctx, runner, c.id, {
+      verdict: "request_changes",
+      summary: "The test fails",
+      findings: [
+        { severity: "blocking", category: "code_quality", file: "src/a.ts", line: 3, message: "fix it" },
+      ],
+    });
+    expect(result.status).toBe("queued");
+    expect(await getJob(env.ctx, c.id)).toMatchObject({
+      status: "queued",
+      resumeStage: "implementing",
+      prReviewCount: 1,
+    });
+    expect(env.gh.reviewsOn("acme/app", pr.prNumber)).toHaveLength(1);
+    expect(env.gh.reviewsOn("acme/app", pr.prNumber)[0]).toMatchObject({
+      author: "foundry[bot]",
+      state: "COMMENTED",
+    });
+    const [input] = await takePendingInputs(env.ctx, c.id);
+    expect(input).toMatchObject({ kind: "message", by: "foundry[bot]" });
+    expect(input!.text).toContain("automatic PR review");
+  });
+
+  it("returns an approved automatic PR review to pr_ci", async () => {
+    const { team, repo } = await seedTeam(env, { policyYaml: "auto_pr_review: true\n" });
+    const [job] = await env.ctx.db
+      .insert(jobs)
+      .values({
+        teamId: team.id,
+        repoId: repo.id,
+        title: "Review me",
+        harness: "claude-code",
+        branch: "foundry/review-me",
+        status: "pr_review",
+        prNumber: 11,
+        prUrl: "https://github.com/acme/app/pull/11",
+        headSha: "sha-11",
+      })
+      .returning();
+    const updated = await submitPrReview(env.ctx, job!, {
+      verdict: "approve",
+      summary: "Looks good",
+      findings: [],
+    });
+    expect(updated.status).toBe("pr_ci");
+    expect(env.gh.reviewsOn("acme/app", 11)[0]).toMatchObject({
+      state: "COMMENTED",
+      body: expect.stringContaining("Approved"),
+    });
   });
 
   it("re-queues a job for a changes-requested review even when the webhook was missed", async () => {

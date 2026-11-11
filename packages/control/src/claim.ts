@@ -16,6 +16,7 @@ import { and, asc, count, eq, gte, inArray, ne, sql } from "drizzle-orm";
 import { bestEffort, type ControlContext } from "./context";
 import { syncJobToGitHub } from "./github-sync";
 import { takePendingInputs } from "./jobs";
+import { prReviewContext } from "./pr-review";
 import { effectiveMergeMode, repoRecipe } from "./repos";
 
 /** Current view of every runner in the team, in the shape the scheduler wants. */
@@ -165,6 +166,8 @@ export async function claimJob(ctx: ControlContext, runner: Runner): Promise<Cla
     } catch (err) {
       ctx.log.warn("pending inputs failed", errorFields(err));
     }
+    // Only the post-PR review needs the pull request and its failed checks.
+    const prReview = resumeStage === "pr_review" ? await prReviewContext(ctx, claimed) : null;
     return {
       id: claimed.id,
       kind: claimed.kind as ClaimedJob["kind"],
@@ -186,6 +189,7 @@ export async function claimJob(ctx: ControlContext, runner: Runner): Promise<Cla
       maxCostUsd: claimed.maxCostUsd,
       pendingInputs,
       mergeMode: effectiveMergeMode(repo),
+      prReview,
     };
   }
   return null;

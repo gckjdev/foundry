@@ -82,7 +82,14 @@ export interface JobRunnerDeps {
   screenshot?: (url: string, path: string) => Promise<void>;
 }
 
-export type JobOutcome = "pr_opened" | "onboarded" | "needs_input" | "paused" | "failed" | "revoked";
+export type JobOutcome =
+  | "pr_opened"
+  | "onboarded"
+  | "pr_reviewed"
+  | "needs_input"
+  | "paused"
+  | "failed"
+  | "revoked";
 
 type StopReason = { kind: "paused" } | { kind: "revoked" } | { kind: "budget"; reason: string };
 
@@ -148,10 +155,13 @@ const REVIEWER_DENY_COMMANDS = [
 ];
 
 function nextStage(stage: RunnerStage): (typeof STAGE_ORDER)[number] {
+  // The post-PR review is a standalone pass; it never advances the playbook chain.
+  if (stage === "pr_review") return "done";
   return STAGE_ORDER[STAGE_ORDER.indexOf(stage) + 1]!;
 }
 
 function previousStage(stage: RunnerStage): RunnerStage | null {
+  if (stage === "pr_review") return "verifying";
   const i = RUNNER_STAGES.indexOf(stage);
   return i > 0 ? RUNNER_STAGES[i - 1]! : null;
 }
@@ -219,7 +229,7 @@ export class JobRunner {
   ) {
     this.jobId = job.id;
     this.stage = job.resumeStage;
-    this.lastCompleted = previousStage(job.resumeStage);
+    this.lastCompleted = job.resumeStage === "pr_review" ? "verifying" : previousStage(job.resumeStage);
     this.loop = job.loopCount;
     for (const i of job.pendingInputs)
       if (i.kind === "answer") this.qa.push({ question: i.questionPrompt ?? "", answer: i.text });
@@ -304,7 +314,9 @@ export class JobRunner {
     this.portBase = await deps.ports.lease(job.id, local?.portBase);
     this.saveLocal("running");
 
-    if (job.kind === "ticket") {
+    // The post-PR review only reads the branch; it needs neither the recipe nor the job services.
+    const postPrReview = job.resumeStage === "pr_review";
+    if (job.kind === "ticket" && !postPrReview) {
       const { recipe, error } = await loadRecipe(this.cwd);
       if (!recipe) throw new FailJob(error ?? "no recipe");
       this.recipe = recipe;
@@ -316,7 +328,9 @@ export class JobRunner {
     this.maxCostUsd = effectiveMaxCostUsd(job.maxCostUsd, this.policy);
 
     const services =
-      job.kind === "ticket" ? await provisionServices(job.id, this.recipe, deps.postgresUrl) : {};
+      job.kind === "ticket" && !postPrReview
+        ? await provisionServices(job.id, this.recipe, deps.postgresUrl)
+        : {};
     this.env = {
       ...httpProxyEnv(),
       ...deps.baseEnv,
@@ -347,7 +361,7 @@ export class JobRunner {
 
     this.flushTimer = setInterval(() => void this.flush().catch(() => {}), deps.eventFlushMs ?? 1_000);
 
-    if (job.kind === "ticket" && this.recipe?.install && job.resumeMode !== "sticky") {
+    if (job.kind === "ticket" && !postPrReview && this.recipe?.install && job.resumeMode !== "sticky") {
       this.logEvent("info", "recipe install started", { command: this.recipe.install });
       const r = await runCommand(this.recipe.install, {
         cwd: this.cwd,
@@ -562,6 +576,8 @@ export class JobRunner {
   }
 
   private async drive(): Promise<JobOutcome> {
+    // The automatic post-PR review is a standalone runner pass, not part of the playbook chain.
+    if (this.stage === "pr_review") return await this.drivePrReview();
     // A portable or sticky resume can land in the middle of the reviewing stage.
     const pendingReview = await this.maybeRunReview();
     if (this.stopReason) return await this.onStopped(this.stopReason);
@@ -845,6 +861,103 @@ export class JobRunner {
         ],
       };
       this.logEvent("info", "independent review finished", {
+        verdict: report.verdict,
+        findings: report.findings.length,
+      });
+      return report;
+    } finally {
+      if (session) await this.adapter.stop(session).catch(() => {});
+      await this.adapter.release?.(dir).catch(() => {});
+      await this.deps.workspace.removeWorktree(this.job.repo.fullName, reviewId).catch(() => {});
+      this.deps.tools.unregister(reviewKey);
+    }
+  }
+
+  /** Review the already-open pull request at its CI head, then report the verdict to control. */
+  private async drivePrReview(): Promise<JobOutcome> {
+    const context = this.job.prReview;
+    if (!context) throw new FailJob("the automatic PR review is missing its pull request context");
+    const report = await this.runPrReview(context);
+    if (this.stopReason) return await this.onStopped(this.stopReason);
+    await this.deps.api.submitPrReview(this.jobId, report);
+    this.logEvent("info", "automatic pull request review reported", {
+      verdict: report.verdict,
+      findings: report.findings.length,
+      failedChecks: context.ciFailures.length,
+    });
+    return "pr_reviewed";
+  }
+
+  /**
+   * A fresh read-only session reviews the pushed PR head in a detached worktree. Failed CI checks
+   * are part of the prompt so the agent can find the cause instead of guessing.
+   */
+  private async runPrReview(context: NonNullable<ClaimedJob["prReview"]>): Promise<ReviewReport> {
+    const reviewKey = `${this.jobId}:pr-review`;
+    const reviewId = `${this.jobId}-pr-review`;
+    const token = await this.token();
+    const dir = await this.deps.workspace.createDetachedWorktree({
+      fullName: this.job.repo.fullName,
+      branch: this.job.branch,
+      id: reviewId,
+      commit: context.headSha,
+      token,
+    });
+    this.pendingReview = null;
+    const reviewToken = this.deps.tools.register(reviewKey, (tool, args) => this.onReviewTool(tool, args));
+    let session: HarnessSession | null = null;
+    try {
+      const mcpServers = this.mcpServersFor(reviewKey, reviewToken);
+      const repo = await loadPlaybookFiles(this.cwd, []);
+      const brief =
+        this.job.resumeMode === "portable"
+          ? await fetchBrief(this.cwd, this.jobId, token).catch(() => null)
+          : null;
+      const { systemPrompt, prompt } = assembleReviewPrompt(
+        {
+          repoFullName: this.job.repo.fullName,
+          title: this.job.title,
+          body: this.job.body,
+          issueNumber: this.job.issueNumber,
+          branch: this.job.branch,
+          defaultBranch: this.job.repo.defaultBranch,
+          plan: brief?.plan ?? this.plan,
+          summary: brief?.findings.at(-1) ?? this.findings.at(-1) ?? null,
+          pullRequest: { number: context.prNumber, url: context.url, headSha: context.headSha },
+          ciFailures: context.ciFailures,
+        },
+        repo,
+      );
+      this.logEvent("info", "automatic PR review started", {
+        pr: context.prNumber,
+        head: context.headSha,
+        failedChecks: context.ciFailures.length,
+      });
+      session = await this.adapter.start({
+        cwd: dir,
+        model: this.job.model ?? "",
+        systemPrompt,
+        prompt,
+        env: { ...this.env, ...mcpServers[0]!.env },
+        mcpServers,
+        permissions: this.reviewerPermissions(),
+        harnessPort: this.portBase + 8,
+        logFile: this.deps.localJobs.harnessLog(this.jobId),
+        redact: (text) => this.scrub(text),
+      });
+      await this.consumeReview(session);
+      const report: ReviewReport = this.pendingReview ?? {
+        verdict: "request_changes",
+        summary: "The reviewer did not report a verdict.",
+        findings: [
+          {
+            severity: "blocking",
+            category: "other",
+            message: "The automatic PR reviewer ended without calling review.",
+          },
+        ],
+      };
+      this.logEvent("info", "automatic PR review finished", {
         verdict: report.verdict,
         findings: report.findings.length,
       });
@@ -1344,6 +1457,7 @@ export class JobRunner {
     if (this.keepWorktree && (outcome === "needs_input" || outcome === "paused")) return;
     const { deps } = this;
     await deps.workspace.removeWorktree(this.job.repo.fullName, `${this.jobId}-review`).catch(() => {});
+    await deps.workspace.removeWorktree(this.job.repo.fullName, `${this.jobId}-pr-review`).catch(() => {});
     await deps.workspace.removeWorktree(this.job.repo.fullName, this.jobId).catch(() => {});
     deps.ports.release(this.jobId);
     deps.localJobs.delete(this.jobId);

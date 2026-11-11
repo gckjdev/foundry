@@ -1,7 +1,16 @@
 import { githubApiUrl } from "@foundry/shared/github-host";
 import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
-import type { CiState, GhAppInstallation, GhIssue, GhPullRequest, GitHubClient, RepoRef } from "./types";
+import type {
+  CiState,
+  GhAppInstallation,
+  GhCheckFailure,
+  GhIssue,
+  GhPullRequest,
+  GhReview,
+  GitHubClient,
+  RepoRef,
+} from "./types";
 
 /** Resolve fetch at call time so the web app's GitHub proxy wrapper is used. */
 const liveFetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
@@ -61,6 +70,15 @@ function toIssue(data: {
     state: data.state === "open" ? "open" : "closed",
   };
 }
+
+/** Check-run conclusions that mean something went wrong (as opposed to skipped/neutral). */
+const FAILED_CONCLUSIONS = new Set([
+  "failure",
+  "timed_out",
+  "cancelled",
+  "action_required",
+  "startup_failure",
+]);
 
 /** Combine check runs and commit statuses into one CI state. */
 export function combineCi(
@@ -331,6 +349,81 @@ export class OctokitGitHubClient implements GitHubClient {
       kit.repos.listCommitStatusesForRef({ ...split(ref.fullName), ref: sha, per_page: 100 }),
     ]);
     return combineCi(runs.data.check_runs, statuses.data, requiredChecks);
+  }
+
+  async checkFailures(ref: RepoRef, sha: string): Promise<GhCheckFailure[]> {
+    const kit = this.kit(ref.installationId);
+    const repo = split(ref.fullName);
+    const [runs, statuses] = await Promise.all([
+      kit.checks.listForRef({ ...repo, ref: sha, per_page: 100 }),
+      kit.repos.listCommitStatusesForRef({ ...repo, ref: sha, per_page: 100 }),
+    ]);
+    const failed = runs.data.check_runs
+      .filter((r) => r.conclusion && FAILED_CONCLUSIONS.has(r.conclusion))
+      .slice(0, 10);
+    const failures: GhCheckFailure[] = [];
+    for (const run of failed) {
+      let annotations: GhCheckFailure["annotations"] = [];
+      try {
+        const res = await kit.checks.listAnnotations({ ...repo, check_run_id: run.id, per_page: 50 });
+        annotations = res.data.slice(0, 20).map((a) => ({
+          path: a.path,
+          line: a.end_line ?? a.start_line ?? undefined,
+          message: a.message ?? "",
+        }));
+      } catch {
+        // Annotations are a bonus; the summary and details URL still tell the reviewer where to look.
+      }
+      failures.push({
+        name: run.name,
+        conclusion: run.conclusion ?? "failure",
+        summary: run.output?.summary || run.output?.title || null,
+        detailsUrl: run.details_url ?? null,
+        annotations,
+      });
+    }
+    for (const s of statuses.data) {
+      if (s.state !== "failure" && s.state !== "error") continue;
+      failures.push({
+        name: s.context,
+        conclusion: s.state,
+        summary: s.description ?? null,
+        detailsUrl: s.target_url ?? null,
+        annotations: [],
+      });
+    }
+    return failures;
+  }
+
+  async createReview(
+    ref: RepoRef,
+    number: number,
+    input: {
+      body: string;
+      event: "COMMENT" | "REQUEST_CHANGES" | "APPROVE";
+      comments?: { path: string; line: number; body: string }[];
+      commitId?: string;
+    },
+  ): Promise<GhReview> {
+    const kit = this.kit(ref.installationId);
+    const base = {
+      ...split(ref.fullName),
+      pull_number: number,
+      body: input.body,
+      event: input.event,
+      ...(input.commitId ? { commit_id: input.commitId } : {}),
+    };
+    const comments = input.comments ?? [];
+    let data: Awaited<ReturnType<typeof kit.pulls.createReview>>["data"];
+    try {
+      data = (await kit.pulls.createReview({ ...base, comments })).data;
+    } catch (err) {
+      // A line that is not part of the diff makes GitHub reject the whole review (422). The
+      // body still carries the findings, so retry without inline comments rather than lose it.
+      if (comments.length === 0) throw err;
+      data = (await kit.pulls.createReview(base)).data;
+    }
+    return { id: data.id, author: data.user?.login ?? "", state: data.state, body: data.body ?? "" };
   }
 
   async setProjectStatus(installationId: number, projectId: string, contentNodeId: string, status: string) {

@@ -156,8 +156,9 @@ dev_server:
 | `require_ci_green`             | boolean                         | `true`                             | 为 true 时，挂起的 CI 运行会让门禁等待，失败的运行会阻止自动合并。为 false 时忽略 CI。                                        |
 | `require_ai_review_clean`      | boolean                         | `false`                            | 为 true 时，门禁等待 `ai_review_bots` 中的某个评审出现，若最新的此类评审为 `CHANGES_REQUESTED` 则阻止。                       |
 | `ai_review_bots`               | GitHub 登录名数组               | `["cursor[bot]"]`                  | 来自这些登录名的评审算作 AI 评审。                                                                                            |
+| `auto_pr_review`               | boolean                         | `false`                            | PR 的 CI 检查结束后，再次评审已推送的 head，并把失败的检查详情交给评审 agent，结果发布到 PR。阻塞性问题会把任务送回 implementing。 |
 | `max_verify_loops`             | integer ≥ 0                     | `3`                                | 验证失败后允许多少次把任务送回 implementing。`0` 表示立即失败。                                                               |
-| `max_review_loops`             | integer ≥ 0                     | `2`                                | 独立审查员可以把改动送回 implementing 多少次。超出预算后任务继续，但合并门会把它交给人工。                                    |
+| `max_review_loops`             | integer ≥ 0                     | `2`                                | 评审员可以把改动送回 implementing 多少次（包含验证前评审和自动 PR 评审）。超出预算后不再循环，交给人工。                      |
 | `max_cost_per_job_usd`         | 正数                            | `10`                               | 成本预算。累计成本超过它时 runner 停止任务；门禁也会因此让自动合并失败。任务级覆盖优先。                                      |
 | `max_diff_lines_for_automerge` | 正数 integer                    | `400`                              | 更大的 diff 会阻止自动合并并等待人工。                                                                                        |
 | `max_job_minutes`              | 正数 integer                    | `60`                               | 挂钟时间限制。超过后 runner 停止任务。任务级覆盖优先。                                                                        |
@@ -191,6 +192,7 @@ merge: off
 require_ci_green: true
 require_ai_review_clean: false
 ai_review_bots: ["cursor[bot]"]
+auto_pr_review: false
 max_verify_loops: 3
 max_review_loops: 2
 max_cost_per_job_usd: 10

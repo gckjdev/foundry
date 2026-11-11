@@ -172,6 +172,9 @@ stateDiagram-v2
     Reviewing --> Verifying: approved
     Verifying --> Implementing: checks fail (max N loops)
     Verifying --> PR_CI: checks pass
+    PR_CI --> PR_Review: CI finished (policy auto_pr_review)
+    PR_Review --> Implementing: blocking findings (max N loops)
+    PR_Review --> PR_CI: approved
     PR_CI --> Implementing: CI or AI review fails
     PR_CI --> AutoMerge: gate passes
     PR_CI --> WaitingOnYou: gate fails or risk rule hit
@@ -191,6 +194,7 @@ What each stage does:
 - **Reviewing:** a fresh, read-only reviewer session inspects the diff in a throwaway worktree with the ticket, plan and summary. It reviews **code quality**, **UI design** (design-system tokens, layout, responsive and accessible states) and **security**, and reports blocking and non-blocking findings tagged by category. Blocking findings loop back to Implementing up to `max_review_loops` times; a clean review (or an exhausted loop budget, which then fails the gate) moves to Verifying.
 - **Verifying:** runs the recipe checks. For UI changes it also starts the app and captures screenshots. Failures loop back to Implementing, up to 3 times by default. Every check's command, exit code and output tail is stored as evidence.
 - **PR/CI:** opens the PR with a template (summary, plan, evidence, a self-reported confidence and why), then waits for CI and the optional AI review (e.g. Bugbot). Failures loop back to Implementing.
+- **PR review (optional, `auto_pr_review`):** when CI for the PR head finishes, a fresh read-only reviewer session inspects the pushed PR and the failed check details (names, summaries, annotations), then Foundry posts the verdict and inline comments as a GitHub review. Blocking findings loop back to Implementing up to `max_review_loops` times; a clean review returns the job to the gate. The GitHub review uses a `COMMENT` event because the Foundry App authors the PR and GitHub does not let a PR author approve it.
 - **Gate:** see section 5.5.
 - **Waiting on you:** the human merges, requests changes (which go back to the agent as a new message), or closes.
 

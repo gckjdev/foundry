@@ -18,12 +18,14 @@ export const PROJECT_STATUS: Partial<Record<JobStatus, string>> = {
   verifying: "In Progress",
   needs_input: "In Review",
   pr_ci: "In Review",
+  pr_review: "In Review",
   waiting_on_you: "In Review",
   merged: "Done",
 };
 
 const STATUS_NOTES: Partial<Record<JobStatus, string>> = {
   needs_input: "Waiting for an answer to the question below.",
+  pr_review: "An agent is reviewing the pull request and its CI results.",
   waiting_on_you: "Handed over for human review. See the pull request for why.",
   failed: "The job stopped. Comment `/foundry retry` or use the panel to retry.",
 };

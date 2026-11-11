@@ -21,8 +21,13 @@ export const PolicySchema = z.object({
   require_ai_review_clean: z.boolean().default(false),
   /** GitHub logins whose reviews count as the AI review (e.g. Bugbot). */
   ai_review_bots: z.array(z.string()).default(["cursor[bot]"]),
+  /**
+   * Run the independent reviewer again once the PR's CI checks finish, before the confidence
+   * gate. Blocking findings send the job back to implementing (bounded by `max_review_loops`).
+   */
+  auto_pr_review: z.boolean().default(false),
   max_verify_loops: z.number().int().min(0).default(3),
-  /** How many times the independent reviewer may send a change back to implementing. */
+  /** How many times the reviewer may send a change back to implementing (both review stages). */
   max_review_loops: z.number().int().min(0).default(2),
   max_cost_per_job_usd: z.number().positive().default(10),
   max_diff_lines_for_automerge: z.number().int().positive().default(400),

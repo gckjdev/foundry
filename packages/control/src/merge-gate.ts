@@ -15,6 +15,7 @@ import { and, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { bestEffort, type ControlContext } from "./context";
 import { repoRef } from "./github-sync";
 import { getJob, recordEvents, sendMessage, transitionJob } from "./jobs";
+import { maybeStartPrReview } from "./pr-review";
 import { effectiveMergeMode, refreshRepoConfig, repoPolicy, repoRecipe } from "./repos";
 
 /** Latest evidence per (kind, name) for the job's current verify loop. */
@@ -45,7 +46,7 @@ export async function markJobMerged(
 ): Promise<Job | null> {
   const merged = await transitionJob(ctx, job.id, "merged", {
     reason,
-    from: ["pr_ci", "waiting_on_you"],
+    from: ["pr_ci", "pr_review", "waiting_on_you"],
   });
   if (!merged) return null;
   ctx.log.info("job merged", { jobId: merged.id, reason });
@@ -60,7 +61,7 @@ export async function markJobMerged(
 /** If GitHub already merged this job's PR (webhook missed), record it. */
 export async function syncMergedPullRequest(ctx: ControlContext, job: Job): Promise<Job | null> {
   if (job.prNumber === null) return null;
-  if (job.status !== "pr_ci" && job.status !== "waiting_on_you") return null;
+  if (!["pr_ci", "pr_review", "waiting_on_you"].includes(job.status)) return null;
   const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, job.repoId) });
   if (!repo) return null;
   try {
@@ -80,7 +81,7 @@ export async function reconcileOpenPullRequests(ctx: ControlContext): Promise<st
   const open = await ctx.db
     .select()
     .from(jobs)
-    .where(inArray(jobs.status, ["pr_ci", "waiting_on_you"]));
+    .where(inArray(jobs.status, ["pr_ci", "pr_review", "waiting_on_you"]));
   const done: string[] = [];
   for (const job of open) {
     const merged = await syncMergedPullRequest(ctx, job);
@@ -175,9 +176,13 @@ export async function evaluateJobGate(ctx: ControlContext, jobId: string): Promi
     await markJobMerged(ctx, job, "pull request merged");
     return null;
   }
-  const [files, ci, reviews, ev] = await Promise.all([
+  const ci = await ctx.gh.ciState(ref, pr.headSha);
+  // The automatic PR review runs once per head SHA before the gate decides anything.
+  if (await maybeStartPrReview(ctx, job, pr.headSha, ci)) return null;
+  // A concurrent CI webhook may have moved the job to `pr_review` (or somewhere else) already.
+  if ((await getJob(ctx, job.id)).status !== "pr_ci") return null;
+  const [files, reviews, ev] = await Promise.all([
     ctx.gh.listPullRequestFiles(ref, job.prNumber),
-    ctx.gh.ciState(ref, pr.headSha),
     ctx.gh.listReviews(ref, job.prNumber),
     latestEvidence(ctx, job),
   ]);

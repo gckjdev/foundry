@@ -207,6 +207,16 @@ describe("OctokitGitHubClient via MockAgent", () => {
     if (method === "GET" && pathname === "/repos/acme/app/pulls/4/reviews") {
       return json(200, [{ id: 8, user: { login: "bob" }, state: "APPROVED", body: "lgtm" }]);
     }
+    if (method === "POST" && pathname === "/repos/acme/app/pulls/4/reviews") {
+      const sent = JSON.parse(body) as { comments?: unknown[]; event?: string; body?: string };
+      if (sent.comments?.length) return json(422, { message: "line must be part of the diff" });
+      return json(200, {
+        id: 12,
+        user: { login: "foundry[bot]" },
+        state: sent.event === "APPROVE" ? "APPROVED" : "COMMENTED",
+        body: sent.body ?? "",
+      });
+    }
     if (method === "POST" && pathname === "/repos/acme/app/pulls/4/requested_reviewers") return json(201, {});
     if (method === "PUT" && pathname === "/repos/acme/app/pulls/4/merge") return json(200, { merged: true });
     if (method === "GET" && pathname === "/repos/acme/app/commits/abc/check-runs") {
@@ -220,7 +230,21 @@ describe("OctokitGitHubClient via MockAgent", () => {
     }
     if (method === "GET" && pathname === "/repos/acme/app/commits/none/statuses") return json(200, []);
     if (method === "GET" && pathname === "/repos/acme/app/commits/bad/check-runs") {
-      return json(200, { check_runs: [{ name: "test", status: "completed", conclusion: "failure" }] });
+      return json(200, {
+        check_runs: [
+          {
+            id: 55,
+            name: "test",
+            status: "completed",
+            conclusion: "failure",
+            details_url: "https://github.test/acme/app/runs/55",
+            output: { title: "unit tests", summary: "1 test failed", text: null },
+          },
+        ],
+      });
+    }
+    if (method === "GET" && pathname === "/repos/acme/app/check-runs/55/annotations") {
+      return json(200, [{ path: "a.ts", start_line: 3, end_line: 3, message: "expected 1" }]);
     }
     if (method === "GET" && pathname === "/repos/acme/app/commits/bad/statuses") return json(200, []);
     if (method === "POST" && pathname === "/graphql") {
@@ -359,6 +383,32 @@ describe("OctokitGitHubClient via MockAgent", () => {
     await expect(client.ciState(ref, "abc", ["e2e"])).resolves.toBe("pending");
     await expect(client.ciState(ref, "none")).resolves.toBe("none");
     await expect(client.ciState(ref, "bad")).resolves.toBe("failure");
+  });
+
+  it("reads failed checks with their annotations", async () => {
+    await expect(client.checkFailures(ref, "bad")).resolves.toEqual([
+      {
+        name: "test",
+        conclusion: "failure",
+        summary: "1 test failed",
+        detailsUrl: "https://github.test/acme/app/runs/55",
+        annotations: [{ path: "a.ts", line: 3, message: "expected 1" }],
+      },
+    ]);
+    await expect(client.checkFailures(ref, "abc")).resolves.toEqual([]);
+  });
+
+  it("submits a review and retries without inline comments when GitHub rejects them", async () => {
+    const start = calls.length;
+    await expect(
+      client.createReview(ref, 4, {
+        body: "Verdict",
+        event: "COMMENT",
+        comments: [{ path: "a.ts", line: 3, body: "fix it" }],
+      }),
+    ).resolves.toMatchObject({ author: "foundry[bot]", state: "COMMENTED", body: "Verdict" });
+    const attempts = calls.slice(start).filter((c) => c.startsWith("POST /repos/acme/app/pulls/4/reviews"));
+    expect(attempts).toHaveLength(2);
   });
 
   it("sets a project status and returns when the field or option is missing", async () => {
