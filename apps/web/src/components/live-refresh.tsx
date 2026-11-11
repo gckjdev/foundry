@@ -13,6 +13,8 @@ export function LiveRefresh({ tables }: { tables?: string[] }) {
   const pathname = usePathname();
   const [state, setState] = useState<"connecting" | "live" | "offline">("connecting");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refresh = useRef(router.refresh);
+  refresh.current = router.refresh;
   const tablesKey = (tables ?? tablesForPage(pathname)).join(",");
   const watched = useRef(new Set(tablesKey ? tablesKey.split(",") : []));
 
@@ -47,7 +49,7 @@ export function LiveRefresh({ tables }: { tables?: string[] }) {
           if (timer.current) return;
           timer.current = setTimeout(() => {
             timer.current = null;
-            router.refresh();
+            refresh.current();
           }, 400);
         };
         ws.onclose = () => {
@@ -66,7 +68,8 @@ export function LiveRefresh({ tables }: { tables?: string[] }) {
       closed = true;
       ws?.close();
     };
-  }, [router]);
+    // Connect once for the layout's lifetime; pathname only updates `watched` above.
+  }, []);
 
   return (
     <span

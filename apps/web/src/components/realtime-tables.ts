@@ -28,10 +28,15 @@ export function tablesForPage(pathname: string | null | undefined): string[] {
  *
  * `questions.gh_comment_id` is set right after a question is inserted; the panel never renders it,
  * so the INSERT already covers the refresh. `helpful` is not noise: the job page shows it.
+ *
+ * A runner heartbeat rewrites `last_seen_at` (and often cpu/mem/disk) every 15 s. The runners page
+ * only needs a refresh when the runner's *state* changes (accepting, draining, removed), not on
+ * those telemetry ticks — `isOnline` already has a 2-minute grace window.
  */
 const NOISE_COLUMNS: Record<string, ReadonlySet<string>> = {
   jobs: new Set(["cost_usd", "tokens_in", "tokens_out", "updated_at"]),
   questions: new Set(["gh_comment_id"]),
+  runners: new Set(["last_seen_at", "cpu", "mem_mb", "disk_free_mb", "on_ac_power", "harnesses", "version"]),
 };
 
 /** Whether a realtime message should trigger a refresh for a page watching `tables`. */

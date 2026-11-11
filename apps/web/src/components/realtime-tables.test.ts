@@ -14,6 +14,14 @@ describe("panel realtime refresh", () => {
     expect(tablesForPage("/board")).toEqual(["jobs"]);
     expect(isRefreshMessage(board, { type: "change", table: "events" })).toBe(false);
     expect(isRefreshMessage(board, { type: "change", table: "runners" })).toBe(false);
+    expect(
+      isRefreshMessage(board, {
+        type: "change",
+        table: "runners",
+        op: "UPDATE",
+        columns: ["last_seen_at", "disk_free_mb"],
+      }),
+    ).toBe(false);
   });
 
   it("keeps the job page following its live events", () => {
@@ -77,9 +85,9 @@ describe("panel realtime refresh", () => {
   });
 
   it("does not suppress updates for tables without a noise map", () => {
-    const runners = new Set(tablesForPage("/runners"));
+    const metrics = new Set(tablesForPage("/metrics"));
     expect(
-      isRefreshMessage(runners, { type: "change", table: "runners", op: "UPDATE", columns: ["updated_at"] }),
+      isRefreshMessage(metrics, { type: "change", table: "jobs", op: "UPDATE", columns: ["status"] }),
     ).toBe(true);
   });
 });
@@ -149,13 +157,40 @@ describe("runners page key events", () => {
     expect(tablesForPage("/runners")).toEqual(["runners", "jobs"]);
   });
 
-  it("refreshes on runner heartbeats and job changes", () => {
+  it("does not refresh on runner telemetry ticks", () => {
     expect(
       isRefreshMessage(runners, {
         type: "change",
         table: "runners",
         op: "UPDATE",
         columns: ["last_seen_at"],
+      }),
+    ).toBe(false);
+    expect(
+      isRefreshMessage(runners, {
+        type: "change",
+        table: "runners",
+        op: "UPDATE",
+        columns: ["disk_free_mb", "last_seen_at", "cpu", "mem_mb"],
+      }),
+    ).toBe(false);
+  });
+
+  it("refreshes when a runner's state changes, or one of its jobs does", () => {
+    expect(
+      isRefreshMessage(runners, {
+        type: "change",
+        table: "runners",
+        op: "UPDATE",
+        columns: ["accepting", "last_seen_at"],
+      }),
+    ).toBe(true);
+    expect(
+      isRefreshMessage(runners, {
+        type: "change",
+        table: "runners",
+        op: "UPDATE",
+        columns: ["status"],
       }),
     ).toBe(true);
     expect(
