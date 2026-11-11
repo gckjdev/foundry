@@ -1,6 +1,7 @@
 import { events, type Job, jobs, type Runner, repos, runnerRepoReadiness, runners, teams } from "@foundry/db";
 import {
   type ClaimedJob,
+  errorFields,
   type FoundryEvent,
   type HarnessInfo,
   ineligibility,
@@ -155,8 +156,15 @@ export async function claimJob(ctx: ControlContext, runner: Runner): Promise<Cla
       resumeMode,
       stage: resumeStage,
     });
-    await bestEffort(ctx, "github sync", () => syncJobToGitHub(ctx, claimed, "queued"));
-    const pendingInputs = await takePendingInputs(ctx, claimed.id);
+    // The row is already this runner's. GitHub comment/label updates must not fail (or stall)
+    // the HTTP response, or the daemon never starts JobRunner and the job stays stuck in triage.
+    void bestEffort(ctx, "github sync", () => syncJobToGitHub(ctx, claimed, "queued"));
+    let pendingInputs: ClaimedJob["pendingInputs"] = [];
+    try {
+      pendingInputs = await takePendingInputs(ctx, claimed.id);
+    } catch (err) {
+      ctx.log.warn("pending inputs failed", errorFields(err));
+    }
     return {
       id: claimed.id,
       kind: claimed.kind as ClaimedJob["kind"],

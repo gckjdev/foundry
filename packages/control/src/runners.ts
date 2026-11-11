@@ -12,6 +12,7 @@ import {
 } from "@foundry/shared";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import type { ControlContext } from "./context";
+import { requeueDroppedJobs } from "./sweeper";
 
 interface JoinClaims {
   kind: "join";
@@ -103,6 +104,11 @@ export async function heartbeat(
       version: req.version,
     })
     .where(eq(runners.id, runner.id));
+
+  const dropped = await requeueDroppedJobs(ctx, runner, req.runningJobIds);
+  if (dropped.length) {
+    ctx.log.info("re-queued jobs the runner is no longer running", { jobs: dropped, runner: runner.name });
+  }
 
   const keepJobs = await ctx.db
     .select({ id: jobs.id, maxJobMinutes: jobs.maxJobMinutes, maxCostUsd: jobs.maxCostUsd })

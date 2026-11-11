@@ -25,8 +25,12 @@ export function errorResponse(err: unknown): Response {
   if (err instanceof NotFoundError) return json({ error: err.message }, 404);
   if (err instanceof ConflictError || err instanceof InvalidTransitionError)
     return json({ error: err.message }, 409);
-  log.error("request failed", errorFields(err));
-  return json({ error: "internal error" }, 500);
+  log.error("request failed", {
+    ...errorFields(err),
+    stack: err instanceof Error ? err.stack : undefined,
+  });
+  const detail = err instanceof Error ? err.message : String(err);
+  return json({ error: process.env.NODE_ENV === "production" ? "internal error" : detail }, 500);
 }
 
 type RunnerHandler<T> = (args: {

@@ -23,7 +23,7 @@ import { boardJobs, inbox, teamReposWithReadiness } from "./queries";
 import { answerFromCheckbox } from "./questions";
 import { runnerAsk, runnerConfidence, runnerEvidence, runnerStage } from "./runner-api";
 import { createJoinToken, heartbeat, joinRunner } from "./runners";
-import { requeueLostJobs } from "./sweeper";
+import { DROPPED_JOB_GRACE_MS, requeueDroppedJobs, requeueLostJobs } from "./sweeper";
 import { syncUnlinkedInstallations } from "./teams";
 import {
   createTestEnv,
@@ -434,6 +434,61 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
     // The laptop holds a sticky window, but it is offline, so another runner may take it.
     const resumed = (await claimJob(env.ctx, other))!;
     expect(resumed).toMatchObject({ resumeStage: "implementing", resumeMode: "portable", sessionId: null });
+  });
+
+  it("returns a claimed job even when GitHub sync never completes", async () => {
+    const { repo } = await seedTeam(env);
+    const runner = await seedRunner(env, repo.teamId, repo.id, { name: "alice-mbp" });
+    env.gh.addIssue("acme/app", { number: 20, title: "Do not block claim on GitHub" });
+    await deliver(env, "issues", issueLabeledPayload({ number: 20, title: "Do not block claim on GitHub" }));
+    env.gh.createComment = () => new Promise(() => {});
+    env.gh.updateComment = () => new Promise(() => {});
+    env.gh.addLabels = () => new Promise(() => {});
+    env.gh.removeLabel = () => new Promise(() => {});
+    const started = Date.now();
+    const claimed = await claimJob(env.ctx, runner);
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(claimed).toMatchObject({ title: "Do not block claim on GitHub" });
+    expect((await getJob(env.ctx, claimed!.id)).status).toBe("triage");
+  });
+
+  it("re-queues a job the online runner still owns but is not running", async () => {
+    const { team, repo } = await seedTeam(env);
+    const runner = await seedRunner(env, team.id, repo.id, { name: "alice-mbp" });
+    env.gh.addIssue("acme/app", { number: 21, title: "Dropped after claim" });
+    await deliver(env, "issues", issueLabeledPayload({ number: 21, title: "Dropped after claim" }));
+    const claimed = (await claimJob(env.ctx, runner))!;
+    expect((await getJob(env.ctx, claimed.id)).status).toBe("triage");
+
+    const beat = {
+      cpu: 10,
+      memMb: 32000,
+      diskFreeMb: 100000,
+      onAcPower: true,
+      accepting: true,
+      runningJobIds: [] as string[],
+      harnesses: [{ id: "claude-code", installed: true, authOk: true }],
+      maxConcurrency: 1,
+      version: "0.1.0",
+    };
+    await heartbeat(env.ctx, runner, beat);
+    expect((await getJob(env.ctx, claimed.id)).status).toBe("triage");
+
+    env.clock.advance(DROPPED_JOB_GRACE_MS + 1);
+    expect(await requeueDroppedJobs(env.ctx, runner, [])).toEqual([claimed.id]);
+    expect(await getJob(env.ctx, claimed.id)).toMatchObject({
+      status: "queued",
+      resumeStage: "triage",
+      stickyRunnerId: runner.id,
+    });
+
+    await env.ctx.db
+      .update(jobs)
+      .set({ status: "triage", runnerId: runner.id })
+      .where(eq(jobs.id, claimed.id));
+    env.clock.advance(DROPPED_JOB_GRACE_MS + 1);
+    await heartbeat(env.ctx, runner, { ...beat, runningJobIds: [claimed.id] });
+    expect((await getJob(env.ctx, claimed.id)).status).toBe("triage");
   });
 
   it("auto-merges when every gate rule passes, otherwise hands over with routed reviewers", async () => {
