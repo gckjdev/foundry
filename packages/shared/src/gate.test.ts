@@ -49,6 +49,14 @@ describe("evaluateGate", () => {
     ["open uncertainties", (g) => (g.confidence = { level: "high", uncertainties: ["?"] }), "confidence"],
     ["no confidence reported", (g) => (g.confidence = null), "confidence"],
     ["over budget", (g) => (g.costUsd = 11), "cost"],
+    [
+      "automatic PR review requires a human merge",
+      (g) => {
+        g.humanMergeRequired = true;
+        g.autoReviewComplete = true;
+      },
+      "human_review",
+    ],
   ];
 
   it.each(cases)("fails on %s", (_name, mutate, rule) => {
@@ -70,6 +78,11 @@ describe("evaluateGate", () => {
     const g = base();
     g.ci = "pending";
     expect(evaluateGate(g)).toMatchObject({ pass: false, pending: true, failed: [] });
+  });
+
+  it("waits for the automatic PR review before gating", () => {
+    const r = evaluateGate({ ...base(), humanMergeRequired: true, autoReviewComplete: false });
+    expect(r).toMatchObject({ pass: false, pending: true, failed: [] });
   });
 
   it("a hard failure is decided even while CI is pending", () => {

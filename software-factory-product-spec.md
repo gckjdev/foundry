@@ -194,7 +194,7 @@ What each stage does:
 - **Reviewing:** a fresh, read-only reviewer session inspects the diff in a throwaway worktree with the ticket, plan and summary. It reviews **code quality**, **UI design** (design-system tokens, layout, responsive and accessible states) and **security**, and reports blocking and non-blocking findings tagged by category. Blocking findings loop back to Implementing up to `max_review_loops` times; a clean review (or an exhausted loop budget, which then fails the gate) moves to Verifying.
 - **Verifying:** runs the recipe checks. For UI changes it also starts the app and captures screenshots. Failures loop back to Implementing, up to 3 times by default. Every check's command, exit code and output tail is stored as evidence.
 - **PR/CI:** opens the PR with a template (summary, plan, evidence, a self-reported confidence and why), then waits for CI and the optional AI review (e.g. Bugbot). Failures loop back to Implementing.
-- **PR review (optional, `auto_pr_review`):** when CI for the PR head finishes, a fresh read-only reviewer session inspects the pushed PR and the failed check details (names, summaries, annotations), then Foundry posts the verdict and inline comments as a GitHub review. Blocking findings loop back to Implementing up to `max_review_loops` times; a clean review returns the job to the gate. The GitHub review uses a `COMMENT` event because the Foundry App authors the PR and GitHub does not let a PR author approve it.
+- **PR review (optional, `auto_pr_review`):** when CI for the PR head finishes, a fresh read-only reviewer session inspects the pushed PR and the failed check details (names, summaries, annotations), then Foundry posts the verdict and inline comments as a GitHub review. Blocking findings loop back to Implementing up to `max_review_loops` times; a clean review leaves its comments and the gate then holds the PR for a human. Auto-merge never happens while `auto_pr_review` is on. The GitHub review uses a `COMMENT` event because the Foundry App authors the PR and GitHub does not let a PR author approve it.
 - **Gate:** see section 5.5.
 - **Waiting on you:** the human merges, requests changes (which go back to the agent as a new message), or closes.
 
@@ -278,6 +278,7 @@ A PR auto-merges **only if all of these hold**:
 7. Diff size ≤ `max_diff_lines_for_automerge`.
 8. The agent's self-assessment is `high`, and it lists no open uncertainties.
 9. Total job cost ≤ `max_cost_per_job_usd`.
+10. `auto_pr_review` is off. When it is on, the automatic PR review only leaves comments and the PR always waits for a human to merge.
 
 Otherwise the job moves to **Waiting on you**, with the specific failed rules listed at the top of the job page, e.g. "Risk rule hit: database schema (2 files)". The handover is **routed**, not broadcast. If a risk rule fired, its `reviewers` are requested on the PR and notified. Otherwise the ticket's author is asked to review. Each team member's inbox shows only what's waiting on them, plus a team-wide "unassigned" lane.
 

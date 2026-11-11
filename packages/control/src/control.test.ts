@@ -684,6 +684,58 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
     });
   });
 
+  it("never auto-merges after a passing automatic PR review", async () => {
+    const { team, repo } = await seedTeam(env, {
+      policyYaml: "auto_pr_review: true\nmerge: merge_when_confident\n",
+    });
+    const runner = await seedRunner(env, team.id, repo.id, { name: "mac", os: "macos" });
+    const fake = env.gh.repo("acme/app");
+    env.gh.addIssue("acme/app", { number: 21, title: "Review then human merge" });
+    await deliver(env, "issues", issueLabeledPayload({ number: 21, title: "Review then human merge" }));
+    const c = (await claimJob(env.ctx, runner))!;
+    for (const [to, last] of [
+      ["investigating", "triage"],
+      ["implementing", "investigating"],
+      ["reviewing", "implementing"],
+      ["verifying", "reviewing"],
+    ] as const) {
+      await runnerStage(env.ctx, runner, c.id, { to, lastCompletedStage: last });
+    }
+    for (const name of ["test", "lint"])
+      await runnerEvidence(env.ctx, runner, c.id, { kind: "check", name, status: "passed" });
+    await runnerEvidence(env.ctx, runner, c.id, { kind: "review", name: "code review", status: "passed" });
+    await runnerConfidence(env.ctx, runner, c.id, { level: "high", reasons: ["ok"], uncertainties: [] });
+    fake.branches.set(c.branch, "sha-21");
+    fake.ci.set("sha-21", "success");
+    const pr = await openPullRequest(env.ctx, await getJob(env.ctx, c.id), {
+      title: "Review then human merge",
+      summary: "Done",
+      headSha: "sha-21",
+      uiChanged: false,
+      changedLines: 10,
+    });
+    fake.prFiles.set(pr.prNumber, [{ filename: "src/a.ts", additions: 5, deletions: 1 }]);
+    // The gate is held while the review is still outstanding, even though CI is green.
+    expect((await getJob(env.ctx, c.id)).status).toBe("queued");
+    expect((await getJob(env.ctx, c.id)).resumeStage).toBe("pr_review");
+
+    await claimJob(env.ctx, runner);
+    const result = await runnerPrReview(env.ctx, runner, c.id, {
+      verdict: "approve",
+      summary: "No blocking issues",
+      findings: [],
+    });
+    expect(result.status).toBe("waiting_on_you");
+    const handed = await getJob(env.ctx, c.id);
+    expect(handed.gateResult).toMatchObject({
+      pass: false,
+      pending: false,
+      failed: [{ rule: "human_review" }],
+    });
+    expect(fake.prs.get(pr.prNumber)?.merged).toBe(false);
+    expect(env.gh.reviewsOn("acme/app", pr.prNumber)[0]).toMatchObject({ state: "COMMENTED" });
+  });
+
   it("re-queues a job for a changes-requested review even when the webhook was missed", async () => {
     const { team, repo } = await seedTeam(env);
     const [job] = await env.ctx.db

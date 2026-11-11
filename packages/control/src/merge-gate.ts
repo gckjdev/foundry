@@ -181,6 +181,10 @@ export async function evaluateJobGate(ctx: ControlContext, jobId: string): Promi
   if (await maybeStartPrReview(ctx, job, pr.headSha, ci)) return null;
   // A concurrent CI webhook may have moved the job to `pr_review` (or somewhere else) already.
   if ((await getJob(ctx, job.id)).status !== "pr_ci") return null;
+  const autoReviewComplete = job.prReviewSha === pr.headSha;
+  // With the automatic review enabled, wait for it before gating (CI may still be running, or
+  // no check has appeared yet). It must never merge before the review has left its comments.
+  if (job.kind === "ticket" && policy.auto_pr_review && !autoReviewComplete) return null;
   const [files, reviews, ev] = await Promise.all([
     ctx.gh.listPullRequestFiles(ref, job.prNumber),
     ctx.gh.listReviews(ref, job.prNumber),
@@ -213,6 +217,8 @@ export async function evaluateJobGate(ctx: ControlContext, jobId: string): Promi
       : null,
     costUsd: job.costUsd,
     maxCostUsd: effectiveMaxCostUsd(job.maxCostUsd, policy),
+    humanMergeRequired: job.kind === "ticket" && policy.auto_pr_review,
+    autoReviewComplete,
   });
 
   await ctx.db

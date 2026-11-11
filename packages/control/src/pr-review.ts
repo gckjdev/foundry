@@ -17,7 +17,7 @@ export async function maybeStartPrReview(
   headSha: string,
   ci: CiState,
 ): Promise<boolean> {
-  if (job.status !== "pr_ci" || job.prNumber === null) return false;
+  if (job.kind !== "ticket" || job.status !== "pr_ci" || job.prNumber === null) return false;
   // Wait for CI to settle. `none` means GitHub reported no checks at all; there is nothing to
   // review yet, and the gate keeps the PR until a check appears.
   if (ci !== "success" && ci !== "failure") return false;

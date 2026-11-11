@@ -90,8 +90,10 @@ export async function runnerPrReview(
 ) {
   const job = await ownedJob(ctx, runner, jobId);
   const updated = await submitPrReview(ctx, job, req);
-  if (updated.status === "pr_ci") await evaluateJobGate(ctx, updated.id);
-  return { status: updated.status };
+  if (updated.status !== "pr_ci") return { status: updated.status };
+  await evaluateJobGate(ctx, updated.id);
+  // The gate decides the next state: with `auto_pr_review` on it always hands the PR to a human.
+  return { status: (await getJob(ctx, updated.id)).status };
 }
 
 export async function runnerAsk(

@@ -373,9 +373,10 @@ The runner reviews the pushed head in a detached read-only worktree and reports 
 
 The control plane posts the result as a `COMMENT` review on the PR — the Foundry App authors the
 PR, so GitHub will not accept an `APPROVE` or `REQUEST_CHANGES` event from it — and records
-`code review` evidence. Approval returns the job to `pr_ci` for the gate. Blocking findings become
-a message and re-queue the job at `implementing` for up to `max_review_loops` rounds; after that
-the job is handed to the ticket author.
+`code review` evidence. Approval returns the job to `pr_ci`, but **the gate never auto-merges a job
+with `auto_pr_review` on**: the review is advisory, and the PR waits for a human to merge
+(`human_review` rule). Blocking findings become a message and re-queue the job at `implementing`
+for up to `max_review_loops` rounds; after that the job is handed to the ticket author.
 
 #### `evidence` request
 
