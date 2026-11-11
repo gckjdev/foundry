@@ -27,7 +27,8 @@ describe("panel realtime refresh", () => {
   it("does not refresh the job page for agent events, which the live log polls", () => {
     // The runner inserts an `events` row per tool call for every running job, and the realtime
     // service fans them out team-wide. Watching that table would re-render the page (and re-sign
-    // every artifact URL) once a second while any job runs; `LiveLog` polls its own endpoint.
+    // every artifact URL) once a second while any job runs; `LiveLog` polls its own job-scoped
+    // endpoint and asks for a server refresh only for kinds the page renders outside the log.
     const job = new Set(tablesForPage("/jobs/3ddf935d"));
     expect(tablesForPage("/jobs/3ddf935d")).toEqual(["jobs", "questions"]);
     expect(isRefreshMessage(job, { type: "change", table: "events" })).toBe(false);
