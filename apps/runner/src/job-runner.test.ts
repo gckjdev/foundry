@@ -623,11 +623,16 @@ describe("JobRunner", () => {
       ]);
       const runner = new JobRunner(deps(harness), claimedJob({ maxJobMinutes: 2 }));
       const running = runner.run();
-      // The first flushed event means drive() has armed the deadline.
-      for (let i = 0; i < 100 && api.named("events").length === 0; i++) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-      expect(api.named("events").length).toBeGreaterThan(0);
+      // "still working" is pushed only after drive() arms the deadline. The setup log can
+      // flush earlier, and advancing the clock then would not trip the limit. Date is frozen,
+      // so this counts real timers: worktree setup can take longer than a second when the
+      // machine is busy (the readiness suite runs this file with the rest of the repo).
+      const sawWorking = () =>
+        api
+          .named("events")
+          .some((call) => (call.body as { text?: string }[]).some((event) => event.text === "still working"));
+      for (let i = 0; i < 500 && !sawWorking(); i++) await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(sawWorking()).toBe(true);
 
       vi.setSystemTime(startedAt + 61 * 60_000);
       runner.setMaxJobMinutes(1);
