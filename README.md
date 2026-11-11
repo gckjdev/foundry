@@ -67,6 +67,7 @@ Every human-facing document has a Chinese version.
 | Configuration, install and deploy     | [docs/local-setup.md](docs/local-setup.md)                           | [docs/local-setup.zh-CN.md](docs/local-setup.zh-CN.md)                           |
 | Repo onboarding                       | [docs/onboarding.md](docs/onboarding.md)                             | [docs/onboarding.zh-CN.md](docs/onboarding.zh-CN.md)                             |
 | `.foundry/` field reference           | [docs/foundry-dot-dir.md](docs/foundry-dot-dir.md)                   | [docs/foundry-dot-dir.zh-CN.md](docs/foundry-dot-dir.zh-CN.md)                   |
+| HTTP and tool API reference           | [docs/api.md](docs/api.md)                                           | [docs/api.zh-CN.md](docs/api.zh-CN.md)                                           |
 | Logging standard                      | [docs/logging.md](docs/logging.md)                                   | [docs/logging.zh-CN.md](docs/logging.zh-CN.md)                                   |
 | Testing architecture                  | [docs/testing.md](docs/testing.md)                                   | [docs/testing.zh-CN.md](docs/testing.zh-CN.md)                                   |
 | Testing coverage snapshot             | [docs/testing-report.md](docs/testing-report.md)                     | [docs/testing-report.zh-CN.md](docs/testing-report.zh-CN.md)                     |

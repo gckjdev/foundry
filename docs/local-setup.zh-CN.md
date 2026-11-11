@@ -72,6 +72,9 @@
 订阅：`installation`、`installation_repositories`、`push`、`issues`、`issue_comment`、
 `pull_request`、`pull_request_review`、`check_suite`、`check_run`、`status`。
 
+投递契约——header、签名校验、响应以及 Foundry 会处理的事件：见
+[`api.zh-CN.md` §6](api.zh-CN.md#6-github-webhook)。
+
 ### 复制到 `.env` 的凭据
 
 从 App 页面：

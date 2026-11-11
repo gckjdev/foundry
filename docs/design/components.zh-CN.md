@@ -68,6 +68,9 @@
 
 面板 API 通过 Auth.js 会话认证，并限定在当前选中的团队。
 
+完整的请求/响应参考——runner API、面板 API、realtime 协议、runner 工具桥和 GitHub webhook——见
+[`api.zh-CN.md`](../api.zh-CN.md)。
+
 ### 2.4 失败行为
 
 - Webhook 在分发前先返回 `202`；处理失败留在 `webhook_inbox` 中由 worker 重试。
@@ -101,6 +104,7 @@
 - 25 秒 ping/pong 循环会断开死亡客户端和 token 已过期的客户端。
 - 消息只携带标识符；客户端通过带认证的 API 重新拉取行数据。
 - `GET /healthz` 返回 `ok`；其他 HTTP 请求返回 `426 WebSocket only`。
+- 协议参考：[`api.zh-CN.md`](../api.zh-CN.md#4-控制面--realtime-websocket)。
 
 ### 3.3 失败行为
 
@@ -170,6 +174,9 @@ git 操作由 runner 负责。
 9. 收到 `stage(done)` 后，对确切工作树重新运行检查、提交、计算 diff、要求至少有一个文件变更、
    UI 路径变化时截图、推送，并请求控制面创建 PR。
 10. 清理：释放 harness；除非 parked，否则删除 worktree；释放端口；删除服务。
+
+这些工具背后的 HTTP 调用见
+[`api.zh-CN.md`](../api.zh-CN.md#5-runner--本地工具桥)。
 
 ### 4.5 失败行为
 

@@ -111,6 +111,7 @@ Runner stages in order: `triage` → `investigating` → `implementing` → `rev
 | ------------------------------------ | ----------------------------------------------------------------------------------- |
 | Job lifecycle / claim / fail / retry | `packages/control/src/jobs.ts`, `claim.ts`, `onboarding.ts`                         |
 | GitHub webhooks → jobs               | `packages/control/src/ingest.ts`, `apps/web/src/app/api/webhooks/github`            |
+| HTTP API / webhook contracts         | `docs/api.md`, `packages/shared/src/api.ts`                                         |
 | Sign-in / App install                | `apps/web/src/auth.ts`, `apps/web/src/server/retry-fetch.ts`                        |
 | Merge gate                           | `packages/control/src/merge-gate.ts`, `packages/shared/src/gate.ts`                 |
 | Database schema / data dictionary    | `packages/db/src/schema.ts`, `docs/design/database.md`                              |

@@ -77,6 +77,7 @@ GitHub App URL、`.env`（包括 `FOUNDRY_HTTP_PROXY`）、本地 Postgres 和 D
 | 配置、安装与部署             | [docs/local-setup.md](docs/local-setup.md)                           | [docs/local-setup.zh-CN.md](docs/local-setup.zh-CN.md)                           |
 | 仓库 onboarding              | [docs/onboarding.md](docs/onboarding.md)                             | [docs/onboarding.zh-CN.md](docs/onboarding.zh-CN.md)                             |
 | `.foundry/` 字段参考         | [docs/foundry-dot-dir.md](docs/foundry-dot-dir.md)                   | [docs/foundry-dot-dir.zh-CN.md](docs/foundry-dot-dir.zh-CN.md)                   |
+| HTTP 与工具 API 参考         | [docs/api.md](docs/api.md)                                           | [docs/api.zh-CN.md](docs/api.zh-CN.md)                                           |
 | 测试架构                     | [docs/testing.md](docs/testing.md)                                   | [docs/testing.zh-CN.md](docs/testing.zh-CN.md)                                   |
 | 测试覆盖率快照               | [docs/testing-report.md](docs/testing-report.md)                     | [docs/testing-report.zh-CN.md](docs/testing-report.zh-CN.md)                     |
 | ADR 001：Runner 运行时与打包 | [docs/adr/001-runner-runtime.md](docs/adr/001-runner-runtime.md)     | [docs/adr/001-runner-runtime.zh-CN.md](docs/adr/001-runner-runtime.zh-CN.md)     |

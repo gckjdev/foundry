@@ -64,6 +64,8 @@ Account:
 
 Subscribe to: `installation`, `installation_repositories`, `push`, `issues`, `issue_comment`, `pull_request`, `pull_request_review`, `check_suite`, `check_run`, `status`.
 
+Delivery contract — headers, signature verification, responses and the events Foundry acts on: [`api.md` §6](api.md#6-github-webhook).
+
 ### Credentials to copy into `.env`
 
 From the App page:
