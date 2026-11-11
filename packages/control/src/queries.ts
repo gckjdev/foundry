@@ -10,6 +10,7 @@ import {
   runners,
   users,
 } from "@foundry/db";
+import { RUNNING_STATUSES } from "@foundry/shared";
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import { diagnoseQueue } from "./claim";
 import type { ControlContext } from "./context";
@@ -273,10 +274,5 @@ export async function runningJobsByRunner(ctx: ControlContext, runnerIds: string
   return ctx.db
     .select({ id: jobs.id, title: jobs.title, status: jobs.status, runnerId: jobs.runnerId })
     .from(jobs)
-    .where(
-      and(
-        inArray(jobs.runnerId, runnerIds),
-        inArray(jobs.status, ["triage", "investigating", "implementing", "reviewing", "verifying"]),
-      ),
-    );
+    .where(and(inArray(jobs.runnerId, runnerIds), inArray(jobs.status, [...RUNNING_STATUSES])));
 }

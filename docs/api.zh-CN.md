@@ -245,7 +245,7 @@ daemon 运行时按心跳间隔发送。它更新 runner 记录、返回当前�
 | `resumeMode`    | `fresh`（新 worktree/会话）、`sticky`（该 runner 的原生会话）或 `portable` |
 | `sessionId`     | 可恢复的原生 harness 会话（当该 runner 能恢复时）                          |
 | `loopCount`     | 已使用的验证/修复循环次数                                                  |
-| `pendingInputs` | 任务挂起期间排队的回答和消息；领取时消费                                   |
+| `pendingInputs` | 任务挂起期间排队的回答和消息；领取时消费（`pr_review` 领取会留给下一次 implementing 运行） |
 | `mergeMode`     | `off` 或 `merge_when_confident`——该仓库的生效策略                          |
 | `prReview`      | 仅 `pr_review` 领取时存在：PR head 与需要排查的失败 CI 检查                |
 
@@ -342,8 +342,9 @@ runner 通常一次前进一个阶段。它也会发送 `queued` 交还任务（
 #### 自动 PR 评审
 
 当 `.foundry/policy.yaml` 设置 `auto_pr_review: true` 时，PR head 的 CI 检查结束后，处于 `pr_ci`
-的任务会以 `resumeStage: "pr_review"` 重新入队（每个 head SHA 只评审一次）。如果仓库完全没有
-注册检查，worker 会在下一轮以 `allowNoCi` 评估并启动评审。领取响应的
+的任务会以 `resumeStage: "pr_review"` 重新入队（每个 head SHA 只评审一次）。如果 PR 进入
+`pr_ci` 后经过两分钟宽限期仍然没有任何检查，worker 会以 `allowNoCi` 启动评审；宽限期避免把
+仍在注册中的 check suite 误判为仓库没有 CI。领取响应的
 `prReview` 字段携带 PR 信息和失败的检查：`{ prNumber, url, headSha, ciFailures }`，每个失败项包含
 `name`、`conclusion`、`summary`、`detailsUrl` 和 `annotations`（`path`、可选 `line`、`message`）。
 

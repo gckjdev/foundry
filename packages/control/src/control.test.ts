@@ -7,6 +7,7 @@ import { storeArtifact } from "./artifacts";
 import { claimJob } from "./claim";
 import { processWebhook, storeWebhook } from "./ingest";
 import {
+  addInput,
   cancelJob,
   getJob,
   reconcileLabeledIssues,
@@ -18,7 +19,7 @@ import {
 } from "./jobs";
 import { evaluateJobGate, reconcileChangesRequestedReviews, reconcileOpenPullRequests } from "./merge-gate";
 import { capacityCard } from "./metrics";
-import { submitPrReview } from "./pr-review";
+import { NO_CI_GRACE_MS, submitPrReview } from "./pr-review";
 import { openPullRequest } from "./prs";
 import { boardJobs, inbox, teamReposWithReadiness } from "./queries";
 import { answerFromCheckbox } from "./questions";
@@ -720,6 +721,7 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
         prNumber: pr.number,
         prUrl: pr.url,
         headSha: "sha-22",
+        prCiEnteredAt: env.ctx.now(),
       })
       .returning();
     fake.ci.set("sha-22", "none");
@@ -727,6 +729,11 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
     // The webhook path waits for checks; the worker's pass must not deadlock the job forever.
     await evaluateJobGate(env.ctx, job!.id);
     expect((await getJob(env.ctx, job!.id)).status).toBe("pr_ci");
+    // Nor may a `none` seen immediately after the PR opens beat a check suite that is still
+    // registering: the head SHA would be marked reviewed before CI ever ran.
+    await evaluateJobGate(env.ctx, job!.id, { allowNoCi: true });
+    expect((await getJob(env.ctx, job!.id)).status).toBe("pr_ci");
+    env.clock.advance(NO_CI_GRACE_MS + 1);
     await evaluateJobGate(env.ctx, job!.id, { allowNoCi: true });
     expect(await getJob(env.ctx, job!.id)).toMatchObject({
       status: "queued",
@@ -789,6 +796,75 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
       status: "queued",
       resumeStage: "pr_review",
     });
+  });
+
+  it("moves a queued review job to implementing when a human message arrives", async () => {
+    const { team, repo } = await seedTeam(env, { policyYaml: "auto_pr_review: true\n" });
+    const runner = await seedRunner(env, team.id, repo.id, { name: "mac" });
+    const [job] = await env.ctx.db
+      .insert(jobs)
+      .values({
+        teamId: team.id,
+        repoId: repo.id,
+        title: "Message during review",
+        harness: "claude-code",
+        branch: "foundry/msg-review",
+        status: "queued",
+        resumeStage: "pr_review",
+        prNumber: 12,
+        headSha: "sha-12",
+      })
+      .returning();
+    const moved = await sendMessage(env.ctx, job!.id, "Please also update the README", "alice");
+    expect(moved).toMatchObject({ status: "queued", resumeStage: "implementing" });
+    const claimed = (await claimJob(env.ctx, runner))!;
+    expect(claimed.resumeStage).toBe("implementing");
+    expect(claimed.pendingInputs).toMatchObject([{ kind: "message", text: "Please also update the README" }]);
+  });
+
+  it("does not consume pending input on a review claim", async () => {
+    const { team, repo } = await seedTeam(env, { policyYaml: "auto_pr_review: true\n" });
+    const runner = await seedRunner(env, team.id, repo.id, { name: "mac" });
+    const [job] = await env.ctx.db
+      .insert(jobs)
+      .values({
+        teamId: team.id,
+        repoId: repo.id,
+        title: "Stranded input",
+        harness: "claude-code",
+        branch: "foundry/stranded",
+        status: "queued",
+        resumeStage: "pr_review",
+        prNumber: 13,
+        headSha: "sha-13",
+      })
+      .returning();
+    await addInput(env.ctx, job!, { kind: "message", text: "For the next run", by: "alice" });
+    const claimed = (await claimJob(env.ctx, runner))!;
+    expect(claimed.resumeStage).toBe("pr_review");
+    expect(claimed.pendingInputs).toEqual([]);
+    expect(await takePendingInputs(env.ctx, job!.id)).toMatchObject([
+      { kind: "message", text: "For the next run", by: "alice" },
+    ]);
+  });
+
+  it("resets the automatic review budget on retry", async () => {
+    const { team, repo } = await seedTeam(env, { policyYaml: "auto_pr_review: true\n" });
+    const [job] = await env.ctx.db
+      .insert(jobs)
+      .values({
+        teamId: team.id,
+        repoId: repo.id,
+        title: "Retry review budget",
+        harness: "claude-code",
+        branch: "foundry/retry-budget",
+        status: "waiting_on_you",
+        prReviewCount: 2,
+        prReviewSha: "sha-old",
+      })
+      .returning();
+    const retried = await retryJob(env.ctx, job!.id, "triage", "alice");
+    expect(retried).toMatchObject({ status: "queued", prReviewCount: 0, prReviewSha: null });
   });
 
   it("never auto-merges after a passing automatic PR review", async () => {

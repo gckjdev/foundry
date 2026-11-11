@@ -375,6 +375,15 @@ export async function sendMessage(
   await addInput(ctx, job, { kind: "message", text, by, attachments });
   const note = attachments.length ? `\n\n${attachments.map((a) => `[image: ${a.name}]`).join("\n")}` : "";
   await recordEvents(ctx, job, [{ kind: "message", role: "human", text: `@${by}: ${text}${note}` }]);
+  // A queued review would claim and never show the message; send the job to implementing instead.
+  if (job.status === "queued" && job.resumeStage === "pr_review") {
+    const moved = await transitionJob(ctx, jobId, "queued", {
+      reason: `message from @${by}`,
+      patch: { resumeStage: "implementing" },
+      from: ["queued"],
+    });
+    if (moved) return moved;
+  }
   if (["pr_ci", "pr_review", "waiting_on_you", "failed"].includes(job.status)) {
     const moved = await transitionJob(ctx, jobId, "queued", {
       reason: `message from @${by}`,
@@ -418,6 +427,9 @@ export async function retryJob(ctx: ControlContext, jobId: string, stage: Runner
       resumeStage: stage,
       failureReason: null,
       loopCount: 0,
+      // A retry is a fresh attempt: the automatic PR review gets its fix budget back.
+      prReviewCount: 0,
+      prReviewSha: null,
       harness: config.harness,
       model: config.model,
       // A native harness session belongs to the harness that created it.

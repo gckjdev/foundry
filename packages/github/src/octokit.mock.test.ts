@@ -247,6 +247,15 @@ describe("OctokitGitHubClient via MockAgent", () => {
       return json(200, [{ path: "a.ts", start_line: 3, end_line: 3, message: "expected 1" }]);
     }
     if (method === "GET" && pathname === "/repos/acme/app/commits/bad/statuses") return json(200, []);
+    if (method === "GET" && pathname === "/repos/acme/app/commits/rerun/check-runs") {
+      return json(200, {
+        check_runs: [
+          { id: 20, name: "test", status: "completed", conclusion: "cancelled" },
+          { id: 21, name: "test", status: "completed", conclusion: "success" },
+        ],
+      });
+    }
+    if (method === "GET" && pathname === "/repos/acme/app/commits/rerun/statuses") return json(200, []);
     if (method === "POST" && pathname === "/graphql") {
       const queryText = (JSON.parse(body) as { query?: string }).query ?? "";
       if (queryText.includes('field(name: "Status")')) {
@@ -396,6 +405,8 @@ describe("OctokitGitHubClient via MockAgent", () => {
       },
     ]);
     await expect(client.checkFailures(ref, "abc")).resolves.toEqual([]);
+    // A cancelled run superseded by a later pass for the same check is not a current failure.
+    await expect(client.checkFailures(ref, "rerun")).resolves.toEqual([]);
   });
 
   it("submits a review and retries without inline comments when GitHub rejects them", async () => {

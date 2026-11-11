@@ -80,6 +80,17 @@ const FAILED_CONCLUSIONS = new Set([
   "startup_failure",
 ]);
 
+/** The newest item per key (GitHub ids increase); a re-run's cancelled predecessor must not win. */
+function latestById<T extends { id: number }>(items: T[], key: (item: T) => string): T[] {
+  const newest = new Map<string, T>();
+  for (const item of items) {
+    const k = key(item);
+    const previous = newest.get(k);
+    if (!previous || item.id > previous.id) newest.set(k, item);
+  }
+  return [...newest.values()];
+}
+
 /** Combine check runs and commit statuses into one CI state. */
 export function combineCi(
   checkRuns: { name: string; status: string; conclusion: string | null }[],
@@ -358,7 +369,9 @@ export class OctokitGitHubClient implements GitHubClient {
       kit.checks.listForRef({ ...repo, ref: sha, per_page: 100 }),
       kit.repos.listCommitStatusesForRef({ ...repo, ref: sha, per_page: 100 }),
     ]);
-    const failed = runs.data.check_runs
+    // Keep only the newest run per check name, so a cancelled run left behind by a re-run is not
+    // reported as a current failure.
+    const failed = latestById(runs.data.check_runs, (r) => r.name)
       .filter((r) => r.conclusion && FAILED_CONCLUSIONS.has(r.conclusion))
       .slice(0, 10);
     const failures: GhCheckFailure[] = [];
@@ -369,7 +382,7 @@ export class OctokitGitHubClient implements GitHubClient {
         annotations = res.data.slice(0, 20).map((a) => ({
           path: a.path,
           line: a.end_line ?? a.start_line ?? undefined,
-          message: a.message ?? "",
+          message: (a.message ?? "").slice(0, 1_000),
         }));
       } catch {
         // Annotations are a bonus; the summary and details URL still tell the reviewer where to look.
@@ -377,17 +390,17 @@ export class OctokitGitHubClient implements GitHubClient {
       failures.push({
         name: run.name,
         conclusion: run.conclusion ?? "failure",
-        summary: run.output?.summary || run.output?.title || null,
+        summary: (run.output?.summary || run.output?.title || "").slice(0, 2_000) || null,
         detailsUrl: run.details_url ?? null,
         annotations,
       });
     }
-    for (const s of statuses.data) {
+    for (const s of latestById(statuses.data, (s) => s.context)) {
       if (s.state !== "failure" && s.state !== "error") continue;
       failures.push({
         name: s.context,
         conclusion: s.state,
-        summary: s.description ?? null,
+        summary: s.description?.slice(0, 2_000) ?? null,
         detailsUrl: s.target_url ?? null,
         annotations: [],
       });

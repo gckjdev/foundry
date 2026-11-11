@@ -70,7 +70,11 @@ export async function openPullRequest(ctx: ControlContext, job: Job, input: Open
     pr: pr.number,
     url: pr.url,
   });
-  await transitionJob(ctx, job.id, "pr_ci", { reason: "pull request opened", from: ["verifying"] });
+  await transitionJob(ctx, job.id, "pr_ci", {
+    reason: "pull request opened",
+    from: ["verifying"],
+    patch: { prCiEnteredAt: ctx.now() },
+  });
   await evaluateJobGate(ctx, job.id);
   return { prNumber: pr.number, url: pr.url };
 }

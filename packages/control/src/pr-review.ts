@@ -8,6 +8,13 @@ import { addInput, getJob, recordEvents, transitionJob } from "./jobs";
 import { repoPolicy } from "./repos";
 
 /**
+ * How long a PR must sit in `pr_ci` before `ci === "none"` is treated as "this repo has no
+ * checks". It gives GitHub time to register a check suite or external CI to post a status; without
+ * it the worker could review the PR before CI exists and mark the head SHA as reviewed.
+ */
+export const NO_CI_GRACE_MS = 2 * 60_000;
+
+/**
  * Start the automatic post-PR review exactly once per PR head. Called by the confidence gate
  * whenever a job in `pr_ci` has a settled CI result. Returns true when the job was re-queued.
  */
@@ -20,9 +27,13 @@ export async function maybeStartPrReview(
 ): Promise<boolean> {
   if (job.kind !== "ticket" || job.status !== "pr_ci" || job.prNumber === null) return false;
   // Wait for CI to settle. A repo that registers no checks at all would otherwise never review;
-  // the worker passes `allowNoCi` after its first pass so such PRs still get reviewed.
+  // the worker passes `allowNoCi` once the PR has been in `pr_ci` past the grace period.
   const settled = ci === "success" || ci === "failure";
-  if (!settled && !(opts.allowNoCi && ci === "none")) return false;
+  if (!settled) {
+    if (!(opts.allowNoCi && ci === "none")) return false;
+    const entered = job.prCiEnteredAt?.getTime() ?? 0;
+    if (ctx.now().getTime() - entered < NO_CI_GRACE_MS) return false;
+  }
   if (job.prReviewSha === headSha) return false;
   const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, job.repoId) });
   if (!repo || !repoPolicy(repo).auto_pr_review) return false;
@@ -31,7 +42,13 @@ export async function maybeStartPrReview(
       ? "PR CI finished; starting the automatic review"
       : "No CI checks; starting the automatic review",
     from: ["pr_ci"],
-    patch: { resumeStage: "pr_review", prReviewSha: headSha, lastCompletedStage: "verifying" },
+    // Pin both the reviewed SHA and the job head: the live PR head may have moved since open.
+    patch: {
+      resumeStage: "pr_review",
+      prReviewSha: headSha,
+      headSha,
+      lastCompletedStage: "verifying",
+    },
   });
   if (!moved) return false;
   ctx.log.info("auto PR review queued", { jobId: job.id, pr: job.prNumber, headSha, ci });
@@ -41,7 +58,7 @@ export async function maybeStartPrReview(
 /** The PR head and failed checks the runner needs to review. */
 export async function prReviewContext(
   ctx: ControlContext,
-  job: Pick<Job, "prNumber" | "prUrl" | "headSha" | "repoId">,
+  job: Pick<Job, "prNumber" | "prUrl" | "headSha" | "prReviewSha" | "repoId">,
 ): Promise<PrReviewContext | null> {
   if (job.prNumber === null) return null;
   const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, job.repoId) });
@@ -54,7 +71,8 @@ export async function prReviewContext(
     // A transient GitHub failure must not strand the claim; review the SHA the job recorded.
     ctx.log.warn("auto PR review: could not read the pull request", { ...errorFields(err) });
   }
-  const headSha = job.headSha ?? pr?.headSha;
+  // `prReviewSha` is the SHA the review was queued for; prefer it over a possibly stale job head.
+  const headSha = job.prReviewSha ?? job.headSha ?? pr?.headSha;
   if (!headSha) return null;
   let ciFailures: PrReviewContext["ciFailures"] = [];
   try {
@@ -118,6 +136,7 @@ export async function submitPrReview(ctx: ControlContext, job: Job, report: PrRe
     const approved = await transitionJob(ctx, job.id, "pr_ci", {
       reason: "automatic PR review approved the change",
       from: ["pr_review"],
+      patch: { prCiEnteredAt: ctx.now() },
     });
     return approved ?? getJob(ctx, job.id);
   }

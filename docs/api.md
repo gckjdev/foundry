@@ -255,7 +255,7 @@ scheduler. The daemon simply tries again on the next heartbeat.
 | `resumeMode`      | `fresh` (new worktree/session), `sticky` (this runner's native session), or `portable` |
 | `sessionId`       | Native harness session to resume, when this runner can                                 |
 | `loopCount`       | Verify/fix loops already used                                                          |
-| `pendingInputs`   | Answers and messages queued while the job was parked; claim consumes them              |
+| `pendingInputs`   | Answers and messages queued while the job was parked; claim consumes them (a `pr_review` claim leaves them for the following implementing run) |
 | `mergeMode`       | `off` or `merge_when_confident` — the effective policy for this repo                   |
 | `prReview`        | Only on a `pr_review` claim: the PR head and failed CI checks to investigate            |
 
@@ -357,9 +357,10 @@ The runner normally advances one stage at a time. It also sends `queued` to hand
 #### Automatic PR review
 
 When `.foundry/policy.yaml` sets `auto_pr_review: true`, a job in `pr_ci` is re-queued with
-`resumeStage: "pr_review"` once the PR head's CI checks finish (once per head SHA). If a repo
-registers no checks at all, the worker starts the review on its next pass (it calls the gate with
-`allowNoCi`). The claim's
+`resumeStage: "pr_review"` once the PR head's CI checks finish (once per head SHA). If the PR has
+been in `pr_ci` past a two-minute grace period and still has no checks, the worker starts the
+review anyway (`allowNoCi`); the grace keeps a check suite that is still registering from being
+mistaken for a repo without CI. The claim's
 `prReview` field carries the PR and the failed checks: `{ prNumber, url, headSha, ciFailures }`,
 where each failure has `name`, `conclusion`, `summary`, `detailsUrl` and `annotations`
 (`path`, optional `line`, `message`).
