@@ -10,6 +10,7 @@ import {
   runnerEvidence,
   runnerInputs,
   runnerPlan,
+  runnerPrReview,
   runnerStage,
 } from "@foundry/control";
 import {
@@ -21,6 +22,7 @@ import {
   OnboardingResultSchema,
   OpenPrRequestSchema,
   PlanRequestSchema,
+  PrReviewRequestSchema,
   StageRequestSchema,
 } from "@foundry/shared";
 import { z } from "zod";
@@ -44,6 +46,9 @@ const actions = {
     const row = await runnerEvidence(ctx, runner, params.id!, body);
     return { id: row.id };
   }),
+  "pr-review": runnerRoute(PrReviewRequestSchema, ({ ctx, runner, body, params }) =>
+    runnerPrReview(ctx, runner, params.id!, body),
+  ),
   confidence: runnerRoute(ConfidenceRequestSchema, ({ ctx, runner, body, params }) =>
     runnerConfidence(ctx, runner, params.id!, body),
   ),

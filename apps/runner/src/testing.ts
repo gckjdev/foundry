@@ -94,6 +94,10 @@ export class RecordingControlPlane implements ControlPlane {
     this.rec("inputs", jobId);
     return this.pendingInputs.splice(0);
   }
+  async submitPrReview(jobId: string, report: unknown) {
+    this.rec("submitPrReview", jobId, report);
+    return { status: "pr_ci" };
+  }
 }
 
 function sh(cwd: string, ...args: string[]) {
@@ -172,6 +176,7 @@ export function claimedJob(overrides: Partial<ClaimedJob> = {}): ClaimedJob {
     maxCostUsd: null,
     pendingInputs: [],
     mergeMode: "off",
+    prReview: null,
     ...overrides,
   };
 }

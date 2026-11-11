@@ -15,6 +15,7 @@ import { and, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { bestEffort, type ControlContext } from "./context";
 import { repoRef } from "./github-sync";
 import { getJob, recordEvents, sendMessage, transitionJob } from "./jobs";
+import { maybeStartPrReview } from "./pr-review";
 import { effectiveMergeMode, refreshRepoConfig, repoPolicy, repoRecipe } from "./repos";
 
 /** Latest evidence per (kind, name) for the job's current verify loop. */
@@ -45,7 +46,7 @@ export async function markJobMerged(
 ): Promise<Job | null> {
   const merged = await transitionJob(ctx, job.id, "merged", {
     reason,
-    from: ["pr_ci", "waiting_on_you"],
+    from: ["pr_ci", "pr_review", "waiting_on_you"],
   });
   if (!merged) return null;
   ctx.log.info("job merged", { jobId: merged.id, reason });
@@ -60,7 +61,7 @@ export async function markJobMerged(
 /** If GitHub already merged this job's PR (webhook missed), record it. */
 export async function syncMergedPullRequest(ctx: ControlContext, job: Job): Promise<Job | null> {
   if (job.prNumber === null) return null;
-  if (job.status !== "pr_ci" && job.status !== "waiting_on_you") return null;
+  if (!["pr_ci", "pr_review", "waiting_on_you"].includes(job.status)) return null;
   const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, job.repoId) });
   if (!repo) return null;
   try {
@@ -80,13 +81,37 @@ export async function reconcileOpenPullRequests(ctx: ControlContext): Promise<st
   const open = await ctx.db
     .select()
     .from(jobs)
-    .where(inArray(jobs.status, ["pr_ci", "waiting_on_you"]));
+    .where(inArray(jobs.status, ["pr_ci", "pr_review", "waiting_on_you"]));
   const done: string[] = [];
   for (const job of open) {
     const merged = await syncMergedPullRequest(ctx, job);
     if (merged) done.push(job.id);
   }
   return done;
+}
+
+/**
+ * Start automatic PR reviews the webhook path never saw settle — most importantly repos that
+ * register no GitHub checks at all, where CI stays `none` and no check webhook ever arrives.
+ */
+export async function reconcileAutoPrReviews(ctx: ControlContext): Promise<string[]> {
+  const open = await ctx.db
+    .select({ id: jobs.id, repoId: jobs.repoId })
+    .from(jobs)
+    .where(and(eq(jobs.status, "pr_ci"), eq(jobs.kind, "ticket")));
+  const queued: string[] = [];
+  for (const row of open) {
+    const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, row.repoId) });
+    if (!repo || !repoPolicy(repo).auto_pr_review) continue;
+    try {
+      await evaluateJobGate(ctx, row.id, { allowNoCi: true });
+      const job = await getJob(ctx, row.id);
+      if (job.status === "queued" && job.resumeStage === "pr_review") queued.push(row.id);
+    } catch (err) {
+      ctx.log.error("auto PR review reconcile failed", { job: row.id, ...errorFields(err) });
+    }
+  }
+  return queued;
 }
 
 /** A human review that requests changes, forwarded to the agent at most once. */
@@ -161,7 +186,11 @@ export async function reconcileChangesRequestedReviews(ctx: ControlContext): Pro
  * Evaluate the confidence gate (spec 5.5) for a job whose PR is open, then merge, hand over with
  * routed reviewers, or keep waiting for CI / AI review. Safe to call on every CI or review event.
  */
-export async function evaluateJobGate(ctx: ControlContext, jobId: string): Promise<GateResult | null> {
+export async function evaluateJobGate(
+  ctx: ControlContext,
+  jobId: string,
+  opts: { allowNoCi?: boolean } = {},
+): Promise<GateResult | null> {
   const job = await getJob(ctx, jobId);
   if (job.status !== "pr_ci" || job.prNumber === null) return null;
   const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, job.repoId) });
@@ -175,9 +204,17 @@ export async function evaluateJobGate(ctx: ControlContext, jobId: string): Promi
     await markJobMerged(ctx, job, "pull request merged");
     return null;
   }
-  const [files, ci, reviews, ev] = await Promise.all([
+  const ci = await ctx.gh.ciState(ref, pr.headSha);
+  // The automatic PR review runs once per head SHA before the gate decides anything.
+  if (await maybeStartPrReview(ctx, job, pr.headSha, ci, opts)) return null;
+  // A concurrent CI webhook may have moved the job to `pr_review` (or somewhere else) already.
+  if ((await getJob(ctx, job.id)).status !== "pr_ci") return null;
+  const autoReviewComplete = job.prReviewSha === pr.headSha;
+  // With the automatic review enabled, wait for it before gating (CI may still be running, or
+  // no check has appeared yet). It must never merge before the review has left its comments.
+  if (job.kind === "ticket" && policy.auto_pr_review && !autoReviewComplete) return null;
+  const [files, reviews, ev] = await Promise.all([
     ctx.gh.listPullRequestFiles(ref, job.prNumber),
-    ctx.gh.ciState(ref, pr.headSha),
     ctx.gh.listReviews(ref, job.prNumber),
     latestEvidence(ctx, job),
   ]);
@@ -208,6 +245,8 @@ export async function evaluateJobGate(ctx: ControlContext, jobId: string): Promi
       : null,
     costUsd: job.costUsd,
     maxCostUsd: effectiveMaxCostUsd(job.maxCostUsd, policy),
+    humanMergeRequired: job.kind === "ticket" && policy.auto_pr_review,
+    autoReviewComplete,
   });
 
   await ctx.db

@@ -8,6 +8,7 @@ export * from "./merge-gate";
 export * from "./metrics";
 export * from "./notify";
 export * from "./onboarding";
+export * from "./pr-review";
 export * from "./prs";
 export * from "./queries";
 export * from "./questions";

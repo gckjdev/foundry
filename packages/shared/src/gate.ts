@@ -21,6 +21,13 @@ export interface GateInput {
   costUsd: number;
   /** Effective per-job cost cap; falls back to `policy.max_cost_per_job_usd` when absent. */
   maxCostUsd?: number;
+  /**
+   * `auto_pr_review` is on: the automatic PR review leaves comments, and a human reviews and
+   * merges the PR. Auto-merge never happens for these jobs.
+   */
+  humanMergeRequired?: boolean;
+  /** The automatic PR review has run for the current PR head. */
+  autoReviewComplete?: boolean;
 }
 
 export type GateRuleId =
@@ -33,7 +40,8 @@ export type GateRuleId =
   | "risk_rules"
   | "diff_size"
   | "confidence"
-  | "cost";
+  | "cost"
+  | "human_review";
 
 export interface GateFailure {
   rule: GateRuleId;
@@ -122,6 +130,18 @@ export function evaluateGate(input: GateInput): GateResult {
       rule: "cost",
       detail: `Job cost $${input.costUsd.toFixed(2)} exceeds $${maxCostUsd}`,
     });
+  }
+
+  if (input.humanMergeRequired) {
+    if (input.autoReviewComplete) {
+      failed.push({
+        rule: "human_review",
+        detail: "Automatic PR review is enabled; a human reviews and merges this PR",
+      });
+    } else {
+      // Wait for the automatic review before handing over or merging.
+      pending = true;
+    }
   }
 
   const reviewers = [...new Set(input.riskMatches.flatMap((m) => m.reviewers))];

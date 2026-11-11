@@ -1,5 +1,11 @@
 /// <reference path="./md.d.ts" />
-import { type HandoffBrief, type PendingInput, parseTicketSections, renderBrief } from "@foundry/shared";
+import {
+  type CiFailure,
+  type HandoffBrief,
+  type PendingInput,
+  parseTicketSections,
+  renderBrief,
+} from "@foundry/shared";
 import bugfix from "./playbooks/bugfix.md" with { type: "text" };
 import defaultPlaybook from "./playbooks/default.md" with { type: "text" };
 import feature from "./playbooks/feature.md" with { type: "text" };
@@ -61,6 +67,10 @@ export interface ReviewPromptInput {
   defaultBranch: string;
   plan: string | null;
   summary: string | null;
+  /** Present for the post-PR review: the open pull request being reviewed. */
+  pullRequest?: { number: number; url: string; headSha: string };
+  /** Failed checks for the PR head, when the review was triggered by CI. */
+  ciFailures?: CiFailure[];
 }
 
 /**
@@ -89,6 +99,34 @@ export function assembleReviewPrompt(
   ];
   if (input.plan) lines.push("", "## The implementer's plan", "", input.plan.trim());
   if (input.summary) lines.push("", "## The implementer's summary", "", input.summary.trim());
+  if (input.pullRequest) {
+    lines.push(
+      "",
+      "## Pull request",
+      "",
+      `#${input.pullRequest.number}: ${input.pullRequest.url}`,
+      `Head commit: \`${input.pullRequest.headSha}\``,
+      "",
+      "This review runs after the pull request's CI checks finished. Review the change as usual. If a",
+      "check failed, use the details below to find the cause and report a blocking finding with the",
+      "concrete fix. Foundry records your verdict and posts it to GitHub as the review.",
+    );
+    const failures = input.ciFailures ?? [];
+    lines.push("", "## Failed CI checks", "");
+    if (failures.length === 0) {
+      lines.push("No failed checks were reported.");
+    } else {
+      for (const failure of failures) {
+        lines.push(`### ${failure.name} (${failure.conclusion})`, "");
+        if (failure.summary) lines.push(failure.summary.trim(), "");
+        if (failure.detailsUrl) lines.push(`Details: ${failure.detailsUrl}`, "");
+        for (const a of failure.annotations.slice(0, 20)) {
+          lines.push(`- \`${a.path}${a.line ? `:${a.line}` : ""}\`: ${a.message}`);
+        }
+        if (failure.annotations.length) lines.push("");
+      }
+    }
+  }
   return { systemPrompt: parts.join("\n\n"), prompt: lines.join("\n") };
 }
 

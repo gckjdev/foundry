@@ -201,6 +201,9 @@ stateDiagram-v2
     Implementing --> Verifying
     Verifying --> Implementing: checks fail (max N loops)
     Verifying --> PR_CI: checks pass
+    PR_CI --> PR_Review: CI finished (policy auto_pr_review)
+    PR_Review --> Implementing: blocking findings (max N loops)
+    PR_Review --> PR_CI: approved
     PR_CI --> Implementing: CI or AI review fails
     PR_CI --> AutoMerge: gate passes
     PR_CI --> WaitingOnYou: gate fails or risk rule hit
@@ -223,6 +226,11 @@ stateDiagram-v2
   3 次。每个检查的命令、退出码和输出尾部都作为证据存储。
 - **PR/CI：** 用模板创建 PR（摘要、计划、证据、自报置信度及原因），然后等待 CI 和可选的 AI 审查
   （例如 Bugbot）。失败会回到 Implementing。
+- **PR 评审（可选，`auto_pr_review`）：** PR head 的 CI 结束后，新的只读评审会话检查已推送的 PR
+  和失败的检查详情（名称、摘要、注解），Foundry 再把结论和行内评论作为 GitHub 评审发布。阻塞性
+  问题会回到 Implementing，最多 `max_review_loops` 轮；评审通过时只留下评论，随后 gate 把 PR 交给
+  人工，开启 `auto_pr_review` 时永不自动合并。由于 Foundry App 是 PR 作者，GitHub 不允许它提交批准，
+  因此评审使用 `COMMENT` 事件，结论写在正文中。
 - **Gate：** 见 5.5 节。
 - **Waiting on you：** 人工合并、请求修改（作为新消息回到 Agent）或关闭。
 
@@ -309,6 +317,7 @@ PR **只有在以下全部成立时**才自动合并：
 6. diff 大小 ≤ `max_diff_lines_for_automerge`。
 7. Agent 自评为 `high`，且没有列出未决不确定性。
 8. 任务总成本 ≤ `max_cost_per_job_usd`。
+9. `auto_pr_review` 关闭。开启时，自动 PR 评审只留下评论，PR 始终等待人工合并。
 
 否则任务进入 **Waiting on you**，具体失败规则列在任务页顶部，例如
 “Risk rule hit: database schema (2 files)”。交接是**路由的**，不是广播。如果风险规则触发，其

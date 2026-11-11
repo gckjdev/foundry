@@ -4,6 +4,7 @@ import {
   type FoundryEvent,
   type GateResult,
   type JobStatus,
+  POST_PR_REVIEW_STAGE,
   RUNNER_STAGES,
   STATUS_TITLES,
 } from "@foundry/shared";
@@ -120,7 +121,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           <form action={retryAction} className="row">
             <input type="hidden" name="jobId" value={job.id} />
             <select name="stage" defaultValue={job.lastCompletedStage ? job.resumeStage : "triage"}>
-              {RUNNER_STAGES.map((s) => (
+              {[...RUNNER_STAGES, POST_PR_REVIEW_STAGE].map((s) => (
                 <option key={s} value={s}>
                   from {STATUS_TITLES[s]}
                 </option>

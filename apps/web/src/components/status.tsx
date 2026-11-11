@@ -9,6 +9,7 @@ const TONE: Record<JobStatus, string> = {
   verifying: "live",
   needs_input: "warn",
   pr_ci: "info",
+  pr_review: "live",
   waiting_on_you: "warn",
   merged: "ok",
   failed: "bad",

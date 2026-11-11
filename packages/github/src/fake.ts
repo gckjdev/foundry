@@ -1,6 +1,7 @@
 import type {
   CiState,
   GhAppInstallation,
+  GhCheckFailure,
   GhComment,
   GhInstallationRepo,
   GhIssue,
@@ -22,6 +23,7 @@ interface FakeRepo {
   reviews: Map<number, GhReview[]>;
   requestedReviewers: Map<number, { users: string[]; teams: string[] }>;
   ci: Map<string, CiState>;
+  checkFailures: Map<string, GhCheckFailure[]>;
 }
 
 /** In-memory GitHub used by unit and end-to-end tests. Every call is also recorded in `calls`. */
@@ -47,6 +49,7 @@ export class FakeGitHub implements GitHubClient {
         reviews: new Map(),
         requestedReviewers: new Map(),
         ci: new Map(),
+        checkFailures: new Map(),
       };
       this.repos.set(fullName, r);
     }
@@ -68,6 +71,15 @@ export class FakeGitHub implements GitHubClient {
 
   commentsOn(fullName: string, issueNumber: number): GhComment[] {
     return [...this.repo(fullName).comments.values()].filter((c) => c.issueNumber === issueNumber);
+  }
+
+  /** What `checkFailures` returns for a commit; tests use this to stand in for failed CI. */
+  seedCheckFailures(fullName: string, sha: string, failures: GhCheckFailure[]): void {
+    this.repo(fullName).checkFailures.set(sha, failures);
+  }
+
+  reviewsOn(fullName: string, prNumber: number): GhReview[] {
+    return this.repo(fullName).reviews.get(prNumber) ?? [];
   }
 
   private record(method: string, ...args: unknown[]) {
@@ -215,6 +227,33 @@ export class FakeGitHub implements GitHubClient {
 
   async ciState(ref: RepoRef, sha: string) {
     return this.repo(ref.fullName).ci.get(sha) ?? "none";
+  }
+
+  async checkFailures(ref: RepoRef, sha: string) {
+    return this.repo(ref.fullName).checkFailures.get(sha) ?? [];
+  }
+
+  async createReview(
+    ref: RepoRef,
+    number: number,
+    input: {
+      body: string;
+      event: "COMMENT" | "REQUEST_CHANGES" | "APPROVE";
+      comments?: { path: string; line: number; body: string }[];
+      commitId?: string;
+    },
+  ) {
+    this.record("createReview", ref.fullName, number, input);
+    const state =
+      input.event === "APPROVE"
+        ? "APPROVED"
+        : input.event === "REQUEST_CHANGES"
+          ? "CHANGES_REQUESTED"
+          : "COMMENTED";
+    const review: GhReview = { id: this.nextId++, author: "foundry[bot]", state, body: input.body };
+    const reviews = this.repo(ref.fullName).reviews;
+    reviews.set(number, [...(reviews.get(number) ?? []), review]);
+    return review;
   }
 
   async setProjectStatus(_installationId: number, projectId: string, contentNodeId: string, status: string) {

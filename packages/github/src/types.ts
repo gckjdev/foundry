@@ -42,6 +42,15 @@ export interface GhReview {
   body: string;
 }
 
+/** A failed CI check, reduced to what a reviewer needs to find the cause. */
+export interface GhCheckFailure {
+  name: string;
+  conclusion: string;
+  summary: string | null;
+  detailsUrl: string | null;
+  annotations: { path: string; line?: number; message: string }[];
+}
+
 export interface GhInstallationRepo {
   id: number;
   fullName: string;
@@ -89,6 +98,22 @@ export interface GitHubClient {
   requestReviewers(repo: RepoRef, number: number, users: string[], teams: string[]): Promise<void>;
   mergePullRequest(repo: RepoRef, number: number, method: "squash" | "merge" | "rebase"): Promise<void>;
   ciState(repo: RepoRef, sha: string, requiredChecks?: string[]): Promise<CiState>;
+  /** Failed check runs and commit statuses for a commit, with their annotations/output. */
+  checkFailures(repo: RepoRef, sha: string): Promise<GhCheckFailure[]>;
+  /**
+   * Submit a pull-request review. The Foundry App authors the PR, so callers use the `COMMENT`
+   * event and put the verdict in the body; inline comments are dropped if GitHub rejects them.
+   */
+  createReview(
+    repo: RepoRef,
+    number: number,
+    input: {
+      body: string;
+      event: "COMMENT" | "REQUEST_CHANGES" | "APPROVE";
+      comments?: { path: string; line: number; body: string }[];
+      commitId?: string;
+    },
+  ): Promise<GhReview>;
 
   /** GitHub Projects (v2): set the single-select "Status" field of the item for `contentNodeId`. */
   setProjectStatus(

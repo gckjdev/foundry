@@ -1,3 +1,4 @@
+import type { PrReviewRequest } from "./api";
 import { type JobStatus, STATUS_TITLES } from "./states";
 
 const LETTERS = "ABCDEFGHIJ";
@@ -128,6 +129,29 @@ export function renderPrBody(p: PrBodyInput): string {
     lines.push("_Not reported._");
   }
   lines.push("", `---`, `Opened by [Foundry](${p.jobUrl}).`);
+  return lines.join("\n");
+}
+
+/** A GitHub review body for the automatic post-PR review. The verdict lives in the text because
+ * the Foundry App authors the PR and GitHub does not let a PR author approve it. */
+export function renderPrReviewBody(report: PrReviewRequest): string {
+  const verdict = report.verdict === "approve" ? "Approved" : "Changes requested";
+  const lines = [`## Automatic PR review: ${verdict}`, "", report.summary.trim() || "_No summary provided._"];
+  const groups = [
+    ["Blocking", report.findings.filter((f) => f.severity === "blocking")],
+    ["Non-blocking", report.findings.filter((f) => f.severity !== "blocking")],
+  ] as const;
+  for (const [title, findings] of groups) {
+    if (!findings.length) continue;
+    lines.push("", `### ${title}`);
+    for (const f of findings) {
+      const at = f.file ? ` \`${f.file}${f.line ? `:${f.line}` : ""}\`` : "";
+      const category = f.category && f.category !== "other" ? ` (${f.category.replaceAll("_", " ")})` : "";
+      lines.push(`-${at}${category}: ${f.message}`);
+    }
+  }
+  if (report.findings.length === 0) lines.push("", "_No findings._");
+  lines.push("", "---", "_Reviewed automatically by Foundry._");
   return lines.join("\n");
 }
 

@@ -810,4 +810,61 @@ describe("JobRunner", () => {
       gitIn(join(fixture.root, "acme/fresh.git"), "show", `${job.branch}:.foundry/recipe.yaml`),
     ).toContain("test -f package.json");
   });
+
+  it("reviews an open pull request at its pushed head and reports the verdict", async () => {
+    const headSha = gitIn(join(fixture.root, "acme/app.git"), "rev-parse", "main");
+    const job = claimedJob({
+      id: "88888888-0000-0000-0000-000000000000",
+      resumeStage: "pr_review",
+      resumeMode: "portable",
+      prReview: {
+        prNumber: 7,
+        url: "https://github.com/acme/app/pull/7",
+        headSha,
+        ciFailures: [
+          {
+            name: "test",
+            conclusion: "failure",
+            summary: "1 test failed",
+            detailsUrl: "https://github.test/acme/app/runs/55",
+            annotations: [{ path: "done.txt", line: 1, message: "expected done" }],
+          },
+        ],
+      },
+    });
+    let prompt = "";
+    const harness = new FakeHarness("claude-code", [
+      {
+        costUsd: 0.03,
+        act: async ({ cwd, env, prompt: p }) => {
+          prompt = p;
+          expect(gitIn(cwd, "status", "--porcelain")).toBe("");
+          const reply = await agentTools(env)("review", {
+            verdict: "request_changes",
+            summary: "The failing test points at done.txt",
+            findings: [
+              {
+                severity: "blocking",
+                category: "code_quality",
+                file: "done.txt",
+                line: 1,
+                message: "write the file",
+              },
+            ],
+          });
+          expect(reply.isError).toBeFalsy();
+        },
+      },
+    ]);
+
+    expect(await new JobRunner(deps(harness), job).run()).toBe("pr_reviewed");
+    expect(prompt).toContain("## Failed CI checks");
+    expect(prompt).toContain("expected done");
+    expect(api.named("submitPrReview")[0]!.body).toMatchObject({
+      verdict: "request_changes",
+      summary: "The failing test points at done.txt",
+    });
+    // The reviewer worked in a throwaway checkout, not the job worktree.
+    expect(existsSync(join(dataDir, "worktrees", `${job.id}-pr-review`))).toBe(false);
+  });
 });

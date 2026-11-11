@@ -95,6 +95,52 @@ export const PendingInputSchema = z.object({
 });
 export type PendingInput = z.infer<typeof PendingInputSchema>;
 
+/** One failed CI check (or commit status) the automatic PR reviewer should investigate. */
+export const CiFailureSchema = z.object({
+  name: z.string(),
+  conclusion: z.string(),
+  summary: z.string().nullable().optional(),
+  detailsUrl: z.string().nullable().optional(),
+  annotations: z
+    .array(
+      z.object({
+        path: z.string(),
+        line: z.number().int().positive().optional(),
+        message: z.string(),
+      }),
+    )
+    .default([]),
+});
+export type CiFailure = z.infer<typeof CiFailureSchema>;
+
+/** What the runner needs to review an already-open pull request at `headSha`. */
+export const PrReviewContextSchema = z.object({
+  prNumber: z.number().int().positive(),
+  url: z.string(),
+  headSha: z.string(),
+  ciFailures: z.array(CiFailureSchema).default([]),
+});
+export type PrReviewContext = z.infer<typeof PrReviewContextSchema>;
+
+/** The reviewer's report for the post-PR review. Mirrors `ReviewReportSchema` in `@foundry/mcp-foundry`. */
+export const PrReviewRequestSchema = z.object({
+  verdict: z.enum(["approve", "request_changes"]),
+  summary: z.string().min(1),
+  findings: z
+    .array(
+      z.object({
+        severity: z.enum(["blocking", "non_blocking"]),
+        category: z.enum(["code_quality", "ui_design", "security", "other"]).default("other"),
+        file: z.string().optional(),
+        line: z.number().int().positive().optional(),
+        message: z.string().min(1),
+      }),
+    )
+    .default([]),
+});
+export type PrReviewRequest = z.infer<typeof PrReviewRequestSchema>;
+export const PrReviewResponseSchema = z.object({ status: z.string() });
+
 export const ClaimedJobSchema = z.object({
   id: z.string(),
   kind: JobKindSchema,
@@ -120,6 +166,8 @@ export const ClaimedJobSchema = z.object({
   maxCostUsd: z.number().positive().nullable().default(null),
   pendingInputs: z.array(PendingInputSchema),
   mergeMode: z.enum(["off", "merge_when_confident"]),
+  /** Present when `resumeStage` is `pr_review`: the PR head and the failed CI checks. */
+  prReview: PrReviewContextSchema.nullable().default(null),
 });
 export type ClaimedJob = z.infer<typeof ClaimedJobSchema>;
 

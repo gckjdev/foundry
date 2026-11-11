@@ -13,6 +13,8 @@ import {
   OpenPrResponseSchema,
   type PendingInput,
   PendingInputSchema,
+  type PrReviewRequest,
+  PrReviewResponseSchema,
   type RunnerStage,
   type StageRequest,
 } from "@foundry/shared";
@@ -65,6 +67,8 @@ export interface ControlPlane {
   ): Promise<{ prNumber: number; url: string }>;
   onboarding(jobId: string, result: OnboardingResult): Promise<void>;
   inputs(jobId: string): Promise<PendingInput[]>;
+  /** Report the automatic post-PR review; the control plane publishes and acts on it. */
+  submitPrReview(jobId: string, report: PrReviewRequest): Promise<{ status: string }>;
 }
 
 /** The control plane rejected the call because the job is no longer this runner's (HTTP 409). */
@@ -212,5 +216,9 @@ export class HttpControlPlane implements ControlPlane {
       z.object({ inputs: z.array(PendingInputSchema) }),
     );
     return res.inputs;
+  }
+
+  submitPrReview(jobId: string, report: PrReviewRequest) {
+    return this.job(jobId, "pr-review", report, PrReviewResponseSchema);
   }
 }

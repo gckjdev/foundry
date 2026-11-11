@@ -23,6 +23,7 @@ import {
   runnerGitToken,
   runnerInputs,
   runnerPlan,
+  runnerPrReview,
   runnerStage,
   storeArtifact,
   storeWebhook,
@@ -222,6 +223,9 @@ export class DirectControlPlane implements ControlPlane {
     return revoked(async () => runnerInputs(this.ctx, await this.runner(), jobId, true)) as Promise<
       Awaited<ReturnType<ControlPlane["inputs"]>>
     >;
+  }
+  async submitPrReview(jobId: string, report: Parameters<ControlPlane["submitPrReview"]>[1]) {
+    return revoked(async () => runnerPrReview(this.ctx, await this.runner(), jobId, report));
   }
 }
 
