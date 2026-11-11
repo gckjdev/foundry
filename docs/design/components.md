@@ -69,6 +69,9 @@ artifact serving, and the background worker that reconciles missed events.
 
 Panel APIs are authenticated by the Auth.js session and scoped to the selected team.
 
+The full request/response reference — runner API, panel API, realtime protocol, runner tool bridge
+and GitHub webhook — is [`api.md`](../api.md).
+
 ### 2.4 Failure behavior
 
 - Webhook processing is acknowledged with `202` before dispatch; failures stay in
@@ -104,6 +107,7 @@ letting clients read each other's events.
 - A 25-second ping/pong loop drops dead clients and clients whose token expired.
 - Messages carry only identifiers; clients refetch rows through the authenticated API.
 - `GET /healthz` returns `ok`; other HTTP requests get `426 WebSocket only`.
+- Protocol reference: [`api.md`](../api.md#4-control-plane--realtime-websocket).
 
 ### 3.3 Failure behavior
 
@@ -175,6 +179,9 @@ same commands run as `bun apps/runner/src/cli.ts …`. Harnesses re-invoke the c
    least one changed file, capture a screenshot when UI paths changed, push, and ask the control
    plane to open the PR.
 10. Clean up: release the harness, remove the worktree unless parked, release ports, drop services.
+
+The HTTP calls behind these tools are documented in
+[`api.md`](../api.md#5-runner--local-tool-bridge).
 
 ### 4.5 Failure behavior
 
