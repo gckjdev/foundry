@@ -230,6 +230,7 @@ diff 解析和评论渲染。
 ### 6.1 职责
 
 Postgres schema、迁移、NOTIFY 触发器和报表视图。它导出 Drizzle 模型和数据库工厂，不包含业务决策。
+逐表数据字典、索引清单和示例见 [`database.zh-CN.md`](database.zh-CN.md)。
 
 ### 6.2 模块
 

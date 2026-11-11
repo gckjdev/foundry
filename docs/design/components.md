@@ -237,7 +237,8 @@ verification, proxy behavior, risk matching, diff parsing and comment rendering.
 ### 6.1 Role
 
 Postgres schema, migrations, NOTIFY triggers and reporting views. It exposes Drizzle models and a
-database factory; it contains no business decisions.
+database factory; it contains no business decisions. The per-table data dictionary, index catalog
+and examples are in [`database.md`](database.md).
 
 ### 6.2 Modules
 

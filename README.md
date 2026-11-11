@@ -62,6 +62,7 @@ Every human-facing document has a Chinese version.
 | Product spec                          | [software-factory-product-spec.md](software-factory-product-spec.md) | [software-factory-product-spec.zh-CN.md](software-factory-product-spec.zh-CN.md) |
 | Overall solution design               | [docs/design/overall-design.md](docs/design/overall-design.md)       | [docs/design/overall-design.zh-CN.md](docs/design/overall-design.zh-CN.md)       |
 | Component solution design             | [docs/design/components.md](docs/design/components.md)               | [docs/design/components.zh-CN.md](docs/design/components.zh-CN.md)               |
+| Database design and data dictionary   | [docs/design/database.md](docs/design/database.md)                   | [docs/design/database.zh-CN.md](docs/design/database.zh-CN.md)                   |
 | Core use cases and sequence diagrams  | [docs/design/use-cases.md](docs/design/use-cases.md)                 | [docs/design/use-cases.zh-CN.md](docs/design/use-cases.zh-CN.md)                 |
 | Configuration, install and deploy     | [docs/local-setup.md](docs/local-setup.md)                           | [docs/local-setup.zh-CN.md](docs/local-setup.zh-CN.md)                           |
 | Repo onboarding                       | [docs/onboarding.md](docs/onboarding.md)                             | [docs/onboarding.zh-CN.md](docs/onboarding.zh-CN.md)                             |
