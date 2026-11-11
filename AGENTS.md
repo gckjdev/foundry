@@ -113,6 +113,7 @@ Runner stages in order: `triage` → `investigating` → `implementing` → `rev
 | GitHub webhooks → jobs               | `packages/control/src/ingest.ts`, `apps/web/src/app/api/webhooks/github`            |
 | Sign-in / App install                | `apps/web/src/auth.ts`, `apps/web/src/server/retry-fetch.ts`                        |
 | Merge gate                           | `packages/control/src/merge-gate.ts`, `packages/shared/src/gate.ts`                 |
+| Database schema / data dictionary    | `packages/db/src/schema.ts`, `docs/design/database.md`                              |
 | Panel pages                          | `apps/web/src/app/(panel)/`                                                         |
 | Panel visual design / tokens         | `DESIGN.md`, `apps/web/src/app/globals.css`                                         |
 | Runner loop                          | `apps/runner/src/daemon.ts`, `job-runner.ts`, `git.ts`                              |

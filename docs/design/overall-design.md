@@ -276,6 +276,9 @@ or human-requested change returns there with a `resumeStage`.
 SQL migrations live in `packages/db/migrations`; NOTIFY triggers and reporting views
 (`metrics_job_facts`, `metrics_handover_waits`, `metrics_runner_busy`) are defined there.
 
+Every table and column, with indexes, JSON shapes, constraints and worked examples, is documented in
+[`database.md`](database.md).
+
 ### 2.6 Control-plane internals
 
 `apps/web` starts an in-process worker from `instrumentation.node.ts` once `DATABASE_URL` and

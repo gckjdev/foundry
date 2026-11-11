@@ -263,6 +263,9 @@ stateDiagram-v2
 SQL 迁移位于 `packages/db/migrations`；NOTIFY 触发器和报表视图
 （`metrics_job_facts`、`metrics_handover_waits`、`metrics_runner_busy`）也定义在那里。
 
+每张表和每个字段、索引、JSON 结构、约束和完整示例见
+[`database.zh-CN.md`](database.zh-CN.md)。
+
 ### 2.6 控制面内部结构
 
 当 `DATABASE_URL` 和 `FOUNDRY_SECRET` 存在时，`apps/web` 会从 `instrumentation.node.ts` 启动
