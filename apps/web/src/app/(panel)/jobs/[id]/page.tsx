@@ -11,6 +11,7 @@ import {
 import { githubIssueUrl } from "@foundry/shared/github-host";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { jobElapsed } from "@/components/duration";
 import { ago, StatusPill, usd } from "@/components/status";
 import { requireTeam } from "@/server/session";
 import { answerAction, cancelAction, helpfulAction, retryAction } from "../../../actions";
@@ -95,6 +96,9 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             </span>
             <span className="dim">· {d.runnerName ? `on ${d.runnerName}` : "no runner"}</span>
             <span className="dim">· {usd(job.costUsd)}</span>
+            <span className="dim" title="Execution time">
+              · {jobElapsed(job)}
+            </span>
             <span className="dim">· loop {job.loopCount}</span>
             {job.resumeCount > 0 ? (
               <span className="pill" data-tone="info">

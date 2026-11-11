@@ -25,6 +25,8 @@ const BOARD_JOB_COLUMNS = {
   status: jobs.status,
   harness: jobs.harness,
   costUsd: jobs.costUsd,
+  startedAt: jobs.startedAt,
+  finishedAt: jobs.finishedAt,
   updatedAt: jobs.updatedAt,
 } as const;
 

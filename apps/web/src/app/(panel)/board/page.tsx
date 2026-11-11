@@ -1,6 +1,7 @@
 import { boardJobs } from "@foundry/control";
 import { type JobStatus, RUNNING_STATUSES, STATUS_TITLES } from "@foundry/shared";
 import Link from "next/link";
+import { jobElapsed } from "@/components/duration";
 import { ago, usd } from "@/components/status";
 import { requireTeam } from "@/server/session";
 
@@ -62,7 +63,9 @@ export default async function Board() {
                           {repoFullName.split("/")[1]}
                           {job.issueNumber ? `#${job.issueNumber}` : ""}
                         </span>
-                        <span>{usd(job.costUsd)}</span>
+                        <span title="Execution time · cost">
+                          {jobElapsed(job)} · {usd(job.costUsd)}
+                        </span>
                       </div>
                       <div className="ticket-meta">
                         <span>
