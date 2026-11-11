@@ -4,11 +4,17 @@
  * tool call (the runner flushes them every second) and `runners` a row per heartbeat, so a page
  * that does not display them must not refresh on them. The nav's connection pill stays live
  * either way — an empty set only suppresses refreshes.
+ *
+ * No page follows `events` over realtime. The job page's live log polls
+ * `/api/jobs/:id/events` itself, and the broadcast is team-wide and fires per tool call, so
+ * subscribing would re-render the whole page — and re-sign every artifact URL — every second
+ * while any job runs, including a job the page is not showing. `jobs` and `questions` cover the
+ * server-rendered parts that actually change (status, plan, gate, timeline stage moves).
  */
 const PAGE_TABLES: readonly { prefix: string; tables: readonly string[] }[] = [
   { prefix: "/board", tables: ["jobs"] },
   { prefix: "/inbox", tables: ["jobs", "questions"] },
-  { prefix: "/jobs/", tables: ["jobs", "questions", "events"] },
+  { prefix: "/jobs/", tables: ["jobs", "questions"] },
   { prefix: "/runners", tables: ["runners", "jobs"] },
   { prefix: "/repos", tables: ["jobs"] },
   { prefix: "/metrics", tables: ["jobs"] },
