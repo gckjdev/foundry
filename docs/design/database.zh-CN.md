@@ -264,7 +264,7 @@ GitHub。`Sync from GitHub` 或缓存失效时会刷新。
 | `pr_title`             | `text`             | 是   | —                   | PR 使用的标题（issue 标题及后续刷新）。                                                                                          |
 | `ci_status`            | `text`             | 否   | `'none'`            | 最近观察到的 CI 状态：`none`、`pending`、`success` 或 `failure`。                                                                |
 | `ai_review_status`     | `text`             | 否   | `'none'`            | 预留给 AI reviewer 状态（`none`、`clean`、`blocking`）。当前门禁读取 GitHub 上的实时 review。                                    |
-| `pr_ci_entered_at`     | `timestamptz`      | 是   | —                   | 任务最近一次进入 `pr_ci` 的时间；无 CI 时启动自动评审的宽限期从这里开始计算。                                                     |
+| `pr_ci_entered_at`     | `timestamptz`      | 是   | —                   | 任务最近一次进入 `pr_ci` 的时间；无 CI 时启动自动评审的宽限期从这里开始计算。                                                    |
 | `pr_review_sha`        | `text`             | 是   | —                   | 自动 PR 评审已经运行过的 PR head SHA；避免重复评审同一个 SHA。                                                                   |
 | `pr_review_count`      | `integer`          | 否   | `0`                 | 自动 PR 评审要求修改并重新入队 implementing 的轮数。                                                                             |
 | `ui_changed`           | `boolean`          | 否   | `false`             | Diff 是否触及 `ui_paths`；自动合并前必须有截图证据。                                                                             |

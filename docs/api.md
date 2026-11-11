@@ -248,16 +248,16 @@ scheduler. The daemon simply tries again on the next heartbeat.
 }
 ```
 
-| Claimed job field | Meaning                                                                                |
-| ----------------- | -------------------------------------------------------------------------------------- |
-| `kind`            | `ticket` or `onboarding`                                                               |
-| `resumeStage`     | Stage to start (or restart) at: `triage`, `investigating`, … or `pr_review`            |
-| `resumeMode`      | `fresh` (new worktree/session), `sticky` (this runner's native session), or `portable` |
-| `sessionId`       | Native harness session to resume, when this runner can                                 |
-| `loopCount`       | Verify/fix loops already used                                                          |
+| Claimed job field | Meaning                                                                                                                                        |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kind`            | `ticket` or `onboarding`                                                                                                                       |
+| `resumeStage`     | Stage to start (or restart) at: `triage`, `investigating`, … or `pr_review`                                                                    |
+| `resumeMode`      | `fresh` (new worktree/session), `sticky` (this runner's native session), or `portable`                                                         |
+| `sessionId`       | Native harness session to resume, when this runner can                                                                                         |
+| `loopCount`       | Verify/fix loops already used                                                                                                                  |
 | `pendingInputs`   | Answers and messages queued while the job was parked; claim consumes them (a `pr_review` claim leaves them for the following implementing run) |
-| `mergeMode`       | `off` or `merge_when_confident` — the effective policy for this repo                   |
-| `prReview`        | Only on a `pr_review` claim: the PR head and failed CI checks to investigate            |
+| `mergeMode`       | `off` or `merge_when_confident` — the effective policy for this repo                                                                           |
+| `prReview`        | Only on a `pr_review` claim: the PR head and failed CI checks to investigate                                                                   |
 
 ### 2.4 `POST /api/runner/readiness`
 
@@ -368,11 +368,11 @@ where each failure has `name`, `conclusion`, `summary`, `detailsUrl` and `annota
 The runner reviews the pushed head in a detached read-only worktree and reports through
 `pr-review`:
 
-| Field      | Type                                              | Notes                                                      |
-| ---------- | ------------------------------------------------- | ---------------------------------------------------------- |
-| `verdict`  | `approve` \| `request_changes`                    |                                                            |
-| `summary`  | string                                            |                                                            |
-| `findings` | `{ severity, category, file?, line?, message }[]` | `file` + `line` become inline review comments when valid.  |
+| Field      | Type                                              | Notes                                                     |
+| ---------- | ------------------------------------------------- | --------------------------------------------------------- |
+| `verdict`  | `approve` \| `request_changes`                    |                                                           |
+| `summary`  | string                                            |                                                           |
+| `findings` | `{ severity, category, file?, line?, message }[]` | `file` + `line` become inline review comments when valid. |
 
 The control plane posts the result as a `COMMENT` review on the PR — the Foundry App authors the
 PR, so GitHub will not accept an `APPROVE` or `REQUEST_CHANGES` event from it — and records
@@ -672,7 +672,7 @@ The raw payload is kept for diagnosis. Unhandled event types are stored and igno
 | `issue_comment`                      | `edited`                    | A question checkbox tick (the bot comment was edited by a human) answers the question                                                                 |
 | `pull_request`                       | `closed`                    | Merged marks the job merged; closed unmerged cancels it; a revert marks the original merged job reverted                                              |
 | `pull_request_review`                | `submitted`                 | A human `changes_requested` review re-opens work; others re-evaluate the gate at `pr_ci`                                                              |
-| `check_suite`, `check_run`, `status` | `completed` (`status`: any) | For jobs at that SHA in `pr_ci`: starts the automatic PR review when enabled, otherwise re-evaluates the gate                                          |
+| `check_suite`, `check_run`, `status` | `completed` (`status`: any) | For jobs at that SHA in `pr_ci`: starts the automatic PR review when enabled, otherwise re-evaluates the gate                                         |
 | `push`                               | —                           | On the default branch, refreshes repo config when `.foundry/` changed or no recipe is known                                                           |
 | `installation`                       | `deleted`                   | Removes the installation's repos                                                                                                                      |
 | `installation_repositories`          | `added`/removed             | Links or unlinks repos, and links a known installation to its team                                                                                    |

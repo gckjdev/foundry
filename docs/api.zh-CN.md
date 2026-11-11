@@ -238,16 +238,16 @@ daemon 运行时按心跳间隔发送。它更新 runner 记录、返回当前�
 }
 ```
 
-| 已领取任务字段  | 含义                                                                       |
-| --------------- | -------------------------------------------------------------------------- |
-| `kind`          | `ticket` 或 `onboarding`                                                   |
-| `resumeStage`   | 开始（或重新开始）的阶段：`triage`、`investigating`…… 或 `pr_review`       |
-| `resumeMode`    | `fresh`（新 worktree/会话）、`sticky`（该 runner 的原生会话）或 `portable` |
-| `sessionId`     | 可恢复的原生 harness 会话（当该 runner 能恢复时）                          |
-| `loopCount`     | 已使用的验证/修复循环次数                                                  |
+| 已领取任务字段  | 含义                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------ |
+| `kind`          | `ticket` 或 `onboarding`                                                                   |
+| `resumeStage`   | 开始（或重新开始）的阶段：`triage`、`investigating`…… 或 `pr_review`                       |
+| `resumeMode`    | `fresh`（新 worktree/会话）、`sticky`（该 runner 的原生会话）或 `portable`                 |
+| `sessionId`     | 可恢复的原生 harness 会话（当该 runner 能恢复时）                                          |
+| `loopCount`     | 已使用的验证/修复循环次数                                                                  |
 | `pendingInputs` | 任务挂起期间排队的回答和消息；领取时消费（`pr_review` 领取会留给下一次 implementing 运行） |
-| `mergeMode`     | `off` 或 `merge_when_confident`——该仓库的生效策略                          |
-| `prReview`      | 仅 `pr_review` 领取时存在：PR head 与需要排查的失败 CI 检查                |
+| `mergeMode`     | `off` 或 `merge_when_confident`——该仓库的生效策略                                          |
+| `prReview`      | 仅 `pr_review` 领取时存在：PR head 与需要排查的失败 CI 检查                                |
 
 ### 2.4 `POST /api/runner/readiness`
 
@@ -350,11 +350,11 @@ runner 通常一次前进一个阶段。它也会发送 `queued` 交还任务（
 
 runner 在独立的只读 worktree 中评审已推送的 head，并通过 `pr-review` 上报：
 
-| 字段       | 类型                                              | 说明                                           |
-| ---------- | ------------------------------------------------- | ---------------------------------------------- |
-| `verdict`  | `approve` \| `request_changes`                    |                                                |
-| `summary`  | string                                            |                                                |
-| `findings` | `{ severity, category, file?, line?, message }[]` | `file` + `line` 有效时会成为行内评审评论        |
+| 字段       | 类型                                              | 说明                                     |
+| ---------- | ------------------------------------------------- | ---------------------------------------- |
+| `verdict`  | `approve` \| `request_changes`                    |                                          |
+| `summary`  | string                                            |                                          |
+| `findings` | `{ severity, category, file?, line?, message }[]` | `file` + `line` 有效时会成为行内评审评论 |
 
 控制面把结果作为 `COMMENT` 评审发布到 PR（Foundry App 是该 PR 的作者，GitHub 不接受它提交
 `APPROVE` 或 `REQUEST_CHANGES`），并记录 `code review` 证据。通过则把任务送回 `pr_ci`，但
