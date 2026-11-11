@@ -623,6 +623,8 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
       status: "queued",
       resumeStage: "pr_review",
       prReviewSha: "sha-20",
+      // Stamped so a lost runner resumes at `pr_review`, not `verifying`.
+      lastCompletedStage: "verifying",
     });
 
     const reviewJob = (await claimJob(env.ctx, runner))!;
@@ -654,6 +656,20 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
     const [input] = await takePendingInputs(env.ctx, c.id);
     expect(input).toMatchObject({ kind: "message", by: "foundry[bot]" });
     expect(input!.text).toContain("automatic PR review");
+
+    // The fix pushes a new head SHA; its CI completion starts a second review while the round
+    // count carries over.
+    await env.ctx.db.update(jobs).set({ status: "pr_ci", headSha: "sha-20b" }).where(eq(jobs.id, c.id));
+    fake.branches.set(c.branch, "sha-20b");
+    fake.ci.set("sha-20b", "success");
+    fake.prs.get(pr.prNumber)!.headSha = "sha-20b";
+    await evaluateJobGate(env.ctx, c.id);
+    expect(await getJob(env.ctx, c.id)).toMatchObject({
+      status: "queued",
+      resumeStage: "pr_review",
+      prReviewSha: "sha-20b",
+      prReviewCount: 1,
+    });
   });
 
   it("returns an approved automatic PR review to pr_ci", async () => {
@@ -681,6 +697,97 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
     expect(env.gh.reviewsOn("acme/app", 11)[0]).toMatchObject({
       state: "COMMENTED",
       body: expect.stringContaining("Approved"),
+    });
+  });
+
+  it("starts the automatic review from the worker when a repo has no CI checks", async () => {
+    const { team, repo } = await seedTeam(env, { policyYaml: "auto_pr_review: true\n" });
+    const fake = env.gh.repo("acme/app");
+    fake.branches.set("foundry/no-ci", "sha-22");
+    const pr = await env.gh.createPullRequest(
+      { installationId: 1, fullName: "acme/app" },
+      { head: "foundry/no-ci", base: "main", title: "No CI", body: "" },
+    );
+    const [job] = await env.ctx.db
+      .insert(jobs)
+      .values({
+        teamId: team.id,
+        repoId: repo.id,
+        title: "No CI",
+        harness: "claude-code",
+        branch: "foundry/no-ci",
+        status: "pr_ci",
+        prNumber: pr.number,
+        prUrl: pr.url,
+        headSha: "sha-22",
+      })
+      .returning();
+    fake.ci.set("sha-22", "none");
+
+    // The webhook path waits for checks; the worker's pass must not deadlock the job forever.
+    await evaluateJobGate(env.ctx, job!.id);
+    expect((await getJob(env.ctx, job!.id)).status).toBe("pr_ci");
+    await evaluateJobGate(env.ctx, job!.id, { allowNoCi: true });
+    expect(await getJob(env.ctx, job!.id)).toMatchObject({
+      status: "queued",
+      resumeStage: "pr_review",
+      prReviewSha: "sha-22",
+    });
+  });
+
+  it("hands an automatic review over when the loop budget is spent", async () => {
+    const { team, repo } = await seedTeam(env, {
+      policyYaml: "auto_pr_review: true\nmax_review_loops: 2\n",
+    });
+    const [job] = await env.ctx.db
+      .insert(jobs)
+      .values({
+        teamId: team.id,
+        repoId: repo.id,
+        title: "Budget spent",
+        harness: "claude-code",
+        branch: "foundry/budget",
+        status: "pr_review",
+        prNumber: 31,
+        prUrl: "https://github.com/acme/app/pull/31",
+        headSha: "sha-23",
+        prReviewCount: 2,
+        authorLogin: "alice",
+      })
+      .returning();
+    const updated = await submitPrReview(env.ctx, job!, {
+      verdict: "request_changes",
+      summary: "Still broken",
+      findings: [{ severity: "blocking", category: "code_quality", message: "nope" }],
+    });
+    expect(updated.status).toBe("waiting_on_you");
+    expect(env.gh.repo("acme/app").requestedReviewers.get(31)).toEqual({ users: ["alice"], teams: [] });
+    expect(env.notifier.sent.map((n) => n.event)).toContain("handover");
+  });
+
+  it("resumes a lost runner's pr_review job at pr_review", async () => {
+    const { team, repo } = await seedTeam(env, { policyYaml: "auto_pr_review: true\n" });
+    const runner = await seedRunner(env, team.id, repo.id, { name: "mac" });
+    const [job] = await env.ctx.db
+      .insert(jobs)
+      .values({
+        teamId: team.id,
+        repoId: repo.id,
+        title: "Lost during review",
+        harness: "claude-code",
+        branch: "foundry/lost-review",
+        status: "pr_review",
+        runnerId: runner.id,
+        lastCompletedStage: "verifying",
+        prNumber: 9,
+        headSha: "sha-9",
+      })
+      .returning();
+    env.clock.advance(3 * 60_000);
+    expect(await requeueLostJobs(env.ctx)).toEqual([job!.id]);
+    expect(await getJob(env.ctx, job!.id)).toMatchObject({
+      status: "queued",
+      resumeStage: "pr_review",
     });
   });
 

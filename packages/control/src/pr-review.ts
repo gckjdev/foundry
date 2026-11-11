@@ -16,18 +16,22 @@ export async function maybeStartPrReview(
   job: Job,
   headSha: string,
   ci: CiState,
+  opts: { allowNoCi?: boolean } = {},
 ): Promise<boolean> {
   if (job.kind !== "ticket" || job.status !== "pr_ci" || job.prNumber === null) return false;
-  // Wait for CI to settle. `none` means GitHub reported no checks at all; there is nothing to
-  // review yet, and the gate keeps the PR until a check appears.
-  if (ci !== "success" && ci !== "failure") return false;
+  // Wait for CI to settle. A repo that registers no checks at all would otherwise never review;
+  // the worker passes `allowNoCi` after its first pass so such PRs still get reviewed.
+  const settled = ci === "success" || ci === "failure";
+  if (!settled && !(opts.allowNoCi && ci === "none")) return false;
   if (job.prReviewSha === headSha) return false;
   const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, job.repoId) });
   if (!repo || !repoPolicy(repo).auto_pr_review) return false;
   const moved = await transitionJob(ctx, job.id, "queued", {
-    reason: "PR CI finished; starting the automatic review",
+    reason: settled
+      ? "PR CI finished; starting the automatic review"
+      : "No CI checks; starting the automatic review",
     from: ["pr_ci"],
-    patch: { resumeStage: "pr_review", prReviewSha: headSha },
+    patch: { resumeStage: "pr_review", prReviewSha: headSha, lastCompletedStage: "verifying" },
   });
   if (!moved) return false;
   ctx.log.info("auto PR review queued", { jobId: job.id, pr: job.prNumber, headSha, ci });

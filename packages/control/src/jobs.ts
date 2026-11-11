@@ -375,11 +375,11 @@ export async function sendMessage(
   await addInput(ctx, job, { kind: "message", text, by, attachments });
   const note = attachments.length ? `\n\n${attachments.map((a) => `[image: ${a.name}]`).join("\n")}` : "";
   await recordEvents(ctx, job, [{ kind: "message", role: "human", text: `@${by}: ${text}${note}` }]);
-  if (["pr_ci", "waiting_on_you", "failed"].includes(job.status)) {
+  if (["pr_ci", "pr_review", "waiting_on_you", "failed"].includes(job.status)) {
     const moved = await transitionJob(ctx, jobId, "queued", {
       reason: `message from @${by}`,
       patch: { resumeStage: "implementing" },
-      from: ["pr_ci", "waiting_on_you", "failed"],
+      from: ["pr_ci", "pr_review", "waiting_on_you", "failed"],
     });
     if (moved) return moved;
   }

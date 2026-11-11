@@ -877,15 +877,21 @@ export class JobRunner {
   private async drivePrReview(): Promise<JobOutcome> {
     const context = this.job.prReview;
     if (!context) throw new FailJob("the automatic PR review is missing its pull request context");
-    const report = await this.runPrReview(context);
-    if (this.stopReason) return await this.onStopped(this.stopReason);
-    await this.deps.api.submitPrReview(this.jobId, report);
-    this.logEvent("info", "automatic pull request review reported", {
-      verdict: report.verdict,
-      findings: report.findings.length,
-      failedChecks: context.ciFailures.length,
-    });
-    return "pr_reviewed";
+    // This pass is outside the playbook loop, so `drive()` has not armed the wall-clock deadline.
+    this.driveStartedAt = Date.now();
+    this.armDeadline();
+    try {
+      if (this.stopReason) return await this.onStopped(this.stopReason);
+      const report = await this.runPrReview(context);
+      if (this.stopReason) return await this.onStopped(this.stopReason);
+      // Flush before reporting: the control plane rejects events once the job leaves a running
+      // status, so anything still buffered after `submitPrReview` would be lost.
+      await this.flush();
+      await this.deps.api.submitPrReview(this.jobId, report);
+      return "pr_reviewed";
+    } finally {
+      this.clearDeadline();
+    }
   }
 
   /**

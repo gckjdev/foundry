@@ -357,7 +357,9 @@ The runner normally advances one stage at a time. It also sends `queued` to hand
 #### Automatic PR review
 
 When `.foundry/policy.yaml` sets `auto_pr_review: true`, a job in `pr_ci` is re-queued with
-`resumeStage: "pr_review"` once the PR head's CI checks finish (once per head SHA). The claim's
+`resumeStage: "pr_review"` once the PR head's CI checks finish (once per head SHA). If a repo
+registers no checks at all, the worker starts the review on its next pass (it calls the gate with
+`allowNoCi`). The claim's
 `prReview` field carries the PR and the failed checks: `{ prNumber, url, headSha, ciFailures }`,
 where each failure has `name`, `conclusion`, `summary`, `detailsUrl` and `annotations`
 (`path`, optional `line`, `message`).

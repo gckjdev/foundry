@@ -90,6 +90,30 @@ export async function reconcileOpenPullRequests(ctx: ControlContext): Promise<st
   return done;
 }
 
+/**
+ * Start automatic PR reviews the webhook path never saw settle — most importantly repos that
+ * register no GitHub checks at all, where CI stays `none` and no check webhook ever arrives.
+ */
+export async function reconcileAutoPrReviews(ctx: ControlContext): Promise<string[]> {
+  const open = await ctx.db
+    .select({ id: jobs.id, repoId: jobs.repoId })
+    .from(jobs)
+    .where(and(eq(jobs.status, "pr_ci"), eq(jobs.kind, "ticket")));
+  const queued: string[] = [];
+  for (const row of open) {
+    const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, row.repoId) });
+    if (!repo || !repoPolicy(repo).auto_pr_review) continue;
+    try {
+      await evaluateJobGate(ctx, row.id, { allowNoCi: true });
+      const job = await getJob(ctx, row.id);
+      if (job.status === "queued" && job.resumeStage === "pr_review") queued.push(row.id);
+    } catch (err) {
+      ctx.log.error("auto PR review reconcile failed", { job: row.id, ...errorFields(err) });
+    }
+  }
+  return queued;
+}
+
 /** A human review that requests changes, forwarded to the agent at most once. */
 export async function handleChangesRequestedReview(
   ctx: ControlContext,
@@ -162,7 +186,11 @@ export async function reconcileChangesRequestedReviews(ctx: ControlContext): Pro
  * Evaluate the confidence gate (spec 5.5) for a job whose PR is open, then merge, hand over with
  * routed reviewers, or keep waiting for CI / AI review. Safe to call on every CI or review event.
  */
-export async function evaluateJobGate(ctx: ControlContext, jobId: string): Promise<GateResult | null> {
+export async function evaluateJobGate(
+  ctx: ControlContext,
+  jobId: string,
+  opts: { allowNoCi?: boolean } = {},
+): Promise<GateResult | null> {
   const job = await getJob(ctx, jobId);
   if (job.status !== "pr_ci" || job.prNumber === null) return null;
   const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, job.repoId) });
@@ -178,7 +206,7 @@ export async function evaluateJobGate(ctx: ControlContext, jobId: string): Promi
   }
   const ci = await ctx.gh.ciState(ref, pr.headSha);
   // The automatic PR review runs once per head SHA before the gate decides anything.
-  if (await maybeStartPrReview(ctx, job, pr.headSha, ci)) return null;
+  if (await maybeStartPrReview(ctx, job, pr.headSha, ci, opts)) return null;
   // A concurrent CI webhook may have moved the job to `pr_review` (or somewhere else) already.
   if ((await getJob(ctx, job.id)).status !== "pr_ci") return null;
   const autoReviewComplete = job.prReviewSha === pr.headSha;

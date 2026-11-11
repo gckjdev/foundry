@@ -161,10 +161,14 @@ export async function claimJob(ctx: ControlContext, runner: Runner): Promise<Cla
     // the HTTP response, or the daemon never starts JobRunner and the job stays stuck in triage.
     void bestEffort(ctx, "github sync", () => syncJobToGitHub(ctx, claimed, "queued"));
     let pendingInputs: ClaimedJob["pendingInputs"] = [];
-    try {
-      pendingInputs = await takePendingInputs(ctx, claimed.id);
-    } catch (err) {
-      ctx.log.warn("pending inputs failed", errorFields(err));
+    // The post-PR review prompt has no place for human input. Leave it for the implementing run
+    // that a message (or a changes-requested review) queues next.
+    if (resumeStage !== "pr_review") {
+      try {
+        pendingInputs = await takePendingInputs(ctx, claimed.id);
+      } catch (err) {
+        ctx.log.warn("pending inputs failed", errorFields(err));
+      }
     }
     // Only the post-PR review needs the pull request and its failed checks.
     const prReview = resumeStage === "pr_review" ? await prReviewContext(ctx, claimed) : null;

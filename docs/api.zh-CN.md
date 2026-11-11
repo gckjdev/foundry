@@ -342,7 +342,8 @@ runner 通常一次前进一个阶段。它也会发送 `queued` 交还任务（
 #### 自动 PR 评审
 
 当 `.foundry/policy.yaml` 设置 `auto_pr_review: true` 时，PR head 的 CI 检查结束后，处于 `pr_ci`
-的任务会以 `resumeStage: "pr_review"` 重新入队（每个 head SHA 只评审一次）。领取响应的
+的任务会以 `resumeStage: "pr_review"` 重新入队（每个 head SHA 只评审一次）。如果仓库完全没有
+注册检查，worker 会在下一轮以 `allowNoCi` 评估并启动评审。领取响应的
 `prReview` 字段携带 PR 信息和失败的检查：`{ prNumber, url, headSha, ciFailures }`，每个失败项包含
 `name`、`conclusion`、`summary`、`detailsUrl` 和 `annotations`（`path`、可选 `line`、`message`）。
 
