@@ -1,8 +1,9 @@
 "use client";
 
 import type { FoundryEvent } from "@foundry/shared";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { type Line, mergeLines } from "./live-log-lines";
+import { type Line, mergeLines, needsServerRefresh } from "./live-log-lines";
 
 function render(e: FoundryEvent): string {
   switch (e.kind) {
@@ -27,9 +28,12 @@ function render(e: FoundryEvent): string {
 
 /** Polls the incremental events endpoint every 2 s and appends new lines. */
 export function LiveLog({ jobId, initial, after }: { jobId: string; initial: Line[]; after: number }) {
+  const router = useRouter();
   const [lines, setLines] = useState(initial);
   const cursor = useRef(after);
   const box = useRef<HTMLDivElement>(null);
+  const refresh = useRef(router.refresh);
+  refresh.current = router.refresh;
 
   useEffect(() => {
     let stop = false;
@@ -44,6 +48,9 @@ export function LiveLog({ jobId, initial, after }: { jobId: string; initial: Lin
             if (events.length) {
               cursor.current = Math.max(cursor.current, events.at(-1)!.id);
               setLines((prev) => mergeLines(prev, events));
+              // Rows this poll surfaced outside the log (evidence, timeline entries) only exist
+              // in the server render, so ask for one now rather than on the next stage change.
+              if (needsServerRefresh(events)) refresh.current();
             }
           }
         } catch {
