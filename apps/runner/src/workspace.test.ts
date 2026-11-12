@@ -1,5 +1,8 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { remoteUrl } from "./workspace";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { remoteUrl, Workspace } from "./workspace";
 
 const prev = {
   FOUNDRY_GIT_BASE: process.env.FOUNDRY_GIT_BASE,
@@ -30,5 +33,40 @@ describe("remoteUrl", () => {
     process.env.FOUNDRY_GIT_BASE = "file:///tmp/repos";
     process.env.GITHUB_HOST = "https://github.example.com";
     expect(remoteUrl("acme/app")).toBe("file:///tmp/repos/acme/app.git");
+  });
+});
+
+describe("ensureMirror", () => {
+  it("shares one in-flight fetch between concurrent callers", async () => {
+    const workspace = new Workspace(mkdtempSync(join(tmpdir(), "foundry-mirror-")));
+    const mirror = workspace.mirrorPath("acme/app");
+    let fetches = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const spy = vi
+      .spyOn(
+        Workspace.prototype as unknown as {
+          fetchMirror(fullName: string, mirror: string, token?: string): Promise<string>;
+        },
+        "fetchMirror",
+      )
+      .mockImplementation(async () => {
+        fetches++;
+        await gate;
+        return mirror;
+      });
+
+    try {
+      const first = workspace.ensureMirror("acme/app", "token");
+      const second = workspace.ensureMirror("acme/app", "token");
+      release();
+      expect(await first).toBe(mirror);
+      expect(await second).toBe(mirror);
+      expect(fetches).toBe(1);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
