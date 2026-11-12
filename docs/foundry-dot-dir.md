@@ -34,8 +34,9 @@ Skills are agent instructions the harness loads natively (a `SKILL.md` with `nam
 `description` frontmatter). Foundry ships the `merge-risk` skill, which the automatic PR reviewer
 uses to report a low/medium/high merge risk. Onboarding copies every built-in skill into
 `.claude/skills/<name>/SKILL.md` and `.opencode/skills/<name>/SKILL.md`, so the recipe PR carries
-them. A session loads skills from those folders: Claude Code gets `skills: "all"` with project
-settings, and OpenCode is pointed at both paths.
+them. A session loads skills from those folders: Claude Code enables exactly the skill names found
+under the repo's `.claude/skills` (never the machine's user or plugin skills), and OpenCode is
+pointed at both paths.
 
 After onboarding, install or update them from the repository root:
 
