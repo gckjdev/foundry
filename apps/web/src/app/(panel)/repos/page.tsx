@@ -2,8 +2,7 @@ import { syncUnlinkedInstallations, teamReposWithReadiness } from "@foundry/cont
 import { HARNESS_IDS } from "@foundry/shared";
 import { githubInstallUrl } from "@foundry/shared/github-host";
 import { requireTeam } from "@/server/session";
-import { probeSkills } from "@/server/__probe_skills";
-import { onboardAction, repoSettingsAction, syncReposAction } from "../../actions";
+import { onboardAction, repoSettingsAction, syncReposAction, syncSkillsAction } from "../../actions";
 
 const ONBOARDING: Record<string, { label: string; tone: string }> = {
   not_started: { label: "not onboarded", tone: "" },
@@ -27,12 +26,14 @@ export default async function Repos({ searchParams }: { searchParams: Promise<Re
   }
   const sp = await searchParams;
   const appSlug = process.env.GITHUB_APP_SLUG;
+  // Only render a link to a real web URL; the query string is user-editable.
+  const skillsPrUrl = sp.skills && /^https?:\/\//.test(sp.skills) ? sp.skills : null;
   return (
     <>
       <div className="page-head">
         <div>
           <div className="eyebrow">{team.name}</div>
-          <h1>Repos {probeSkills.join(",")}</h1>
+          <h1>Repos</h1>
         </div>
         <div className="row">
           {role === "admin" ? (
@@ -55,6 +56,19 @@ export default async function Repos({ searchParams }: { searchParams: Promise<Re
       {syncError ? (
         <div className="notice" data-tone="bad" style={{ marginBottom: 14 }}>
           Could not list GitHub App repos: {syncError}
+        </div>
+      ) : null}
+      {skillsPrUrl ? (
+        <div className="notice" style={{ marginBottom: 14 }}>
+          Skills pull request {sp.skillsUpdated === "1" ? "updated" : "opened"}.{" "}
+          <a href={skillsPrUrl} target="_blank" rel="noreferrer">
+            View pull request ↗
+          </a>
+        </div>
+      ) : null}
+      {sp.skillsError ? (
+        <div className="notice" data-tone="bad" style={{ marginBottom: 14 }}>
+          Could not sync skills: {sp.skillsError}
         </div>
       ) : null}
       {list.length === 0 ? (
@@ -84,17 +98,30 @@ export default async function Repos({ searchParams }: { searchParams: Promise<Re
                     {ob.label}
                   </span>
                 </div>
-                {!repo.acceptsJobs && repo.onboardingStatus !== "pr_open" ? (
-                  <form action={onboardAction}>
-                    <input type="hidden" name="repoId" value={repo.id} />
-                    {repo.onboardingStatus === "running" || repo.onboardingStatus === "failed" ? (
-                      <input type="hidden" name="restart" value="1" />
-                    ) : null}
-                    <button className="primary" type="submit">
-                      {repo.onboardingStatus === "not_started" ? "Onboard repo" : "Retry onboarding"}
-                    </button>
-                  </form>
-                ) : null}
+                <div className="row">
+                  {role === "admin" && repo.acceptsJobs ? (
+                    <form action={syncSkillsAction}>
+                      <input type="hidden" name="repoId" value={repo.id} />
+                      <button
+                        type="submit"
+                        title="Open a pull request that installs or updates Foundry's built-in skills in .claude/skills and .opencode/skills"
+                      >
+                        Install / sync skills
+                      </button>
+                    </form>
+                  ) : null}
+                  {!repo.acceptsJobs && repo.onboardingStatus !== "pr_open" ? (
+                    <form action={onboardAction}>
+                      <input type="hidden" name="repoId" value={repo.id} />
+                      {repo.onboardingStatus === "running" || repo.onboardingStatus === "failed" ? (
+                        <input type="hidden" name="restart" value="1" />
+                      ) : null}
+                      <button className="primary" type="submit">
+                        {repo.onboardingStatus === "not_started" ? "Onboard repo" : "Retry onboarding"}
+                      </button>
+                    </form>
+                  ) : null}
+                </div>
               </div>
               {repo.acceptsJobs ? (
                 <p className="dim small">

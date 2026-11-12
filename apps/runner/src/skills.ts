@@ -1,9 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { BUILTIN_SKILLS, PLAYBOOK_SKILLS } from "@foundry/playbooks";
+import { skillFiles } from "@foundry/playbooks";
 
-/** Harness skill folders a repo can carry. Both use `<dir>/<skill>/SKILL.md`. */
-export const SKILL_DIRS = [".claude/skills", ".opencode/skills"] as const;
+export { SKILL_DIRS } from "@foundry/playbooks";
 
 export interface InstalledSkill {
   name: string;
@@ -16,27 +15,18 @@ export interface InstalledSkill {
  * natively. Called by onboarding (the recipe PR carries the files) and by `foundry skills install`.
  * Re-running overwrites the files, so it doubles as an update.
  */
-export async function installSkills(
-  cwd: string,
-  names: readonly string[] = PLAYBOOK_SKILLS,
-): Promise<InstalledSkill[]> {
-  const unknown = names.filter((name) => !BUILTIN_SKILLS[name]);
-  if (unknown.length) {
-    throw new Error(
-      `unknown skill${unknown.length > 1 ? "s" : ""}: ${unknown.join(", ")} (known: ${Object.keys(BUILTIN_SKILLS).join(", ")})`,
-    );
+export async function installSkills(cwd: string, names?: readonly string[]): Promise<InstalledSkill[]> {
+  const files = skillFiles(names);
+  for (const file of files) {
+    const target = join(cwd, file.path);
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, file.content, "utf8");
   }
-  const installed: InstalledSkill[] = [];
-  for (const name of names) {
-    const relativePath = join(name, "SKILL.md");
-    const paths: string[] = [];
-    for (const dir of SKILL_DIRS) {
-      const file = join(cwd, dir, relativePath);
-      await mkdir(dirname(file), { recursive: true });
-      await writeFile(file, BUILTIN_SKILLS[name]!, "utf8");
-      paths.push(join(dir, relativePath));
-    }
-    installed.push({ name, paths });
+  const pathsByName = new Map<string, string[]>();
+  for (const file of files) {
+    const paths = pathsByName.get(file.name) ?? [];
+    paths.push(file.path);
+    pathsByName.set(file.name, paths);
   }
-  return installed;
+  return [...pathsByName].map(([name, paths]) => ({ name, paths }));
 }

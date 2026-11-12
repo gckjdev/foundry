@@ -269,6 +269,28 @@ export class OctokitGitHubClient implements GitHubClient {
     }
   }
 
+  async createBranch(ref: RepoRef, branch: string, fromSha: string, force = false) {
+    const kit = this.kit(ref.installationId);
+    const repo = split(ref.fullName);
+    // createRef takes a fully qualified ref in the body; updateRef takes `heads/<branch>` in the URL.
+    if (force) await kit.git.updateRef({ ...repo, ref: `heads/${branch}`, sha: fromSha, force: true });
+    else await kit.git.createRef({ ...repo, ref: `refs/heads/${branch}`, sha: fromSha });
+  }
+
+  async putFile(ref: RepoRef, input: { path: string; content: string; message: string; branch: string }) {
+    // The Contents API requires the current blob sha to overwrite a file; for a new file it must
+    // be absent. Look it up on the target branch so re-running a sync updates in place.
+    const existing = await this.getFile(ref, input.path, input.branch);
+    await this.kit(ref.installationId).repos.createOrUpdateFileContents({
+      ...split(ref.fullName),
+      path: input.path,
+      message: input.message,
+      content: Buffer.from(input.content, "utf8").toString("base64"),
+      branch: input.branch,
+      ...(existing ? { sha: existing.sha } : {}),
+    });
+  }
+
   async findPullRequest(ref: RepoRef, head: string) {
     const { owner, repo } = split(ref.fullName);
     const { data } = await this.kit(ref.installationId).pulls.list({
