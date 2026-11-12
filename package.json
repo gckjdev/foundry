@@ -25,12 +25,18 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.0",
-    "@playwright/test": "^1.48.2",
+    "@playwright/test": "^1.65.0",
     "@types/node": "^22.10.0",
     "@vitest/coverage-v8": "^4.1.12",
     "smee-client": "^2.0.4",
     "turbo": "^2.6.0",
     "typescript": "^5.9.0",
     "vitest": "^4.1.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "esbuild@<0.25.0": "0.25.12",
+      "nodemailer@<10.1.4": "10.5.0"
+    }
   }
 }
