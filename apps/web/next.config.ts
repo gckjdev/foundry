@@ -19,7 +19,13 @@ const config: NextConfig = {
     turbopackFileSystemCacheForDev: false,
   },
   // Workspace packages ship TypeScript source.
-  transpilePackages: ["@foundry/control", "@foundry/db", "@foundry/github", "@foundry/shared"],
+  transpilePackages: [
+    "@foundry/control",
+    "@foundry/db",
+    "@foundry/github",
+    "@foundry/playbooks",
+    "@foundry/shared",
+  ],
   serverExternalPackages: ["postgres", "web-push", "nodemailer", "undici"],
   outputFileTracingIncludes: {
     "/**": ["../../packages/db/migrations/**"],

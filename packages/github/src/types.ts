@@ -85,6 +85,13 @@ export interface GitHubClient {
 
   getFile(repo: RepoRef, path: string, ref?: string): Promise<{ content: string; sha: string } | null>;
   getBranchSha(repo: RepoRef, branch: string): Promise<string | null>;
+  /** Create `branch` at `fromSha`; `force` resets an existing branch to that commit. */
+  createBranch(repo: RepoRef, branch: string, fromSha: string, force?: boolean): Promise<void>;
+  /** Create or overwrite one file on `branch` (the Contents API's update path). */
+  putFile(
+    repo: RepoRef,
+    input: { path: string; content: string; message: string; branch: string },
+  ): Promise<void>;
 
   findPullRequest(repo: RepoRef, head: string): Promise<GhPullRequest | null>;
   getPullRequest(repo: RepoRef, number: number): Promise<GhPullRequest>;

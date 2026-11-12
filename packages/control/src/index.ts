@@ -15,6 +15,7 @@ export * from "./questions";
 export * from "./repos";
 export * from "./runner-api";
 export * from "./runners";
+export * from "./skills";
 export * from "./sweeper";
 export * from "./teams";
 export * from "./worker";
