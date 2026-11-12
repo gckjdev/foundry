@@ -9,6 +9,11 @@ function tempRepo(): string {
   return mkdtempSync(join(tmpdir(), "foundry-skills-"));
 }
 
+const HEADINGS: Record<string, string> = {
+  "merge-risk": "# Merge risk",
+  "resolve-merge-conflicts": "# Resolve merge conflicts",
+};
+
 describe("installSkills", () => {
   it("copies the playbook skills into both harness folders", async () => {
     const cwd = tempRepo();
@@ -19,8 +24,8 @@ describe("installSkills", () => {
         const file = join(cwd, dir, name, "SKILL.md");
         expect(existsSync(file)).toBe(true);
         const content = readFileSync(file, "utf8");
-        expect(content).toContain("name: merge-risk");
-        expect(content).toContain("# Merge risk");
+        expect(content).toContain(`name: ${name}`);
+        expect(content).toContain(HEADINGS[name]!);
       }
     }
     expect(installed[0]!.paths).toEqual(SKILL_DIRS.map((dir) => join(dir, "merge-risk", "SKILL.md")));

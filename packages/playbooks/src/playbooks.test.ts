@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   assemblePrompt,
   assembleReviewPrompt,
+  BUILTIN_SKILLS,
   basePlaybook,
   PLAYBOOK_SKILLS,
   resumeMessage,
   SKILL_DIRS,
+  skillBody,
   skillFiles,
 } from "./index";
 
@@ -20,6 +22,22 @@ const job = {
   author: "alice",
   branch: "foundry/abcd1234-export-csv",
 };
+
+describe("built-in skills", () => {
+  it("ships a self-contained resolve-merge-conflicts skill that onboarding installs", () => {
+    expect(PLAYBOOK_SKILLS).toContain("resolve-merge-conflicts");
+    for (const name of PLAYBOOK_SKILLS) {
+      const markdown = BUILTIN_SKILLS[name]!;
+      expect(markdown).toContain(`name: ${name}`);
+      expect(skillBody(markdown).length).toBeGreaterThan(0);
+    }
+    const conflict = skillBody(BUILTIN_SKILLS["resolve-merge-conflicts"]!);
+    expect(conflict).toContain("# Resolve merge conflicts");
+    expect(conflict).toContain("--diff-filter=U");
+    // The installer copies a single SKILL.md, so the skill must not depend on helper scripts.
+    expect(conflict).not.toContain("extract_conflict_context.py");
+  });
+});
 
 describe("assemblePrompt", () => {
   it("uses the built-in playbook and puts the ticket in the first message", () => {
@@ -119,7 +137,7 @@ describe("skillFiles", () => {
     expect(files.map((file) => file.path)).toEqual(
       PLAYBOOK_SKILLS.flatMap((name) => SKILL_DIRS.map((dir) => `${dir}/${name}/SKILL.md`)),
     );
-    expect(files.every((file) => file.content.includes("name: merge-risk"))).toBe(true);
+    expect(files.every((file) => file.content.includes(`name: ${file.name}`))).toBe(true);
   });
 
   it("returns just the named skill and rejects unknown names", () => {

@@ -12,14 +12,16 @@ import feature from "./playbooks/feature.md" with { type: "text" };
 import onboarding from "./playbooks/onboarding.md" with { type: "text" };
 import reviewer from "./playbooks/reviewer.md" with { type: "text" };
 import mergeRiskSkill from "./skills/merge-risk/SKILL.md" with { type: "text" };
+import resolveMergeConflictsSkill from "./skills/resolve-merge-conflicts/SKILL.md" with { type: "text" };
 
 /** Skills that ship with Foundry and can be installed into a repo's harness skill folders. */
 export const BUILTIN_SKILLS: Record<string, string> = {
   "merge-risk": mergeRiskSkill,
+  "resolve-merge-conflicts": resolveMergeConflictsSkill,
 };
 
 /** Skills the onboarding PR installs into a repo. */
-export const PLAYBOOK_SKILLS = ["merge-risk"] as const;
+export const PLAYBOOK_SKILLS = ["merge-risk", "resolve-merge-conflicts"] as const;
 
 /** Harness skill folders a repo can carry. Both use `<dir>/<skill>/SKILL.md`. */
 export const SKILL_DIRS = [".claude/skills", ".opencode/skills"] as const;

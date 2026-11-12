@@ -1015,7 +1015,7 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
     const { repo } = await seedTeam(env);
     const gh = env.gh.repo("acme/app");
     const first = await syncRepoSKills(env.ctx, repo.id);
-    expect(first).toMatchObject({ skills: ["merge-risk"], updated: false });
+    expect(first).toMatchObject({ skills: ["merge-risk", "resolve-merge-conflicts"], updated: false });
     expect(gh.files.get(".claude/skills/merge-risk/SKILL.md")).toContain("name: merge-risk");
     expect(gh.files.get(".opencode/skills/merge-risk/SKILL.md")).toContain("name: merge-risk");
     expect(gh.branches.get("foundry/skills")).toBeTruthy();
