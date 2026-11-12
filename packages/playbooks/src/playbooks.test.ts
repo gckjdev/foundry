@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { assemblePrompt, assembleReviewPrompt, basePlaybook, resumeMessage } from "./index";
+import {
+  assemblePrompt,
+  assembleReviewPrompt,
+  BUILTIN_SKILLS,
+  basePlaybook,
+  PLAYBOOK_SKILLS,
+  resumeMessage,
+  skillBody,
+} from "./index";
 
 const job = {
   kind: "ticket" as const,
@@ -12,6 +20,22 @@ const job = {
   author: "alice",
   branch: "foundry/abcd1234-export-csv",
 };
+
+describe("built-in skills", () => {
+  it("ships a self-contained resolve-merge-conflicts skill that onboarding installs", () => {
+    expect(PLAYBOOK_SKILLS).toContain("resolve-merge-conflicts");
+    for (const name of PLAYBOOK_SKILLS) {
+      const markdown = BUILTIN_SKILLS[name]!;
+      expect(markdown).toContain(`name: ${name}`);
+      expect(skillBody(markdown).length).toBeGreaterThan(0);
+    }
+    const conflict = skillBody(BUILTIN_SKILLS["resolve-merge-conflicts"]!);
+    expect(conflict).toContain("# Resolve merge conflicts");
+    expect(conflict).toContain("--diff-filter=U");
+    // The installer copies a single SKILL.md, so the skill must not depend on helper scripts.
+    expect(conflict).not.toContain("extract_conflict_context.py");
+  });
+});
 
 describe("assemblePrompt", () => {
   it("uses the built-in playbook and puts the ticket in the first message", () => {
