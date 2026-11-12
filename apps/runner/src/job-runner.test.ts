@@ -124,6 +124,7 @@ const approveReview: FakeTurn = {
     const reply = await agentTools(env)("review", {
       verdict: "approve",
       summary: "No blocking issues",
+      risk: { level: "low", summary: "A small, contained change with passing checks." },
       findings: [],
     });
     expect(reply.isError).toBeFalsy();
@@ -343,6 +344,7 @@ describe("JobRunner", () => {
           await agentTools(env)("review", {
             verdict: "request_changes",
             summary: "The acceptance criterion is not covered by a test.",
+            risk: { level: "medium", summary: "Verification is incomplete without a regression test." },
             findings: [
               {
                 severity: "blocking",
@@ -402,6 +404,7 @@ describe("JobRunner", () => {
           await agentTools(env)("review", {
             verdict: "request_changes",
             summary: "Still wrong.",
+            risk: { level: "high", summary: "The change still does not meet the ticket." },
             findings: [{ severity: "blocking", message: "Fix it." }],
           });
         },
@@ -814,6 +817,12 @@ describe("JobRunner", () => {
     expect(
       gitIn(join(fixture.root, "acme/fresh.git"), "show", `${job.branch}:.foundry/recipe.yaml`),
     ).toContain("test -f package.json");
+    // Onboarding installs the playbook skills into both harness folders in the same PR.
+    for (const dir of [".claude/skills", ".opencode/skills"]) {
+      expect(
+        gitIn(join(fixture.root, "acme/fresh.git"), "show", `${job.branch}:${dir}/merge-risk/SKILL.md`),
+      ).toContain("# Merge risk");
+    }
   });
 
   it("reviews an open pull request at its pushed head and reports the verdict", async () => {
@@ -847,6 +856,7 @@ describe("JobRunner", () => {
           const reply = await agentTools(env)("review", {
             verdict: "request_changes",
             summary: "The failing test points at done.txt",
+            risk: { level: "medium", summary: "The PR's own CI check fails." },
             findings: [
               {
                 severity: "blocking",

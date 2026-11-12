@@ -51,6 +51,10 @@ Report progress through the `foundry` MCP tools.
 3. `.github/ISSUE_TEMPLATE/foundry.yml`, an issue form with these fields: Goal (required), Acceptance
    criteria (required), Constraints, Out of scope. Add the label `foundry` by default.
 
+Foundry also copies its built-in skills into `.claude/skills/` and `.opencode/skills/` when this job
+finishes, so the recipe pull request carries them. Do not edit or delete those files. A team can add
+or refresh them later with `foundry skills install`.
+
 ## Stages
 
 1. **Triage.** Look at the repo: languages, package manager, test runner, linters, CI workflows, README.

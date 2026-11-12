@@ -49,7 +49,12 @@ function shaOf(cwd: string): string {
 function reviewerApproval(): FakeTurn {
   return {
     act: async ({ env }) => {
-      await agentTools(env)("review", { verdict: "approve", summary: "Looks good", findings: [] });
+      await agentTools(env)("review", {
+        verdict: "approve",
+        summary: "Looks good",
+        risk: { level: "low", summary: "Small contained change." },
+        findings: [],
+      });
     },
   };
 }

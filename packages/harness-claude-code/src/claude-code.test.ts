@@ -133,6 +133,8 @@ describe("ClaudeCodeAdapter with a stubbed SDK", () => {
       cwd: "/w",
       systemPrompt: { type: "preset", preset: "claude_code", append: "PLAYBOOK" },
       mcpServers: { foundry: { type: "stdio", command: "foundry", args: ["mcp"] } },
+      settingSources: ["project"],
+      skills: "all",
     });
 
     const r = await adapter.resume("sess-abc", "answer: CSV", base);

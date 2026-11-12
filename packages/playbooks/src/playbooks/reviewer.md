@@ -65,6 +65,10 @@ Call the `foundry.review` tool exactly once when you are done:
 
 - `verdict: "approve"` when there are no blocking findings.
 - `verdict: "request_changes"` when at least one blocking finding exists.
+- `risk: { level, summary }` is required. Use the **merge-risk** skill above to pick `low`,
+  `medium` or `high` and to write one or two sentences naming the categories that drove it.
+  `low` does not mean "no findings"; it means the change is safe to merge even with the
+  non-blocking nits you listed.
 
 Classify every finding with `category`: `code_quality`, `ui_design` or `security` (use `other` only
 when none fits). In the summary, state which areas you checked and which did not apply. When you have

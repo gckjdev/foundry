@@ -55,6 +55,7 @@ import type { PortLeases } from "./ports";
 import { loadPlaybookFiles, loadPolicy, loadRecipe } from "./repo-files";
 import { scrub, secretEnvValues } from "./scrub";
 import { dropServices, provisionServices } from "./services";
+import { installSkills } from "./skills";
 import type { LocalJobs } from "./state";
 import type { ToolServer } from "./tool-server";
 import type { Workspace } from "./workspace";
@@ -313,6 +314,17 @@ export class JobRunner {
     }
     this.portBase = await deps.ports.lease(job.id, local?.portBase);
     this.saveLocal("running");
+
+    // The recipe PR carries the playbook skills, so every later ticket job can load them from
+    // `.claude/skills` or `.opencode/skills` without a separate install step. Installing before
+    // the first session also lets onboarding's own reviewer see the files.
+    if (job.kind === "onboarding") {
+      try {
+        await installSkills(this.cwd);
+      } catch (err) {
+        throw new FailJob(`could not install the playbook skills: ${String(err)}`);
+      }
+    }
 
     // The post-PR review only reads the branch; it needs neither the recipe nor the job services.
     const postPrReview = job.resumeStage === "pr_review";
@@ -852,6 +864,7 @@ export class JobRunner {
       const report: ReviewReport = this.pendingReview ?? {
         verdict: "request_changes",
         summary: "The reviewer did not report a verdict.",
+        risk: { level: "high", summary: "The reviewer did not report a merge risk." },
         findings: [
           {
             severity: "blocking",
@@ -955,6 +968,7 @@ export class JobRunner {
       const report: ReviewReport = this.pendingReview ?? {
         verdict: "request_changes",
         summary: "The reviewer did not report a verdict.",
+        risk: { level: "high", summary: "The reviewer did not report a merge risk." },
         findings: [
           {
             severity: "blocking",
@@ -998,6 +1012,7 @@ export class JobRunner {
     this.pendingReview = {
       verdict: parsed.verdict === "request_changes" || blocking ? "request_changes" : "approve",
       summary: parsed.summary,
+      risk: parsed.risk,
       findings: parsed.findings,
     };
     return { text: "Review recorded. End your turn now." };
@@ -1026,7 +1041,11 @@ export class JobRunner {
   }
 
   private formatReview(report: ReviewReport): string {
-    const lines = [`Verdict: ${report.verdict}`, report.summary];
+    const lines = [
+      `Verdict: ${report.verdict}`,
+      `Merge risk: ${report.risk.level} — ${report.risk.summary}`,
+      report.summary,
+    ];
     for (const f of report.findings) {
       const at = f.file ? ` ${f.file}${f.line ? `:${f.line}` : ""}` : "";
       const category = f.category && f.category !== "other" ? ` · ${f.category.replaceAll("_", " ")}` : "";

@@ -24,11 +24,18 @@ export const ReviewFindingSchema = z.object({
   line: z.number().int().positive().optional(),
   message: z.string().min(1),
 });
+/** How risky it is to merge the reviewed change. */
+export const MergeRiskSchema = z.object({
+  level: z.enum(["low", "medium", "high"]).describe("Overall merge risk"),
+  summary: z.string().min(1).describe("One or two sentences naming the categories that drove the level"),
+});
 export const ReviewReportSchema = z.object({
   verdict: z.enum(["approve", "request_changes"]),
   summary: z.string().min(1),
+  risk: MergeRiskSchema,
   findings: z.array(ReviewFindingSchema).default([]),
 });
+export type MergeRisk = z.infer<typeof MergeRiskSchema>;
 export type ReviewFinding = z.infer<typeof ReviewFindingSchema>;
 export type ReviewReport = z.infer<typeof ReviewReportSchema>;
 
@@ -136,10 +143,11 @@ export function createFoundryMcpServer(bridge: ToolBridge, version = "0.1.0"): M
     "review",
     {
       description:
-        "Report the independent code review result. Only the reviewer session calls this, exactly once. Cover code quality, UI design and security; classify each finding and use blocking only for issues that must be fixed before merge.",
+        "Report the independent code review result. Only the reviewer session calls this, exactly once. Cover code quality, UI design and security; classify each finding and use blocking only for issues that must be fixed before merge. Always report the merge risk assessment.",
       inputSchema: {
         verdict: z.enum(["approve", "request_changes"]),
         summary: z.string().min(1),
+        risk: MergeRiskSchema.describe("Merge risk level and the reasons that drove it"),
         findings: z.array(ReviewFindingSchema).default([]),
       },
     },

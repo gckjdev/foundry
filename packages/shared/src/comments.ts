@@ -136,7 +136,14 @@ export function renderPrBody(p: PrBodyInput): string {
  * the Foundry App authors the PR and GitHub does not let a PR author approve it. */
 export function renderPrReviewBody(report: PrReviewRequest): string {
   const verdict = report.verdict === "approve" ? "Approved" : "Changes requested";
-  const lines = [`## Automatic PR review: ${verdict}`, "", report.summary.trim() || "_No summary provided._"];
+  const lines = [`## Automatic PR review: ${verdict}`, ""];
+  if (report.risk) {
+    const summary = report.risk.summary.trim();
+    lines.push(`**Merge risk: ${report.risk.level}**`, "", summary || "_No reasons provided._", "");
+  } else {
+    lines.push("**Merge risk: not reported**", "");
+  }
+  lines.push(report.summary.trim() || "_No summary provided._");
   const groups = [
     ["Blocking", report.findings.filter((f) => f.severity === "blocking")],
     ["Non-blocking", report.findings.filter((f) => f.severity !== "blocking")],

@@ -118,17 +118,19 @@ export async function submitPrReview(ctx: ControlContext, job: Job, report: PrRe
     outputTail: body.slice(0, 20_000),
     loop: job.loopCount,
   });
+  const risk = report.risk ? ` Merge risk: ${report.risk.level} — ${report.risk.summary}` : "";
   await recordEvents(ctx, job, [
     {
       kind: "message",
       role: "system",
-      text: `Automatic PR review: ${blocking ? "changes requested" : "approved"}. ${report.summary}`,
+      text: `Automatic PR review: ${blocking ? "changes requested" : "approved"}. ${report.summary}${risk}`,
     },
   ]);
   ctx.log.info("auto PR review reported", {
     jobId: job.id,
     pr: job.prNumber,
     verdict: report.verdict,
+    risk: report.risk?.level ?? null,
     findings: report.findings.length,
   });
 

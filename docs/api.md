@@ -368,15 +368,19 @@ where each failure has `name`, `conclusion`, `summary`, `detailsUrl` and `annota
 The runner reviews the pushed head in a detached read-only worktree and reports through
 `pr-review`:
 
-| Field      | Type                                              | Notes                                                     |
-| ---------- | ------------------------------------------------- | --------------------------------------------------------- |
-| `verdict`  | `approve` \| `request_changes`                    |                                                           |
-| `summary`  | string                                            |                                                           |
-| `findings` | `{ severity, category, file?, line?, message }[]` | `file` + `line` become inline review comments when valid. |
+| Field      | Type                                              | Notes                                                                                                      |
+| ---------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `verdict`  | `approve` \| `request_changes`                    |                                                                                                            |
+| `summary`  | string                                            |                                                                                                            |
+| `risk`     | `{ level: "low" \| "medium" \| "high", summary }` | Merge-risk assessment; `summary` names the categories (impact, verification, rollback cost…) that drove it |
+| `findings` | `{ severity, category, file?, line?, message }[]` | `file` + `line` become inline review comments when valid.                                                  |
 
 The control plane posts the result as a `COMMENT` review on the PR — the Foundry App authors the
 PR, so GitHub will not accept an `APPROVE` or `REQUEST_CHANGES` event from it — and records
-`code review` evidence. Approval returns the job to `pr_ci`, but **the gate never auto-merges a job
+`code review` evidence. The review body starts with the merge risk (for example
+`**Merge risk: medium**`) and the reviewer's reasons, and the same risk is added to the job's
+timeline. The reviewer follows the built-in `merge-risk` skill, which onboarding installs into
+`.claude/skills/` and `.opencode/skills/`. Approval returns the job to `pr_ci`, but **the gate never auto-merges a job
 with `auto_pr_review` on**: the review is advisory, and the PR waits for a human to merge
 (`human_review` rule). Blocking findings become a message and re-queue the job at `implementing`
 for up to `max_review_loops` rounds; after that the job is handed to the ticket author.
@@ -614,15 +618,15 @@ react to the message. The client allows up to 30 minutes per call because `run_c
 
 ### 5.1 Tools
 
-| Tool         | Arguments                                                                                                        | What the runner does                                                                           |
-| ------------ | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `stage`      | `{ name: "investigating" \| "implementing" \| "reviewing" \| "verifying" \| "done", summary }`                   | Enforces stage order; reports `stage` upstream and checkpoints. `done` runs the verify/PR path |
-| `plan`       | `{ plan: string }`                                                                                               | Stores the plan and emits a message event                                                      |
-| `ask`        | `{ question: string, options?: string[] }`                                                                       | Parks the job after a grace period and posts the question                                      |
-| `evidence`   | `{ kind: "screenshot" \| "note", name, status?, path?, detail? }`                                                | Notes are recorded; screenshots are uploaded then linked as evidence                           |
-| `run_checks` | `{ names?: string[] }`                                                                                           | Runs the recipe's trusted checks and records each as gate evidence                             |
-| `confidence` | `{ level: "high" \| "medium" \| "low", reasons?: string[], uncertainties?: string[] }`                           | Stores the self-assessment; anything below `high` hands the PR to a human                      |
-| `review`     | `{ verdict: "approve" \| "request_changes", summary, findings: [{severity, category?, file?, line?, message}] }` | Reviewer-only: records the independent review once                                             |
+| Tool         | Arguments                                                                                                                                | What the runner does                                                                           |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `stage`      | `{ name: "investigating" \| "implementing" \| "reviewing" \| "verifying" \| "done", summary }`                                           | Enforces stage order; reports `stage` upstream and checkpoints. `done` runs the verify/PR path |
+| `plan`       | `{ plan: string }`                                                                                                                       | Stores the plan and emits a message event                                                      |
+| `ask`        | `{ question: string, options?: string[] }`                                                                                               | Parks the job after a grace period and posts the question                                      |
+| `evidence`   | `{ kind: "screenshot" \| "note", name, status?, path?, detail? }`                                                                        | Notes are recorded; screenshots are uploaded then linked as evidence                           |
+| `run_checks` | `{ names?: string[] }`                                                                                                                   | Runs the recipe's trusted checks and records each as gate evidence                             |
+| `confidence` | `{ level: "high" \| "medium" \| "low", reasons?: string[], uncertainties?: string[] }`                                                   | Stores the self-assessment; anything below `high` hands the PR to a human                      |
+| `review`     | `{ verdict: "approve" \| "request_changes", summary, risk: {level, summary}, findings: [{severity, category?, file?, line?, message}] }` | Reviewer-only: records the independent review once, including the merge-risk assessment        |
 
 `review` is available only to the read-only reviewer session; the implementer's tool server
 rejects it. `evidence` screenshots must be inside the worktree and PNG, JPEG or WebP.

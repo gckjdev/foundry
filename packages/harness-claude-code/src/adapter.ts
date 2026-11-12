@@ -170,6 +170,9 @@ export class ClaudeCodeAdapter implements HarnessAdapter {
         canUseTool: canUseTool(opts),
         disallowedTools: disallowedTools(opts),
         settingSources: ["project"],
+        // Load repo skills from `.claude/skills/<name>/SKILL.md` into the session. Without this
+        // the SDK only follows its own defaults and the repo's skills can be hidden.
+        skills: "all",
         abortController: abort,
         ...(executable ? { pathToClaudeCodeExecutable: executable } : {}),
       },

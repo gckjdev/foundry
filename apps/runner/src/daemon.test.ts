@@ -84,7 +84,12 @@ describe("Daemon", () => {
       },
       {
         act: async ({ env }) => {
-          await agentTools(env)("review", { verdict: "approve", summary: "ok", findings: [] });
+          await agentTools(env)("review", {
+            verdict: "approve",
+            summary: "ok",
+            risk: { level: "low", summary: "Small contained change." },
+            findings: [],
+          });
         },
       },
       {
