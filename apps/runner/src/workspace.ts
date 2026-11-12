@@ -20,6 +20,9 @@ function slug(fullName: string): string {
  * cheap after the first clone, and worktrees share its objects.
  */
 export class Workspace {
+  /** Concurrent callers share one fetch: readiness and job setup can ask for the same mirror. */
+  private readonly fetches = new Map<string, Promise<string>>();
+
   constructor(readonly root: string) {}
 
   mirrorPath(fullName: string): string {
@@ -30,8 +33,16 @@ export class Workspace {
     return join(this.root, "worktrees", jobId);
   }
 
-  async ensureMirror(fullName: string, token?: string): Promise<string> {
+  ensureMirror(fullName: string, token?: string): Promise<string> {
     const mirror = this.mirrorPath(fullName);
+    const inflight = this.fetches.get(mirror);
+    if (inflight) return inflight;
+    const fetch = this.fetchMirror(fullName, mirror, token).finally(() => this.fetches.delete(mirror));
+    this.fetches.set(mirror, fetch);
+    return fetch;
+  }
+
+  private async fetchMirror(fullName: string, mirror: string, token?: string): Promise<string> {
     if (!existsSync(join(mirror, "HEAD"))) {
       await mkdir(mirror, { recursive: true });
       await git(["init", "--bare", "--quiet"], { cwd: mirror });
@@ -87,8 +98,10 @@ export class Workspace {
     /** Start point; defaults to `origin/<branch>`. */
     commit?: string;
     token?: string;
+    /** An already-fetched mirror for this repo; skips a redundant fetch. */
+    mirror?: string;
   }): Promise<string> {
-    const mirror = await this.ensureMirror(opts.fullName, opts.token);
+    const mirror = opts.mirror ?? (await this.ensureMirror(opts.fullName, opts.token));
     const path = this.worktreePath(opts.id);
     if (existsSync(path)) await this.removeWorktree(opts.fullName, opts.id);
     await mkdir(join(this.root, "worktrees"), { recursive: true });

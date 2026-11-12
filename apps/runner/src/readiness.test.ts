@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { noopLogger } from "@foundry/shared";
+import { createLogger, type Logger, noopLogger } from "@foundry/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ReadinessReporter, type ReadinessResult } from "./readiness";
 import { createGitFixture, RecordingControlPlane } from "./testing";
@@ -38,11 +38,11 @@ afterAll(() => {
   else process.env.FOUNDRY_GIT_BASE = prevBase;
 });
 
-function makeReporter(api: RecordingControlPlane) {
+function makeReporter(api: RecordingControlPlane, logger: Logger = noopLogger) {
   const root = mkdtempSync(join(tmpdir(), "foundry-readiness-"));
   return {
     root,
-    reporter: new ReadinessReporter(api, new Workspace(root), "macos", { logger: noopLogger }),
+    reporter: new ReadinessReporter(api, new Workspace(root), "macos", { logger }),
   };
 }
 
@@ -116,5 +116,33 @@ describe("ReadinessReporter", () => {
 
     await reporter.sync([repo("repo-cache", "acme/ok", "sha-2")]);
     expect(api.named("readiness")).toHaveLength(2);
+  });
+
+  it("logs each startup step so progress and blockers are visible", async () => {
+    const api = new RecordingControlPlane();
+    const lines: string[] = [];
+    const logger = createLogger({ service: "test", level: "info", sink: (line) => lines.push(line) });
+    const { reporter } = makeReporter(api, logger);
+
+    await reporter.sync([repo("repo-order", "acme/order")]);
+
+    const records = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
+    const steps = records.filter((r) => r.message === "readiness step started").map((r) => r.step);
+    expect(steps).toEqual(["warm", "install", "order"]);
+    expect(records.find((r) => r.message === "readiness step started")).toMatchObject({
+      repo: "acme/order",
+      stepIndex: 1,
+      stepCount: 3,
+    });
+    for (const step of ["warm", "install", "order"]) {
+      expect(records.find((r) => r.message === "readiness step passed" && r.step === step)).toMatchObject({
+        repo: "acme/order",
+        durationMs: expect.any(Number),
+      });
+    }
+    expect(records.find((r) => r.message === "repo readiness passed")).toMatchObject({
+      repo: "acme/order",
+      durationMs: expect.any(Number),
+    });
   });
 });

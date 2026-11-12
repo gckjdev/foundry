@@ -25,6 +25,9 @@ beforeAll(() => {
   prevBase = process.env.FOUNDRY_GIT_BASE;
   process.env.FOUNDRY_GIT_BASE = fixture.base;
   fixture.seedRepo("acme/app", { ".foundry/recipe.yaml": TEST_RECIPE });
+  fixture.seedRepo("acme/slow", {
+    ".foundry/recipe.yaml": "checks: [{name: slow, run: 'sleep 2'}]\n",
+  });
 });
 afterAll(() => {
   if (prevBase === undefined) delete process.env.FOUNDRY_GIT_BASE;
@@ -154,6 +157,95 @@ describe("Daemon", () => {
     expect(api.named("stage").filter((c) => c.jobId === "bbbbbbbb-0000-0000-0000-000000000000")).toHaveLength(
       0,
     );
+    await daemon.stop();
+  });
+
+  it("starts before the readiness check finishes and reports readiness in the background", async () => {
+    const api = new RecordingControlPlane();
+    api.heartbeatResponse = {
+      ...api.heartbeatResponse,
+      repos: [
+        {
+          id: "repo-slow",
+          fullName: "acme/slow",
+          defaultBranch: "main",
+          recipeSha: "sha-slow",
+          acceptsJobs: true,
+        },
+      ],
+    };
+    const daemon = new Daemon({
+      api,
+      os: fakeOs({ ac: true }),
+      harnesses: {},
+      dataDir: mkdtempSync(join(tmpdir(), "foundry-daemon-")),
+      maxConcurrency: 1,
+      schedule: LAPTOP_DEFAULT_SCHEDULE,
+      minFreeDiskMb: 1_000,
+      mcpCommand: { command: "foundry", args: ["mcp"] },
+      socketPath: testSocketPath(),
+      heartbeatMs: 60_000,
+      logger: noopLogger,
+    });
+
+    await daemon.start();
+    // The recipe check is still running: start() returned without waiting for it.
+    expect(api.named("readiness")).toHaveLength(0);
+
+    await until(() => api.named("readiness").length === 1);
+    expect(api.named("readiness")[0]!.body).toMatchObject({
+      repoId: "repo-slow",
+      recipeSha: "sha-slow",
+      ready: true,
+    });
+    await daemon.stop();
+  });
+
+  it("claims a queued job once the background readiness report lands", async () => {
+    // The real control plane refuses claims until a readiness row exists for the recipe sha;
+    // this fake does the same so the test exercises the claim after the background pass.
+    class ReadinessGatedControlPlane extends RecordingControlPlane {
+      override async claim() {
+        return this.named("readiness").length > 0 ? super.claim() : null;
+      }
+    }
+    const api = new ReadinessGatedControlPlane();
+    api.heartbeatResponse = {
+      ...api.heartbeatResponse,
+      repos: [
+        {
+          id: "repo-slow",
+          fullName: "acme/slow",
+          defaultBranch: "main",
+          recipeSha: "sha-gated",
+          acceptsJobs: true,
+        },
+      ],
+    };
+    api.claimQueue.push(claimedJob({ id: "dddddddd-0000-0000-0000-000000000000", branch: "foundry/d" }));
+    const harness = new FakeHarness("claude-code", [{ act: () => new Promise(() => {}) }]);
+    const daemon = new Daemon({
+      api,
+      os: fakeOs({ ac: true }),
+      harnesses: { "claude-code": harness },
+      dataDir: mkdtempSync(join(tmpdir(), "foundry-daemon-")),
+      maxConcurrency: 1,
+      schedule: LAPTOP_DEFAULT_SCHEDULE,
+      minFreeDiskMb: 1_000,
+      mcpCommand: { command: "foundry", args: ["mcp"] },
+      socketPath: testSocketPath(),
+      heartbeatMs: 3_600_000,
+      logger: noopLogger,
+    });
+
+    await daemon.start();
+    // The first claim was refused: no readiness row existed yet.
+    expect(daemon.running.size).toBe(0);
+    expect(api.claimQueue).toHaveLength(1);
+
+    // No heartbeat arrives for an hour in this test, so only the post-readiness claim can take it.
+    await until(() => daemon.running.size === 1, 15_000);
+    expect(api.claimQueue).toHaveLength(0);
     await daemon.stop();
   });
 });

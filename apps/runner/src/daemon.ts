@@ -64,6 +64,7 @@ export class Daemon {
   private keepJobIds: string[] | null = null;
   private stopped = false;
   private claiming = false;
+  private claimAgain = false;
   private harnessInfo: HarnessInfo[] = [];
   private wrap: string[] | undefined;
   private readonly logger: Logger;
@@ -82,20 +83,32 @@ export class Daemon {
   }
 
   async start(): Promise<void> {
+    const startedAt = Date.now();
+    this.logger.info("runner starting", {
+      dataDir: this.opts.dataDir,
+      maxConcurrency: this.opts.maxConcurrency,
+    });
     await this.tools.start();
+    const detectStarted = Date.now();
     this.harnessInfo = await this.detectHarnesses();
+    this.logger.info("runner harnesses detected", {
+      durationMs: Date.now() - detectStarted,
+      harnesses: this.harnessInfo.filter((h) => h.installed).map((h) => h.id),
+    });
     if (this.opts.limits?.memMb || this.opts.limits?.cpuPercent)
       this.wrap = await this.opts.os.wrapWithLimits([], this.opts.limits);
-    await collectGarbage({
+    const removed = await collectGarbage({
       workspace: this.workspace,
       localJobs: this.localJobs,
       ports: this.ports,
       running: new Set(),
       keep: null,
     });
+    if (removed.length) this.logger.info("startup gc removed worktrees", { count: removed.length });
     await this.tick();
     this.heartbeatTimer = setInterval(() => void this.tick(), this.opts.heartbeatMs ?? HEARTBEAT_INTERVAL_MS);
     this.gcTimer = setInterval(() => void this.gc(), 3600_000);
+    this.logger.info("runner started", { durationMs: Date.now() - startedAt });
   }
 
   /** Give running jobs back (they resume from checkpoints) and stop. */
@@ -199,7 +212,19 @@ export class Daemon {
         for (const r of this.running.values()) void r.runner.pause();
       }
       this.connectRealtime(res.realtimeUrl, res.realtimeToken);
-      await this.readiness.sync(res.repos);
+      // Readiness runs the repo's whole recipe (mirror fetch, install, every check) and can take
+      // minutes. It must not hold up heartbeats or claiming: the control plane schedules a repo
+      // onto this runner only when it has a readiness report for the recipe's current sha, so a
+      // claim in this window cannot reach a repo this runner has never proven at this sha. What
+      // can happen is a claim for a repo proven at this sha by an earlier run whose environment
+      // has since drifted; that job then fails at install instead of staying queued. That is the
+      // trade-off for not blocking every job behind a multi-minute recipe on each restart.
+      // Claim again once the pass settles: on a fresh runner the first claim above is refused
+      // until the report lands, and there may be no other heartbeat for a while.
+      void this.readiness
+        .sync(res.repos)
+        .then(() => this.claimLoop())
+        .catch((err) => this.logger.error("readiness sync failed", errorFields(err)));
       await this.claimLoop();
       this.writeStatus();
     } catch (err) {
@@ -242,30 +267,38 @@ export class Daemon {
 
   /** Claim until full or the queue has nothing for us. */
   async claimLoop(): Promise<void> {
-    if (this.claiming || this.stopped) return;
+    if (this.stopped) return;
+    if (this.claiming) {
+      // A readiness report or realtime poke landed mid-loop; run once more when it finishes.
+      this.claimAgain = true;
+      return;
+    }
     this.claiming = true;
     try {
-      while (!this.stopped && this.accepting.ok && this.running.size < this.opts.maxConcurrency) {
-        const job = await this.opts.api.claim();
-        if (!job) break;
-        this.logger.info("job claimed", {
-          jobId: job.id,
-          resumeMode: job.resumeMode,
-          stage: job.resumeStage,
-          title: job.title,
-        });
-        const runner = new JobRunner(this.jobDeps(job.id), job);
-        const done = runner
-          .run()
-          .catch((err) => this.logger.error("job crashed", { jobId: job.id, ...errorFields(err) }))
-          .finally(() => {
-            this.running.delete(job.id);
-            this.updateInhibitor();
-            void this.claimLoop();
+      do {
+        this.claimAgain = false;
+        while (!this.stopped && this.accepting.ok && this.running.size < this.opts.maxConcurrency) {
+          const job = await this.opts.api.claim();
+          if (!job) break;
+          this.logger.info("job claimed", {
+            jobId: job.id,
+            resumeMode: job.resumeMode,
+            stage: job.resumeStage,
+            title: job.title,
           });
-        this.running.set(job.id, { runner, done });
-        this.updateInhibitor();
-      }
+          const runner = new JobRunner(this.jobDeps(job.id), job);
+          const done = runner
+            .run()
+            .catch((err) => this.logger.error("job crashed", { jobId: job.id, ...errorFields(err) }))
+            .finally(() => {
+              this.running.delete(job.id);
+              this.updateInhibitor();
+              void this.claimLoop();
+            });
+          this.running.set(job.id, { runner, done });
+          this.updateInhibitor();
+        }
+      } while (this.claimAgain && !this.stopped);
     } catch (err) {
       this.logger.error("claim failed", errorFields(err));
     } finally {
