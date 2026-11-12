@@ -9,6 +9,7 @@ import {
   isRunnerStage,
   type JobStatus,
   jobBranchName,
+  logged,
   type PendingInput,
   parseLabels,
   type RunnerStage,
@@ -193,13 +194,22 @@ export async function createJobFromIssue(
   repoId: string,
   issue: Pick<GhIssue, "number" | "title" | "body" | "author" | "labels">,
 ): Promise<Job> {
-  const live = await ctx.db.query.jobs.findFirst({
-    where: and(
-      eq(jobs.repoId, repoId),
-      eq(jobs.issueNumber, issue.number),
-      notInArray(jobs.status, [...FINISHED_STATUSES]),
-    ),
-  });
+  const live = await logged(
+    ctx.log,
+    "database read",
+    () =>
+      ctx.db.query.jobs.findFirst({
+        where: and(
+          eq(jobs.repoId, repoId),
+          eq(jobs.issueNumber, issue.number),
+          notInArray(jobs.status, [...FINISHED_STATUSES]),
+        ),
+      }),
+    {
+      fields: { table: "jobs", operation: "findByIssue", repoId, issue: issue.number },
+      result: (row) => ({ found: !!row, jobId: row?.id, status: row?.status }),
+    },
+  );
   if (live) {
     ctx.log.debug("job already exists for issue", { jobId: live.id, issue: issue.number });
     return live;
@@ -223,26 +233,36 @@ export async function createJobFromIssue(
   const labels = parseLabels(issue.labels);
   const config = resolveHarnessModel(labels, repo, team, { harness: "claude-code", model: null });
   const id = randomUUID();
-  const [job] = await ctx.db
-    .insert(jobs)
-    .values({
-      id,
-      teamId: repo.teamId,
-      repoId,
-      kind: "ticket",
-      issueNumber: issue.number,
-      title: issue.title,
-      body: issue.body,
-      authorLogin: issue.author,
-      authorUserId: author?.id ?? null,
-      harness: config.harness,
-      model: config.model,
-      playbook: labels.playbook ?? "default",
-      pinnedRunnerName: labels.runner ?? null,
-      branch: jobBranchName(id, issue.title),
-    })
-    .onConflictDoNothing()
-    .returning();
+  const inserted = await logged(
+    ctx.log,
+    "database write",
+    () =>
+      ctx.db
+        .insert(jobs)
+        .values({
+          id,
+          teamId: repo.teamId,
+          repoId,
+          kind: "ticket",
+          issueNumber: issue.number,
+          title: issue.title,
+          body: issue.body,
+          authorLogin: issue.author,
+          authorUserId: author?.id ?? null,
+          harness: config.harness,
+          model: config.model,
+          playbook: labels.playbook ?? "default",
+          pinnedRunnerName: labels.runner ?? null,
+          branch: jobBranchName(id, issue.title),
+        })
+        .onConflictDoNothing()
+        .returning(),
+    {
+      fields: { table: "jobs", operation: "insert", repoId, issue: issue.number },
+      result: (rows) => ({ rows: rows.length, jobId: rows[0]?.id }),
+    },
+  );
+  const job = inserted[0];
   if (!job) {
     const raced = await activeJobForIssue(ctx, repoId, issue.number);
     if (raced) return raced;

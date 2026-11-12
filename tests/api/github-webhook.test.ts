@@ -1,4 +1,5 @@
 import { env } from "node:process";
+import { createLogger } from "@foundry/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createTestEnv,
@@ -51,6 +52,12 @@ describe.skipIf(!TEST_DATABASE_URL)("POST /api/webhooks/github", () => {
 
   it("stores a labeled issue and creates one job", async () => {
     const { repo } = await seedTeam(testEnv);
+    const records: Record<string, unknown>[] = [];
+    testEnv.ctx.log = createLogger({
+      service: "control",
+      level: "debug",
+      sink: (line) => records.push(JSON.parse(line)),
+    });
     testEnv.gh.addIssue("acme/app", { number: 18, title: "Cover testing layers", labels: ["foundry"] });
     const payload = issueLabeledPayload({ number: 18, title: "Cover testing layers" });
     const raw = JSON.stringify(payload);
@@ -71,6 +78,27 @@ describe.skipIf(!TEST_DATABASE_URL)("POST /api/webhooks/github", () => {
     const jobs = await testEnv.ctx.db.query.jobs.findMany();
     expect(jobs).toHaveLength(1);
     expect(jobs[0]).toMatchObject({ repoId: repo.id, issueNumber: 18, status: "queued" });
+
+    // The trial journey logs its DB reads/writes and GitHub calls, all under one correlation id.
+    expect(new Set(records.map((record) => record.correlationId)).size).toBe(1);
+    expect(records.every((record) => typeof record.correlationId === "string")).toBe(true);
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ message: "database write", table: "webhook_inbox", operation: "insert" }),
+        expect.objectContaining({ message: "database read", table: "jobs", operation: "findByIssue" }),
+        expect.objectContaining({
+          message: "database write",
+          table: "jobs",
+          operation: "insert",
+          jobId: jobs[0]!.id,
+        }),
+        expect.objectContaining({
+          message: "github api call",
+          provider: "github",
+          operation: "createComment",
+        }),
+      ]),
+    );
 
     const dup = await POST(
       jsonRequest("http://foundry.test/api/webhooks/github", {
