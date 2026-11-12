@@ -25,6 +25,7 @@ import { boardJobs, inbox, teamReposWithReadiness } from "./queries";
 import { answerFromCheckbox } from "./questions";
 import { runnerAsk, runnerConfidence, runnerEvidence, runnerPrReview, runnerStage } from "./runner-api";
 import { createJoinToken, heartbeat, joinRunner } from "./runners";
+import { syncRepoSKills } from "./skills";
 import { DROPPED_JOB_GRACE_MS, requeueDroppedJobs, requeueLostJobs } from "./sweeper";
 import { syncUnlinkedInstallations } from "./teams";
 import {
@@ -1008,6 +1009,29 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
     const [other] = await env.ctx.db.insert(teams).values({ name: "other" }).returning();
     const stolen = await syncUnlinkedInstallations(env.ctx, other!.id);
     expect(stolen).toEqual([]);
+  });
+
+  it("opens a skills PR for both harnesses and reuses it on the next sync", async () => {
+    const { repo } = await seedTeam(env);
+    const gh = env.gh.repo("acme/app");
+    const first = await syncRepoSKills(env.ctx, repo.id);
+    expect(first).toMatchObject({ skills: ["merge-risk"], updated: false });
+    expect(gh.files.get(".claude/skills/merge-risk/SKILL.md")).toContain("name: merge-risk");
+    expect(gh.files.get(".opencode/skills/merge-risk/SKILL.md")).toContain("name: merge-risk");
+    expect(gh.branches.get("foundry/skills")).toBeTruthy();
+    expect(gh.prs.size).toBe(1);
+
+    const second = await syncRepoSKills(env.ctx, repo.id);
+    expect(second.prNumber).toBe(first.prNumber);
+    expect(second.updated).toBe(true);
+    expect(gh.prs.size).toBe(1);
+
+    // Once that PR is closed, the next sync resets the branch and opens a fresh PR.
+    gh.prs.get(first.prNumber)!.state = "closed";
+    const third = await syncRepoSKills(env.ctx, repo.id);
+    expect(third.prNumber).not.toBe(first.prNumber);
+    expect(gh.prs.size).toBe(2);
+    expect(env.gh.calls.some((call) => call.method === "createBranch" && call.args[3] === true)).toBe(true);
   });
 
   it("marks a handed-over job merged when GitHub already merged the PR, even without a webhook", async () => {

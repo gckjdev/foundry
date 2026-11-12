@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { assemblePrompt, assembleReviewPrompt, basePlaybook, resumeMessage } from "./index";
+import {
+  assemblePrompt,
+  assembleReviewPrompt,
+  basePlaybook,
+  PLAYBOOK_SKILLS,
+  resumeMessage,
+  SKILL_DIRS,
+  skillFiles,
+} from "./index";
 
 const job = {
   kind: "ticket" as const,
@@ -102,5 +110,23 @@ describe("assemblePrompt", () => {
     ).toBe(
       '@alice answered your question "Format?": CSV\n\nContinue with the playbook from the investigating stage.',
     );
+  });
+});
+
+describe("skillFiles", () => {
+  it("returns every playbook skill for both harness folders", () => {
+    const files = skillFiles();
+    expect(files.map((file) => file.path)).toEqual(
+      PLAYBOOK_SKILLS.flatMap((name) => SKILL_DIRS.map((dir) => `${dir}/${name}/SKILL.md`)),
+    );
+    expect(files.every((file) => file.content.includes("name: merge-risk"))).toBe(true);
+  });
+
+  it("returns just the named skill and rejects unknown names", () => {
+    expect(skillFiles(["merge-risk"]).map((file) => file.path)).toEqual([
+      ".claude/skills/merge-risk/SKILL.md",
+      ".opencode/skills/merge-risk/SKILL.md",
+    ]);
+    expect(() => skillFiles(["merge-risk", "nope"])).toThrow(/unknown skill: nope/);
   });
 });

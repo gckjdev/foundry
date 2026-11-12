@@ -21,6 +21,37 @@ export const BUILTIN_SKILLS: Record<string, string> = {
 /** Skills the onboarding PR installs into a repo. */
 export const PLAYBOOK_SKILLS = ["merge-risk"] as const;
 
+/** Harness skill folders a repo can carry. Both use `<dir>/<skill>/SKILL.md`. */
+export const SKILL_DIRS = [".claude/skills", ".opencode/skills"] as const;
+
+/** One skill file to write into a repo, with a POSIX path so GitHub accepts it. */
+export interface SkillFile {
+  name: string;
+  path: string;
+  content: string;
+}
+
+/**
+ * The files `foundry skills install` writes for `names` (default: every playbook skill).
+ * Shared by the runner (which writes them to a worktree) and the panel (which opens a PR),
+ * so both install and update the same paths.
+ */
+export function skillFiles(names: readonly string[] = PLAYBOOK_SKILLS): SkillFile[] {
+  const unknown = names.filter((name) => !BUILTIN_SKILLS[name]);
+  if (unknown.length) {
+    throw new Error(
+      `unknown skill${unknown.length > 1 ? "s" : ""}: ${unknown.join(", ")} (known: ${Object.keys(BUILTIN_SKILLS).join(", ")})`,
+    );
+  }
+  return names.flatMap((name) =>
+    SKILL_DIRS.map((dir) => ({
+      name,
+      path: `${dir}/${name}/SKILL.md`,
+      content: BUILTIN_SKILLS[name]!,
+    })),
+  );
+}
+
 /** A SKILL.md body without its YAML frontmatter, for embedding in a prompt. */
 export function skillBody(markdown: string): string {
   const frontmatter = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(markdown);

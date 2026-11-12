@@ -167,8 +167,27 @@ export class FakeGitHub implements GitHubClient {
     return this.repo(ref.fullName).branches.get(branch) ?? null;
   }
 
+  async createBranch(ref: RepoRef, branch: string, fromSha: string, force = false) {
+    this.record("createBranch", ref.fullName, branch, fromSha, force);
+    const r = this.repo(ref.fullName);
+    if (r.branches.has(branch) && !force) {
+      throw Object.assign(new Error(`reference already exists: ${branch}`), { status: 422 });
+    }
+    r.branches.set(branch, fromSha);
+  }
+
+  async putFile(ref: RepoRef, input: { path: string; content: string; message: string; branch: string }) {
+    this.record("putFile", ref.fullName, input);
+    const r = this.repo(ref.fullName);
+    r.files.set(input.path, input.content);
+    r.branches.set(input.branch, `sha-${input.path}-${input.content.length}`);
+  }
+
   async findPullRequest(ref: RepoRef, head: string) {
-    const pr = [...this.repo(ref.fullName).prs.values()].find((p) => p.head === head);
+    // GitHub lists newest first; a reused head can have older closed PRs behind the open one.
+    const pr = [...this.repo(ref.fullName).prs.values()]
+      .filter((p) => p.head === head)
+      .sort((a, b) => b.number - a.number)[0];
     return pr ? this.toPr(pr) : null;
   }
 

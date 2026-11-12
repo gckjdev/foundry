@@ -183,6 +183,32 @@ describe("OctokitGitHubClient via MockAgent", () => {
     if (method === "GET" && pathname === "/repos/acme/app/contents/explode") {
       return json(500, { message: "nope" });
     }
+    if (method === "POST" && pathname === "/repos/acme/app/git/refs") {
+      return json(201, { ref: "refs/heads/foundry/skills", object: { sha: "branchsha" } });
+    }
+    if (method === "PATCH" && pathname === "/repos/acme/app/git/refs/heads%2Ffoundry%2Fskills") {
+      return json(200, { ref: "refs/heads/foundry/skills", object: { sha: "branchsha" } });
+    }
+    if (
+      method === "GET" &&
+      pathname === "/repos/acme/app/contents/.claude%2Fskills%2Fmerge-risk%2FSKILL.md"
+    ) {
+      return json(404, { message: "Not Found" });
+    }
+    if (
+      method === "GET" &&
+      pathname === "/repos/acme/app/contents/.opencode%2Fskills%2Fmerge-risk%2FSKILL.md"
+    ) {
+      return json(200, {
+        type: "file",
+        encoding: "base64",
+        content: Buffer.from("old\n").toString("base64"),
+        sha: "sha-opencode",
+      });
+    }
+    if (method === "PUT" && pathname.startsWith("/repos/acme/app/contents/")) {
+      return json(201, { content: { sha: "sha-put" }, commit: { sha: "commit-put" } });
+    }
     if (method === "GET" && pathname === "/repos/acme/app/branches/main") {
       return json(200, { name: "main", commit: { sha: "branchsha" } });
     }
@@ -354,6 +380,32 @@ describe("OctokitGitHubClient via MockAgent", () => {
     await expect(client.getBranchSha(ref, "main")).resolves.toBe("branchsha");
     await expect(client.getBranchSha(ref, "gone")).resolves.toBeNull();
     await expect(client.getBranchSha(ref, "bad")).rejects.toThrow();
+  });
+
+  it("creates or resets a branch and writes files through the contents API", async () => {
+    const before = calls.length;
+    await expect(client.createBranch(ref, "foundry/skills", "branchsha")).resolves.toBeUndefined();
+    await expect(client.createBranch(ref, "foundry/skills", "branchsha", true)).resolves.toBeUndefined();
+    await expect(
+      client.putFile(ref, {
+        path: ".claude/skills/merge-risk/SKILL.md",
+        content: "new\n",
+        message: "foundry: install skill merge-risk",
+        branch: "foundry/skills",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      client.putFile(ref, {
+        path: ".opencode/skills/merge-risk/SKILL.md",
+        content: "new\n",
+        message: "foundry: install skill merge-risk",
+        branch: "foundry/skills",
+      }),
+    ).resolves.toBeUndefined();
+    const sent = calls.slice(before);
+    expect(sent).toContain("POST /repos/acme/app/git/refs");
+    expect(sent).toContain("PATCH /repos/acme/app/git/refs/heads%2Ffoundry%2Fskills");
+    expect(sent.filter((call) => call.startsWith("PUT /repos/acme/app/contents/"))).toHaveLength(2);
   });
 
   it("opens, updates, reviews, and merges pull requests", async () => {
