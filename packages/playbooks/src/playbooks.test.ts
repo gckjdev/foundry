@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { assemblePrompt, assembleReviewPrompt, basePlaybook, resumeMessage } from "./index";
+import {
+  assemblePrompt,
+  assembleReviewPrompt,
+  BUILTIN_SKILLS,
+  basePlaybook,
+  PLAYBOOK_SKILLS,
+  resumeMessage,
+  skillBody,
+} from "./index";
 
 const job = {
   kind: "ticket" as const,
@@ -102,5 +110,16 @@ describe("assemblePrompt", () => {
     ).toBe(
       '@alice answered your question "Format?": CSV\n\nContinue with the playbook from the investigating stage.',
     );
+  });
+});
+
+describe("built-in skills", () => {
+  it("ships merge-risk and show-me with their frontmatter intact", () => {
+    expect([...PLAYBOOK_SKILLS]).toEqual(["merge-risk", "show-me"]);
+    expect(Object.keys(BUILTIN_SKILLS)).toEqual([...PLAYBOOK_SKILLS]);
+    expect(BUILTIN_SKILLS["show-me"]).toContain("name: show-me");
+    expect(BUILTIN_SKILLS["show-me"]).toContain("description: Help the user understand");
+    expect(skillBody(BUILTIN_SKILLS["show-me"]!)).toContain("Help the user understand");
+    expect(skillBody(BUILTIN_SKILLS["show-me"]!)).not.toContain("name: show-me");
   });
 });

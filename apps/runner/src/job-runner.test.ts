@@ -822,6 +822,9 @@ describe("JobRunner", () => {
       expect(
         gitIn(join(fixture.root, "acme/fresh.git"), "show", `${job.branch}:${dir}/merge-risk/SKILL.md`),
       ).toContain("# Merge risk");
+      expect(
+        gitIn(join(fixture.root, "acme/fresh.git"), "show", `${job.branch}:${dir}/show-me/SKILL.md`),
+      ).toContain("name: show-me");
     }
   });
 

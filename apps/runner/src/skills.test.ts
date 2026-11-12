@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PLAYBOOK_SKILLS } from "@foundry/playbooks";
+import { BUILTIN_SKILLS, PLAYBOOK_SKILLS } from "@foundry/playbooks";
 import { describe, expect, it } from "vitest";
 import { installSkills, SKILL_DIRS } from "./skills";
 
@@ -19,8 +19,8 @@ describe("installSkills", () => {
         const file = join(cwd, dir, name, "SKILL.md");
         expect(existsSync(file)).toBe(true);
         const content = readFileSync(file, "utf8");
-        expect(content).toContain("name: merge-risk");
-        expect(content).toContain("# Merge risk");
+        expect(content).toContain(`name: ${name}`);
+        expect(content).toBe(BUILTIN_SKILLS[name]);
       }
     }
     expect(installed[0]!.paths).toEqual(SKILL_DIRS.map((dir) => join(dir, "merge-risk", "SKILL.md")));
@@ -28,9 +28,10 @@ describe("installSkills", () => {
 
   it("installs only the named skills", async () => {
     const cwd = tempRepo();
-    const installed = await installSkills(cwd, ["merge-risk"]);
+    const installed = await installSkills(cwd, ["show-me"]);
     expect(installed).toHaveLength(1);
-    expect(existsSync(join(cwd, ".claude/skills/merge-risk/SKILL.md"))).toBe(true);
+    expect(existsSync(join(cwd, ".claude/skills/show-me/SKILL.md"))).toBe(true);
+    expect(existsSync(join(cwd, ".claude/skills/merge-risk"))).toBe(false);
   });
 
   it("rejects an unknown skill name before writing anything", async () => {

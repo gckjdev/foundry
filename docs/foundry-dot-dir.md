@@ -19,7 +19,7 @@ Source of truth: `packages/shared/src/recipe.ts` (`RecipeSchema`) and `packages/
 | `.foundry/playbook.<name>.md`        | No       | Replaces a named built-in playbook (`bugfix`, `feature`) or supplies a new one. Select it with the `playbook:<name>` issue label. |
 | `.foundry/playbook.<harness>.md`     | No       | Extra notes appended to the system prompt for that harness (`claude-code` or `opencode`).                                         |
 | `.foundry/skills/*.md`               | No       | Repo knowledge appended to the system prompt, one section per file, sorted by filename.                                           |
-| `.claude/skills/<name>/SKILL.md`     | No       | Skill Claude Code loads natively. Onboarding installs `merge-risk` here; refresh with `foundry skills install`.                   |
+| `.claude/skills/<name>/SKILL.md`     | No       | Skill Claude Code loads natively. Onboarding installs the built-in skills (`merge-risk`, `show-me`) here; refresh with `foundry skills install`. |
 | `.opencode/skills/<name>/SKILL.md`   | No       | The OpenCode copy of the same skill. The runner config points OpenCode at both folders.                                           |
 | `.github/ISSUE_TEMPLATE/foundry.yml` | No       | Issue form that adds the `foundry` label and the Goal / Acceptance criteria / Constraints / Out of scope sections.                |
 
@@ -31,11 +31,12 @@ file in `.foundry/skills/` is appended after that.
 ### Skills
 
 Skills are agent instructions the harness loads natively (a `SKILL.md` with `name` and
-`description` frontmatter). Foundry ships the `merge-risk` skill, which the automatic PR reviewer
-uses to report a low/medium/high merge risk. Onboarding copies every built-in skill into
-`.claude/skills/<name>/SKILL.md` and `.opencode/skills/<name>/SKILL.md`, so the recipe PR carries
-them. A session loads skills from those folders: Claude Code enables exactly the skill names found
-under the repo's `.claude/skills` (never the machine's user or plugin skills), and OpenCode is
+`description` frontmatter). Foundry ships two skills: `merge-risk`, which the automatic PR reviewer
+uses to report a low/medium/high merge risk, and `show-me`, which explains a topic visually with
+concise diagrams, code-shape sketches or a focused HTML artifact. Onboarding copies every built-in
+skill into `.claude/skills/<name>/SKILL.md` and `.opencode/skills/<name>/SKILL.md`, so the recipe PR
+carries them. A session loads skills from those folders: Claude Code enables exactly the skill names
+found under the repo's `.claude/skills` (never the machine's user or plugin skills), and OpenCode is
 pointed at both paths.
 
 After onboarding, install or update them from the repository root:

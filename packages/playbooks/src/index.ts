@@ -12,14 +12,16 @@ import feature from "./playbooks/feature.md" with { type: "text" };
 import onboarding from "./playbooks/onboarding.md" with { type: "text" };
 import reviewer from "./playbooks/reviewer.md" with { type: "text" };
 import mergeRiskSkill from "./skills/merge-risk/SKILL.md" with { type: "text" };
+import showMeSkill from "./skills/show-me/SKILL.md" with { type: "text" };
 
 /** Skills that ship with Foundry and can be installed into a repo's harness skill folders. */
 export const BUILTIN_SKILLS: Record<string, string> = {
   "merge-risk": mergeRiskSkill,
+  "show-me": showMeSkill,
 };
 
 /** Skills the onboarding PR installs into a repo. */
-export const PLAYBOOK_SKILLS = ["merge-risk"] as const;
+export const PLAYBOOK_SKILLS = ["merge-risk", "show-me"] as const;
 
 /** A SKILL.md body without its YAML frontmatter, for embedding in a prompt. */
 export function skillBody(markdown: string): string {

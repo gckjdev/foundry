@@ -18,7 +18,7 @@
 | `.foundry/playbook.<name>.md`        | 否   | 替换同名内置 playbook（`bugfix`、`feature`），或提供新的 playbook。用 `playbook:<name>` issue 标签选择。 |
 | `.foundry/playbook.<harness>.md`     | 否   | 追加到该 harness（`claude-code` 或 `opencode`）系统提示词后的额外说明。                                  |
 | `.foundry/skills/*.md`               | 否   | 追加到系统提示词的仓库知识，每个文件一节，按文件名排序。                                                 |
-| `.claude/skills/<name>/SKILL.md`     | 否   | Claude Code 原生加载的 skill。Onboarding 会安装 `merge-risk`；用 `foundry skills install` 刷新。         |
+| `.claude/skills/<name>/SKILL.md`     | 否   | Claude Code 原生加载的 skill。Onboarding 会安装内置 skill（`merge-risk`、`show-me`）；用 `foundry skills install` 刷新。 |
 | `.opencode/skills/<name>/SKILL.md`   | 否   | 同一 skill 的 OpenCode 副本。Runner 配置会让 OpenCode 同时读取两个目录。                                 |
 | `.github/ISSUE_TEMPLATE/foundry.yml` | 否   | issue 表单，添加 `foundry` 标签以及 Goal / Acceptance criteria / Constraints / Out of scope 各节。       |
 
@@ -30,8 +30,8 @@ Onboarding 任务始终使用内置 onboarding playbook；仓库 playbook 和 sk
 ### Skills
 
 Skill 是 harness 原生加载的 agent 指令（带 `name` 和 `description` frontmatter 的 `SKILL.md`）。
-Foundry 内置 `merge-risk` skill，自动 PR 评审用它给出 low/medium/high 的合并风险。Onboarding 会把
-每个内置 skill 复制到 `.claude/skills/<name>/SKILL.md` 和 `.opencode/skills/<name>/SKILL.md`，因此
+Foundry 内置两个 skill：`merge-risk`，自动 PR 评审用它给出 low/medium/high 的合并风险；以及
+`show-me`，用简洁的图、代码草图或聚焦的 HTML 产物把话题可视化。Onboarding 会把每个内置 skill 复制到 `.claude/skills/<name>/SKILL.md` 和 `.opencode/skills/<name>/SKILL.md`，因此
 recipe PR 会带上它们。会话从这两个目录加载 skill：Claude Code 只启用仓库 `.claude/skills` 下找到的
 skill 名称（绝不加载机器上的用户或插件 skill），OpenCode 则被指向这两个路径。
 
