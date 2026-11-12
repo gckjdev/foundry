@@ -1,7 +1,14 @@
 import { jobs, repos, users, webhookInbox } from "@foundry/db";
-import { errorFields, findMarker, parseFoundryCommand, TRIGGER_LABEL } from "@foundry/shared";
+import {
+  errorFields,
+  findMarker,
+  logged,
+  newCorrelationId,
+  parseFoundryCommand,
+  TRIGGER_LABEL,
+} from "@foundry/shared";
 import { and, asc, eq, isNull, lt, notInArray, or } from "drizzle-orm";
-import type { ControlContext } from "./context";
+import { type ControlContext, withLogFields } from "./context";
 import { cancelJob, createJobFromIssue, retryJob, sendMessage } from "./jobs";
 import { evaluateJobGate, handleChangesRequestedReview, jobsForSha, markJobMerged } from "./merge-gate";
 import { answerFromCheckbox, answerFromReply } from "./questions";
@@ -12,23 +19,46 @@ const MAX_ATTEMPTS = 5;
 
 /** Store a verified delivery. Returns null when GitHub re-sent a delivery we already have. */
 export async function storeWebhook(ctx: ControlContext, deliveryId: string, event: string, payload: unknown) {
-  const [row] = await ctx.db
-    .insert(webhookInbox)
-    .values({ provider: "github", deliveryId, event, payload })
-    .onConflictDoNothing()
-    .returning({ id: webhookInbox.id });
-  return row?.id ?? null;
+  const rows = await logged(
+    ctx.log,
+    "database write",
+    () =>
+      ctx.db
+        .insert(webhookInbox)
+        .values({ provider: "github", deliveryId, event, payload })
+        .onConflictDoNothing()
+        .returning({ id: webhookInbox.id }),
+    {
+      fields: { table: "webhook_inbox", operation: "insert", deliveryId, event },
+      result: (rows) => ({ inserted: rows.length > 0 }),
+    },
+  );
+  return rows[0]?.id ?? null;
 }
 
 export async function processWebhook(ctx: ControlContext, id: number): Promise<void> {
-  const row = await ctx.db.query.webhookInbox.findFirst({ where: eq(webhookInbox.id, id) });
+  const row = await logged(
+    ctx.log,
+    "database read",
+    () => ctx.db.query.webhookInbox.findFirst({ where: eq(webhookInbox.id, id) }),
+    {
+      fields: { table: "webhook_inbox", operation: "findFirst", id },
+      result: (row) => ({ found: !!row, alreadyProcessed: !!row?.processedAt }),
+    },
+  );
   if (!row || row.processedAt) return;
   try {
     await dispatch(ctx, row.event, row.payload as Payload);
-    await ctx.db
-      .update(webhookInbox)
-      .set({ processedAt: ctx.now(), error: null, attempts: row.attempts + 1 })
-      .where(eq(webhookInbox.id, id));
+    await logged(
+      ctx.log,
+      "database write",
+      () =>
+        ctx.db
+          .update(webhookInbox)
+          .set({ processedAt: ctx.now(), error: null, attempts: row.attempts + 1 })
+          .where(eq(webhookInbox.id, id)),
+      { fields: { table: "webhook_inbox", operation: "update", id } },
+    );
     ctx.log.debug("webhook processed", { id, event: row.event, attempts: row.attempts + 1 });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -47,13 +77,23 @@ export async function processWebhook(ctx: ControlContext, id: number): Promise<v
 
 /** Retry anything not yet processed (crash between store and process, or a transient error). */
 export async function processPendingWebhooks(ctx: ControlContext, limit = 50): Promise<number> {
-  const rows = await ctx.db
-    .select({ id: webhookInbox.id })
-    .from(webhookInbox)
-    .where(and(isNull(webhookInbox.processedAt), lt(webhookInbox.attempts, MAX_ATTEMPTS)))
-    .orderBy(asc(webhookInbox.id))
-    .limit(limit);
-  for (const r of rows) await processWebhook(ctx, r.id);
+  const rows = await logged(
+    ctx.log,
+    "database read",
+    () =>
+      ctx.db
+        .select({ id: webhookInbox.id })
+        .from(webhookInbox)
+        .where(and(isNull(webhookInbox.processedAt), lt(webhookInbox.attempts, MAX_ATTEMPTS)))
+        .orderBy(asc(webhookInbox.id))
+        .limit(limit),
+    {
+      fields: { table: "webhook_inbox", operation: "selectPending", limit },
+      result: (rows) => ({ rows: rows.length }),
+    },
+  );
+  // Each retried delivery is its own execution; give it a correlation id to follow its logs.
+  for (const r of rows) await processWebhook(withLogFields(ctx, { correlationId: newCorrelationId() }), r.id);
   if (rows.length) ctx.log.debug("processed pending webhooks", { count: rows.length });
   return rows.length;
 }

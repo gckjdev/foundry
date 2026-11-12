@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createLogger, errorFields, parseLogLevel } from "./log";
+import { createLogger, errorFields, logged, newCorrelationId, parseLogLevel } from "./log";
 
 function capture() {
   const lines: string[] = [];
@@ -117,5 +117,82 @@ describe("errorFields", () => {
     expect(errorFields(new Error("boom"))).toEqual({ error: "boom" });
     expect(errorFields("plain")).toEqual({ error: "plain" });
     expect(errorFields(new Error("boom"), "cause")).toEqual({ cause: "boom" });
+  });
+});
+
+describe("newCorrelationId", () => {
+  it("returns unique UUIDs", () => {
+    const ids = new Set(Array.from({ length: 50 }, () => newCorrelationId()));
+
+    expect(ids.size).toBe(50);
+    for (const id of ids) {
+      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    }
+  });
+
+  it("rides on every record of a bound logger", () => {
+    const { lines, logger } = capture();
+    const request = logger.child({ correlationId: "c-1" });
+
+    request.info("first");
+    request.warn("second");
+
+    expect(lines.map((line) => JSON.parse(line).correlationId)).toEqual(["c-1", "c-1"]);
+  });
+});
+
+describe("logged", () => {
+  it("logs one record with duration and result fields, then returns the value", async () => {
+    const { lines, logger } = capture();
+    const value = await logged(logger, "database write", async () => [{ id: "j1" }], {
+      fields: { table: "jobs", operation: "insert" },
+      result: (rows) => ({ rows: rows.length, jobId: rows[0]?.id }),
+      level: "info",
+    });
+
+    expect(value).toEqual([{ id: "j1" }]);
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!)).toMatchObject({
+      level: "info",
+      message: "database write",
+      table: "jobs",
+      operation: "insert",
+      rows: 1,
+      jobId: "j1",
+      durationMs: expect.any(Number),
+    });
+  });
+
+  it("logs failures at error and rethrows", async () => {
+    const { lines, logger } = capture();
+
+    await expect(
+      logged(
+        logger,
+        "github api call",
+        async () => {
+          throw new Error("boom");
+        },
+        { fields: { provider: "github" } },
+      ),
+    ).rejects.toThrow("boom");
+
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!)).toMatchObject({
+      level: "error",
+      message: "github api call failed",
+      provider: "github",
+      error: "boom",
+      durationMs: expect.any(Number),
+    });
+  });
+
+  it("defaults success to debug", async () => {
+    const lines: string[] = [];
+    const logger = createLogger({ service: "test", level: "debug", sink: (line) => lines.push(line) });
+
+    await logged(logger, "database read", () => 1);
+
+    expect(JSON.parse(lines[0]!)).toMatchObject({ level: "debug", message: "database read" });
   });
 });

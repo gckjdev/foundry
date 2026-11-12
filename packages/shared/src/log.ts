@@ -7,6 +7,8 @@
  * `docs/logging.md`.
  */
 
+import { randomUUID } from "node:crypto";
+
 export const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
 export type LogFields = Record<string, unknown>;
@@ -55,6 +57,54 @@ export function parseLogLevel(value: string | undefined, fallback: LogLevel = "i
 /** `{ error: "<message>" }` for any thrown value, so failures are greppable as a field. */
 export function errorFields(error: unknown, key = "error"): LogFields {
   return { [key]: error instanceof Error ? error.message : String(error) };
+}
+
+/**
+ * A fresh id for correlating every log line of one execution (an API request, a webhook delivery,
+ * a job run). Bind it with `log.child({ correlationId })` so each line of that journey shares it.
+ */
+export function newCorrelationId(): string {
+  return randomUUID();
+}
+
+export interface LoggedOptions<T> {
+  /** Context for every record: table, operation, provider, ids… */
+  fields?: LogFields;
+  /** Level for the success record; defaults to `debug` because operations are high-volume. */
+  level?: LogLevel;
+  /** Key info derived from the successful result (row count, created id, …). */
+  result?: (value: T) => LogFields;
+}
+
+/**
+ * Run one operation and log its outcome as a single record: the shared logging aspect for API
+ * calls and database reads/writes. Success logs `message` with `durationMs`; failure logs
+ * `"<message> failed"` at error with `durationMs` and the normalized error, then rethrows. Failures
+ * are never swallowed, so callers keep their existing error handling.
+ */
+export async function logged<T>(
+  log: Logger,
+  message: string,
+  fn: () => PromiseLike<T> | T,
+  opts: LoggedOptions<T> = {},
+): Promise<T> {
+  const started = Date.now();
+  try {
+    const value = await fn();
+    log[opts.level ?? "debug"](message, {
+      ...opts.fields,
+      ...opts.result?.(value),
+      durationMs: Date.now() - started,
+    });
+    return value;
+  } catch (err) {
+    log.error(`${message} failed`, {
+      ...opts.fields,
+      durationMs: Date.now() - started,
+      ...errorFields(err),
+    });
+    throw err;
+  }
 }
 
 function safeFields(...sources: (LogFields | undefined)[]): LogFields {

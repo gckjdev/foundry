@@ -1,6 +1,6 @@
 import { type Job, jobs, type Repo, repos, runners } from "@foundry/db";
 import type { RepoRef } from "@foundry/github";
-import { type JobStatus, renderStatusComment, stageLabel } from "@foundry/shared";
+import { type JobStatus, type LogFields, logged, renderStatusComment, stageLabel } from "@foundry/shared";
 import { eq } from "drizzle-orm";
 import { bestEffort, type ControlContext, jobUrl } from "./context";
 
@@ -36,13 +36,41 @@ const STATUS_NOTES: Partial<Record<JobStatus, string>> = {
  */
 export async function syncJobToGitHub(ctx: ControlContext, job: Job, from: JobStatus | null): Promise<void> {
   if (job.issueNumber === null) return;
-  const repo = await ctx.db.query.repos.findFirst({ where: eq(repos.id, job.repoId) });
+  const issueNumber = job.issueNumber;
+  const repo = await logged(
+    ctx.log,
+    "database read",
+    () => ctx.db.query.repos.findFirst({ where: eq(repos.id, job.repoId) }),
+    {
+      fields: { table: "repos", operation: "findFirst", repoId: job.repoId },
+      result: (row) => ({ found: !!row, repo: row?.fullName }),
+    },
+  );
   if (!repo) return;
   const ref = repoRef(repo);
   const status = job.status as JobStatus;
-  const runner = job.runnerId
-    ? await ctx.db.query.runners.findFirst({ where: eq(runners.id, job.runnerId) })
+  const runnerId = job.runnerId;
+  const runner = runnerId
+    ? await logged(
+        ctx.log,
+        "database read",
+        () => ctx.db.query.runners.findFirst({ where: eq(runners.id, runnerId) }),
+        {
+          fields: { table: "runners", operation: "findFirst", runnerId },
+          result: (row) => ({ found: !!row, runner: row?.name }),
+        },
+      )
     : null;
+  /** One external GitHub call, logged with the shared aspect. */
+  const api = <T>(
+    operation: string,
+    fn: () => PromiseLike<T> | T,
+    opts: { result?: (value: T) => LogFields } = {},
+  ) =>
+    logged(ctx.log, "github api call", fn, {
+      fields: { provider: "github", operation, repo: repo.fullName },
+      ...opts,
+    });
   const body = renderStatusComment({
     jobId: job.id,
     status,
@@ -56,21 +84,33 @@ export async function syncJobToGitHub(ctx: ControlContext, job: Job, from: JobSt
         : (STATUS_NOTES[status] ?? null),
   });
   if (job.statusCommentId) {
-    await ctx.gh.updateComment(ref, job.statusCommentId, body);
+    const statusCommentId = job.statusCommentId;
+    await api("updateComment", () => ctx.gh.updateComment(ref, statusCommentId, body));
   } else {
-    const comment = await ctx.gh.createComment(ref, job.issueNumber, body);
-    await ctx.db.update(jobs).set({ statusCommentId: comment.id }).where(eq(jobs.id, job.id));
+    const comment = await api("createComment", () => ctx.gh.createComment(ref, issueNumber, body), {
+      result: (comment) => ({ commentId: comment.id }),
+    });
+    await logged(
+      ctx.log,
+      "database write",
+      () => ctx.db.update(jobs).set({ statusCommentId: comment.id }).where(eq(jobs.id, job.id)),
+      { fields: { table: "jobs", operation: "update", jobId: job.id, field: "statusCommentId" } },
+    );
   }
-  if (from && from !== status) await ctx.gh.removeLabel(ref, job.issueNumber, stageLabel(from));
-  await ctx.gh.addLabels(ref, job.issueNumber, [stageLabel(status)]);
+  if (from && from !== status)
+    await api("removeLabel", () => ctx.gh.removeLabel(ref, issueNumber, stageLabel(from)));
+  await api("addLabels", () => ctx.gh.addLabels(ref, issueNumber, [stageLabel(status)]));
 
   const projectStatus = PROJECT_STATUS[status];
   if (repo.ghProjectId && projectStatus && (!from || PROJECT_STATUS[from] !== projectStatus)) {
     const projectId = repo.ghProjectId;
-    const issueNumber = job.issueNumber;
     await bestEffort(ctx, "project sync", async () => {
-      const issue = await ctx.gh.getIssue(ref, issueNumber);
-      await ctx.gh.setProjectStatus(repo.ghInstallationId, projectId, issue.nodeId, projectStatus);
+      const issue = await api("getIssue", () => ctx.gh.getIssue(ref, issueNumber), {
+        result: (issue) => ({ issue: issue.number }),
+      });
+      await api("setProjectStatus", () =>
+        ctx.gh.setProjectStatus(repo.ghInstallationId, projectId, issue.nodeId, projectStatus),
+      );
     });
   }
 }
