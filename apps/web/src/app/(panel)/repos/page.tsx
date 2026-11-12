@@ -2,6 +2,7 @@ import { syncUnlinkedInstallations, teamReposWithReadiness } from "@foundry/cont
 import { HARNESS_IDS } from "@foundry/shared";
 import { githubInstallUrl } from "@foundry/shared/github-host";
 import { requireTeam } from "@/server/session";
+import { probeSkills } from "@/server/__probe_skills";
 import { onboardAction, repoSettingsAction, syncReposAction } from "../../actions";
 
 const ONBOARDING: Record<string, { label: string; tone: string }> = {
@@ -31,7 +32,7 @@ export default async function Repos({ searchParams }: { searchParams: Promise<Re
       <div className="page-head">
         <div>
           <div className="eyebrow">{team.name}</div>
-          <h1>Repos</h1>
+          <h1>Repos {probeSkills.join(",")}</h1>
         </div>
         <div className="row">
           {role === "admin" ? (
