@@ -147,6 +147,9 @@ importers:
       '@foundry/github':
         specifier: workspace:*
         version: link:../github
+      '@foundry/playbooks':
+        specifier: workspace:*
+        version: link:../playbooks
       '@foundry/shared':
         specifier: workspace:*
         version: link:../shared

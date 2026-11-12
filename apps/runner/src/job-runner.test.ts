@@ -817,14 +817,18 @@ describe("JobRunner", () => {
     expect(
       gitIn(join(fixture.root, "acme/fresh.git"), "show", `${job.branch}:.foundry/recipe.yaml`),
     ).toContain("test -f package.json");
-    // Onboarding installs the playbook skills into both harness folders in the same PR.
+    // Onboarding installs every playbook skill into both harness folders in the same PR.
+    const playbookSkills: Record<string, string> = {
+      "merge-risk": "# Merge risk",
+      "show-me": "name: show-me",
+      "resolve-merge-conflicts": "# Resolve merge conflicts",
+    };
     for (const dir of [".claude/skills", ".opencode/skills"]) {
-      expect(
-        gitIn(join(fixture.root, "acme/fresh.git"), "show", `${job.branch}:${dir}/merge-risk/SKILL.md`),
-      ).toContain("# Merge risk");
-      expect(
-        gitIn(join(fixture.root, "acme/fresh.git"), "show", `${job.branch}:${dir}/show-me/SKILL.md`),
-      ).toContain("name: show-me");
+      for (const [name, expected] of Object.entries(playbookSkills)) {
+        expect(
+          gitIn(join(fixture.root, "acme/fresh.git"), "show", `${job.branch}:${dir}/${name}/SKILL.md`),
+        ).toContain(expected);
+      }
     }
   });
 
