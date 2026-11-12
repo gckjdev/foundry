@@ -1,6 +1,6 @@
 import { events, jobs, repos, runnerRepoReadiness, teams, users } from "@foundry/db";
 import { TEST_DATABASE_URL } from "@foundry/db/testing";
-import { stageLabel } from "@foundry/shared";
+import { createLogger, stageLabel } from "@foundry/shared";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { storeArtifact } from "./artifacts";
@@ -742,6 +742,48 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
       resumeStage: "pr_review",
       prReviewSha: "sha-22",
     });
+  });
+
+  it("warns when a ticket reaches the gate with the automatic review disabled", async () => {
+    const { team, repo } = await seedTeam(env);
+    const logs: Record<string, unknown>[] = [];
+    env.ctx.log = createLogger({
+      service: "control",
+      level: "debug",
+      format: "json",
+      now: env.ctx.now,
+      sink: (line) => logs.push(JSON.parse(line) as Record<string, unknown>),
+    });
+    const fake = env.gh.repo("acme/app");
+    fake.branches.set("foundry/no-auto-review", "sha-30");
+    const pr = await env.gh.createPullRequest(
+      { installationId: 1, fullName: "acme/app" },
+      { head: "foundry/no-auto-review", base: "main", title: "No auto review", body: "" },
+    );
+    const [job] = await env.ctx.db
+      .insert(jobs)
+      .values({
+        teamId: team.id,
+        repoId: repo.id,
+        title: "No auto review",
+        harness: "claude-code",
+        branch: "foundry/no-auto-review",
+        status: "pr_ci",
+        prNumber: pr.number,
+        prUrl: pr.url,
+        headSha: "sha-30",
+      })
+      .returning();
+    fake.ci.set("sha-30", "success");
+    await evaluateJobGate(env.ctx, job!.id);
+    expect(logs).toContainEqual(
+      expect.objectContaining({
+        level: "warn",
+        message: "auto PR review disabled",
+        jobId: job!.id,
+        repo: "acme/app",
+      }),
+    );
   });
 
   it("hands an automatic review over when the loop budget is spent", async () => {
