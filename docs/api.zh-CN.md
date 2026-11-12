@@ -360,7 +360,7 @@ runner 在独立的只读 worktree 中评审已推送的 head，并通过 `pr-re
 控制面把结果作为 `COMMENT` 评审发布到 PR（Foundry App 是该 PR 的作者，GitHub 不接受它提交
 `APPROVE` 或 `REQUEST_CHANGES`），并记录 `code review` 证据。评审正文以合并风险开头（例如
 `**Merge risk: medium**`）和评审者给出的原因，同一风险也会写入任务时间线。评审者遵循内置的
-`merge-risk` skill，onboarding 会把它安装到 `.claude/skills/` 和 `.opencode/skills/`。通过则把任务送回 `pr_ci`，但
+`code-review` 和 `merge-risk` skill，onboarding 会把它们安装到 `.claude/skills/` 和 `.opencode/skills/`。通过则把任务送回 `pr_ci`，但
 **开启 `auto_pr_review` 的任务 gate 永不自动合并**：评审只提供评论，PR 等待人工合并
 （`human_review` 规则）。阻塞性问题会变成一条消息，把任务重新入队到 `implementing`，最多
 `max_review_loops` 轮；超出后交给 issue 作者处理。
