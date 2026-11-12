@@ -74,7 +74,8 @@ The agent must not change application code. The PR should only add:
 - `.foundry/policy.yaml` — merge off, cost/loop caps, risk rules
 - `.github/ISSUE_TEMPLATE/foundry.yml` — issue form with the `foundry` label
 - `.claude/skills/<name>/SKILL.md` and `.opencode/skills/<name>/SKILL.md` — the built-in playbook
-  skills (currently `code-review` and `merge-risk`), installed by the runner when the job finishes
+  skills (`code-review`, `merge-risk` and `resolve-merge-conflicts`), installed by the runner when the
+  job finishes
 
 To add or update skills later, run `foundry skills install` from the repository root and commit the
 result; see `docs/foundry-dot-dir.md`.

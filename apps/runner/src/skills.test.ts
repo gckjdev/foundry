@@ -9,22 +9,24 @@ function tempRepo(): string {
   return mkdtempSync(join(tmpdir(), "foundry-skills-"));
 }
 
+const HEADINGS: Record<string, string> = {
+  "code-review": "# Code review",
+  "merge-risk": "# Merge risk",
+  "resolve-merge-conflicts": "# Resolve merge conflicts",
+};
+
 describe("installSkills", () => {
   it("copies the playbook skills into both harness folders", async () => {
     const cwd = tempRepo();
     const installed = await installSkills(cwd);
     expect(installed.map((s) => s.name)).toEqual([...PLAYBOOK_SKILLS]);
-    const headings: Record<string, string> = {
-      "code-review": "# Code review",
-      "merge-risk": "# Merge risk",
-    };
     for (const dir of SKILL_DIRS) {
       for (const name of PLAYBOOK_SKILLS) {
         const file = join(cwd, dir, name, "SKILL.md");
         expect(existsSync(file)).toBe(true);
         const content = readFileSync(file, "utf8");
         expect(content).toContain(`name: ${name}`);
-        expect(content).toContain(headings[name]!);
+        expect(content).toContain(HEADINGS[name]!);
       }
     }
     expect(installed[0]!.paths).toEqual(SKILL_DIRS.map((dir) => join(dir, PLAYBOOK_SKILLS[0], "SKILL.md")));

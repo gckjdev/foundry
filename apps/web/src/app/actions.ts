@@ -17,6 +17,7 @@ import {
   setRunnerStatus,
   startOnboarding,
   storeArtifact,
+  syncRepoSKills,
   syncUnlinkedInstallations,
   updateRepoSettings,
 } from "@foundry/control";
@@ -230,6 +231,22 @@ export async function repoSettingsAction(form: FormData) {
     ghProjectId: str(form, "ghProjectId") || null,
   });
   revalidatePath("/repos");
+}
+
+/** Install or update the built-in skills by opening a PR; the result shows on the Repos page. */
+export async function syncSkillsAction(form: FormData) {
+  const { ctx, repo } = await teamRepo(str(form, "repoId"), true);
+  let target: string;
+  try {
+    const pr = await syncRepoSKills(ctx, repo.id);
+    target = `/repos?skills=${encodeURIComponent(pr.url)}${pr.updated ? "&skillsUpdated=1" : ""}`;
+  } catch (err) {
+    ctx.log.warn("repo skills sync failed", { repo: repo.fullName, ...errorFields(err) });
+    const message = err instanceof Error ? err.message : String(err);
+    target = `/repos?skillsError=${encodeURIComponent(message)}`;
+  }
+  revalidatePath("/repos");
+  redirect(target);
 }
 
 export async function inviteAction(form: FormData) {

@@ -85,7 +85,7 @@ Agent 不得修改应用代码。PR 应只添加：
 - `.foundry/policy.yaml` — merge off、成本/循环上限、风险规则
 - `.github/ISSUE_TEMPLATE/foundry.yml` — 带 `foundry` 标签的 issue 表单
 - `.claude/skills/<name>/SKILL.md` 和 `.opencode/skills/<name>/SKILL.md` — 内置 playbook skills
-  （目前是 `code-review` 和 `merge-risk`），任务结束时由 runner 安装
+  （`code-review`、`merge-risk` 和 `resolve-merge-conflicts`），任务结束时由 runner 安装
 
 之后要新增或更新 skill，可在仓库根目录运行 `foundry skills install` 并提交结果；见
 `docs/foundry-dot-dir.zh-CN.md`。
