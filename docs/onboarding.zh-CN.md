@@ -84,6 +84,11 @@ Agent 不得修改应用代码。PR 应只添加：
 - `.foundry/recipe.yaml` — install、checks、可选 dev server
 - `.foundry/policy.yaml` — merge off、成本/循环上限、风险规则
 - `.github/ISSUE_TEMPLATE/foundry.yml` — 带 `foundry` 标签的 issue 表单
+- `.claude/skills/<name>/SKILL.md` 和 `.opencode/skills/<name>/SKILL.md` — 内置 playbook skills
+  （目前是 `merge-risk`），任务结束时由 runner 安装
+
+之后要新增或更新 skill，可在仓库根目录运行 `foundry skills install` 并提交结果；见
+`docs/foundry-dot-dir.zh-CN.md`。
 
 在 GitHub 上合并。`pnpm dev:webhooks` 运行时，Foundry 会注意到默认分支上的 `.foundry/`，标签变为
 **accepting jobs**。如果没有转发 webhook，合并后点击 **Sync from GitHub** 或重新打开 **Repos**；

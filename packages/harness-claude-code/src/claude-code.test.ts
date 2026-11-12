@@ -1,6 +1,9 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { HarnessEvent } from "@foundry/harness-core";
 import { describe, expect, it } from "vitest";
-import { ClaudeCodeAdapter, canUseTool, disallowedTools } from "./adapter";
+import { ClaudeCodeAdapter, canUseTool, disallowedTools, repoSkillNames } from "./adapter";
 import { normalizeClaudeMessage } from "./normalize";
 
 // Shapes recorded from @anthropic-ai/claude-agent-sdk 0.3.x streams.
@@ -78,7 +81,13 @@ describe("normalizeClaudeMessage", () => {
 describe("permissions", () => {
   const opts = { permissions: { denyCommands: ["git push", "sudo"], allowWebFetch: false } };
   it("builds disallowed tool rules", () => {
-    expect(disallowedTools(opts)).toEqual(["Bash(git push:*)", "Bash(sudo:*)", "WebFetch", "WebSearch"]);
+    expect(disallowedTools(opts)).toEqual([
+      "Bash(git push:*)",
+      "Bash(sudo:*)",
+      "WebFetch",
+      "WebSearch",
+      "ReportFindings",
+    ]);
   });
   it("removes edit tools from a read-only reviewer session", async () => {
     const readonly = {
@@ -88,6 +97,7 @@ describe("permissions", () => {
       "Bash(git push:*)",
       "WebFetch",
       "WebSearch",
+      "ReportFindings",
       "Edit",
       "Write",
       "NotebookEdit",
@@ -133,6 +143,8 @@ describe("ClaudeCodeAdapter with a stubbed SDK", () => {
       cwd: "/w",
       systemPrompt: { type: "preset", preset: "claude_code", append: "PLAYBOOK" },
       mcpServers: { foundry: { type: "stdio", command: "foundry", args: ["mcp"] } },
+      settingSources: ["project"],
+      skills: [],
     });
 
     const r = await adapter.resume("sess-abc", "answer: CSV", base);
@@ -142,5 +154,37 @@ describe("ClaudeCodeAdapter with a stubbed SDK", () => {
     expect(seen[1]).toMatchObject({ resume: "sess-abc" });
     // Same cumulative total as before, so no new cost is reported.
     expect((await r.done).costUsd).toBe(0.42);
+  });
+});
+
+describe("repoSkillNames", () => {
+  function repoWith(files: Record<string, string>): string {
+    const cwd = mkdtempSync(join(tmpdir(), "foundry-skills-"));
+    for (const [path, content] of Object.entries(files)) {
+      mkdirSync(join(cwd, path, ".."), { recursive: true });
+      writeFileSync(join(cwd, path), content);
+    }
+    return cwd;
+  }
+
+  it("returns the declared name of each repo skill, sorted", async () => {
+    const cwd = repoWith({
+      ".claude/skills/merge-risk/SKILL.md": "---\nname: merge-risk\ndescription: x\n---\n\n# Merge risk\n",
+      ".claude/skills/zeta/SKILL.md": '---\r\nname: "custom-zeta"\r\n---\r\n# Z\r\n',
+      ".claude/skills/README.md": "not a skill",
+    });
+    expect(await repoSkillNames(cwd)).toEqual(["merge-risk", "custom-zeta"]);
+  });
+
+  it("falls back to the directory name and ignores a folder without SKILL.md", async () => {
+    const cwd = repoWith({
+      ".claude/skills/no-frontmatter/SKILL.md": "# Just content\n",
+      ".claude/skills/empty/.keep": "",
+    });
+    expect(await repoSkillNames(cwd)).toEqual(["no-frontmatter"]);
+  });
+
+  it("returns an empty list when the repo has no skills", async () => {
+    expect(await repoSkillNames(mkdtempSync(join(tmpdir(), "foundry-skills-")))).toEqual([]);
   });
 });

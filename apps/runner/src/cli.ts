@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { bridgeFromEnv, runStdioServer } from "@foundry/mcp-foundry";
 import { currentOsAdapter } from "@foundry/os-adapters";
+import { PLAYBOOK_SKILLS } from "@foundry/playbooks";
 import { createLogger, parseRecipeYaml, VERSION } from "@foundry/shared";
 import { loadGitHubEnvFromFile } from "@foundry/shared/github-host";
 import { applyHttpProxyEnv, loadHttpProxyFromEnvFile } from "@foundry/shared/proxy";
@@ -25,6 +26,7 @@ import {
 import { Daemon } from "./daemon";
 import { defaultHarnesses } from "./harnesses";
 import { checkRecipe } from "./readiness";
+import { installSkills } from "./skills";
 
 const HELP = `foundry ${VERSION}: the Foundry runner
 
@@ -40,6 +42,9 @@ Usage:
   foundry check [DIR]                   Check that this machine can run the repo's .foundry/recipe.yaml
   foundry doctor [--live]               Check harnesses, git, disk and power; --live runs a tiny real session
   foundry open <job-id>                 Print the worktree path of a job on this runner
+  foundry skills list                   List the built-in skills that can be installed into a repo
+  foundry skills install [name ...] [--all]
+                                        Copy skills into .claude/skills and .opencode/skills (default: all)
   foundry mcp                           (internal) the per-job foundry MCP server over stdio
   foundry --version
 `;
@@ -251,6 +256,19 @@ function schedule(values: Record<string, string | boolean | string[] | undefined
   console.log(`schedule: ${JSON.stringify(config.schedule)} (restart the runner to apply)`);
 }
 
+async function skills(sub: string | undefined, names: string[], all: boolean) {
+  if (!sub || sub === "list") {
+    console.log("Built-in skills (install into a repo with `foundry skills install [name ...]`):");
+    for (const name of PLAYBOOK_SKILLS) console.log(`  ${name}`);
+    return;
+  }
+  if (sub !== "install") fail("usage: foundry skills install [name ...] [--all]");
+  const chosen = all || names.length === 0 ? [...PLAYBOOK_SKILLS] : names;
+  const installed = await installSkills(process.cwd(), chosen);
+  for (const skill of installed) console.log(`✓ ${skill.name}: ${skill.paths.join(", ")}`);
+  console.log("Commit these files so every agent session can load the skills.");
+}
+
 async function check(dir: string) {
   const path = join(dir, ".foundry/recipe.yaml");
   if (!existsSync(path)) fail(`${path} not found`);
@@ -318,6 +336,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       "pause-when-active": { type: "string" },
       "ac-only": { type: "string" },
       "any-power": { type: "boolean" },
+      all: { type: "boolean" },
       weekends: { type: "string" },
       "http-proxy": { type: "string" },
       version: { type: "boolean", short: "v" },
@@ -339,6 +358,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   if (cmd === "mcp") return runStdioServer(bridgeFromEnv(), VERSION);
   if (cmd === "check") return check(sub ?? process.cwd());
   if (cmd === "doctor") return doctor(!!values.live);
+  if (cmd === "skills") return skills(sub, rest, !!values.all);
   if (cmd === "open") {
     const path = join(dataDir(), "worktrees", sub ?? "");
     if (!sub || !existsSync(path)) fail("no such job worktree on this runner");

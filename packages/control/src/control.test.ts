@@ -639,6 +639,7 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
     const result = await runnerPrReview(env.ctx, runner, c.id, {
       verdict: "request_changes",
       summary: "The test fails",
+      risk: { level: "medium", summary: "A CI check fails; impact is contained to src/a.ts." },
       findings: [
         { severity: "blocking", category: "code_quality", file: "src/a.ts", line: 3, message: "fix it" },
       ],
@@ -653,6 +654,7 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
     expect(env.gh.reviewsOn("acme/app", pr.prNumber)[0]).toMatchObject({
       author: "foundry[bot]",
       state: "COMMENTED",
+      body: expect.stringContaining("**Merge risk: medium**"),
     });
     const [input] = await takePendingInputs(env.ctx, c.id);
     expect(input).toMatchObject({ kind: "message", by: "foundry[bot]" });

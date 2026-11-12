@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { type Dirent, existsSync, readFileSync } from "node:fs";
+import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -29,6 +30,9 @@ const EDIT_TOOLS = ["Edit", "Write", "NotebookEdit", "MultiEdit"];
 export function disallowedTools(opts: Pick<StartOpts, "permissions">): string[] {
   const out = opts.permissions.denyCommands.map((c) => `Bash(${c}:*)`);
   if (!opts.permissions.allowWebFetch) out.push("WebFetch", "WebSearch");
+  // Foundry's `foundry.review` MCP tool is the only review-reporting channel. The host's own
+  // ReportFindings tool otherwise tempts the reviewer into reporting to nowhere.
+  out.push("ReportFindings");
   if (opts.permissions.allowEdits === false) out.push(...EDIT_TOOLS);
   return out;
 }
@@ -71,6 +75,34 @@ export function userSettingsEnv(home = homedir()): Record<string, string> {
   } catch {
     return {};
   }
+}
+
+/**
+ * Skill names declared by `.claude/skills/<dir>/SKILL.md`, sorted by directory. Passing these
+ * explicitly to the SDK loads exactly the repo's skills: `skills: "all"` would also pull in the
+ * machine's user/plugin skills, which must not leak into unattended jobs.
+ */
+export async function repoSkillNames(cwd: string): Promise<string[]> {
+  const root = join(cwd, ".claude", "skills");
+  let entries: Dirent[];
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const names: string[] = [];
+  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+    try {
+      const text = await readFile(join(root, entry.name, "SKILL.md"), "utf8");
+      const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1];
+      const declared = frontmatter ? /^name:\s*["']?([^"'\r\n]+?)["']?\s*$/m.exec(frontmatter)?.[1] : null;
+      names.push(declared?.trim() || entry.name);
+    } catch {
+      // Not a skill directory; ignore it.
+    }
+  }
+  return names;
 }
 
 /** True inside a `bun build --compile` binary, where the SDK's bundled engine is unavailable. */
@@ -152,6 +184,7 @@ export class ClaudeCodeAdapter implements HarnessAdapter {
       harnessLogJson({ prompt, resume, model: opts.model, cwd: opts.cwd, systemPrompt: opts.systemPrompt }),
     );
     const executable = claudeExecutable();
+    const skills = await repoSkillNames(opts.cwd);
     const q = query({
       prompt,
       options: {
@@ -170,6 +203,9 @@ export class ClaudeCodeAdapter implements HarnessAdapter {
         canUseTool: canUseTool(opts),
         disallowedTools: disallowedTools(opts),
         settingSources: ["project"],
+        // Enable exactly the repo's own skills. Omitted/`"all"` would also expose user and plugin
+        // skills on the runner machine, which unattended jobs must not depend on.
+        skills,
         abortController: abort,
         ...(executable ? { pathToClaudeCodeExecutable: executable } : {}),
       },

@@ -350,14 +350,17 @@ runner 通常一次前进一个阶段。它也会发送 `queued` 交还任务（
 
 runner 在独立的只读 worktree 中评审已推送的 head，并通过 `pr-review` 上报：
 
-| 字段       | 类型                                              | 说明                                     |
-| ---------- | ------------------------------------------------- | ---------------------------------------- |
-| `verdict`  | `approve` \| `request_changes`                    |                                          |
-| `summary`  | string                                            |                                          |
-| `findings` | `{ severity, category, file?, line?, message }[]` | `file` + `line` 有效时会成为行内评审评论 |
+| 字段       | 类型                                              | 说明                                                                 |
+| ---------- | ------------------------------------------------- | -------------------------------------------------------------------- |
+| `verdict`  | `approve` \| `request_changes`                    |                                                                      |
+| `summary`  | string                                            |                                                                      |
+| `risk`     | `{ level: "low" \| "medium" \| "high", summary }` | 合并风险评估；`summary` 说明影响、验证、回滚成本等类别为何得出该级别 |
+| `findings` | `{ severity, category, file?, line?, message }[]` | `file` + `line` 有效时会成为行内评审评论                             |
 
 控制面把结果作为 `COMMENT` 评审发布到 PR（Foundry App 是该 PR 的作者，GitHub 不接受它提交
-`APPROVE` 或 `REQUEST_CHANGES`），并记录 `code review` 证据。通过则把任务送回 `pr_ci`，但
+`APPROVE` 或 `REQUEST_CHANGES`），并记录 `code review` 证据。评审正文以合并风险开头（例如
+`**Merge risk: medium**`）和评审者给出的原因，同一风险也会写入任务时间线。评审者遵循内置的
+`merge-risk` skill，onboarding 会把它安装到 `.claude/skills/` 和 `.opencode/skills/`。通过则把任务送回 `pr_ci`，但
 **开启 `auto_pr_review` 的任务 gate 永不自动合并**：评审只提供评论，PR 等待人工合并
 （`human_review` 规则）。阻塞性问题会变成一条消息，把任务重新入队到 `implementing`，最多
 `max_review_loops` 轮；超出后交给 issue 作者处理。
@@ -582,15 +585,15 @@ content block。
 
 ### 5.1 工具
 
-| 工具         | 参数                                                                                                             | runner 的行为                                                           |
-| ------------ | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `stage`      | `{ name: "investigating" \| "implementing" \| "reviewing" \| "verifying" \| "done", summary }`                   | 强制阶段顺序；向上游上报 `stage` 并 checkpoint。`done` 触发验证/PR 流程 |
-| `plan`       | `{ plan: string }`                                                                                               | 保存计划并发出 message 事件                                             |
-| `ask`        | `{ question: string, options?: string[] }`                                                                       | 宽限期后挂起任务并发布问题                                              |
-| `evidence`   | `{ kind: "screenshot" \| "note", name, status?, path?, detail? }`                                                | 备注直接记录；截图先上传再作为证据关联                                  |
-| `run_checks` | `{ names?: string[] }`                                                                                           | 运行 recipe 中受信任的检查，并逐项记录为 gate 证据                      |
-| `confidence` | `{ level: "high" \| "medium" \| "low", reasons?: string[], uncertainties?: string[] }`                           | 保存自我评估；低于 `high` 会把 PR 交给人类                              |
-| `review`     | `{ verdict: "approve" \| "request_changes", summary, findings: [{severity, category?, file?, line?, message}] }` | 仅评审者可用：记录一次独立评审                                          |
+| 工具         | 参数                                                                                                                                     | runner 的行为                                                           |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `stage`      | `{ name: "investigating" \| "implementing" \| "reviewing" \| "verifying" \| "done", summary }`                                           | 强制阶段顺序；向上游上报 `stage` 并 checkpoint。`done` 触发验证/PR 流程 |
+| `plan`       | `{ plan: string }`                                                                                                                       | 保存计划并发出 message 事件                                             |
+| `ask`        | `{ question: string, options?: string[] }`                                                                                               | 宽限期后挂起任务并发布问题                                              |
+| `evidence`   | `{ kind: "screenshot" \| "note", name, status?, path?, detail? }`                                                                        | 备注直接记录；截图先上传再作为证据关联                                  |
+| `run_checks` | `{ names?: string[] }`                                                                                                                   | 运行 recipe 中受信任的检查，并逐项记录为 gate 证据                      |
+| `confidence` | `{ level: "high" \| "medium" \| "low", reasons?: string[], uncertainties?: string[] }`                                                   | 保存自我评估；低于 `high` 会把 PR 交给人类                              |
+| `review`     | `{ verdict: "approve" \| "request_changes", summary, risk: {level, summary}, findings: [{severity, category?, file?, line?, message}] }` | 仅评审者可用：记录一次独立评审，包含合并风险评估                        |
 
 `review` 只对只读评审者会话可用；实现者的工具服务器会拒绝它。`evidence` 截图必须在 worktree 内，
 且为 PNG、JPEG 或 WebP。

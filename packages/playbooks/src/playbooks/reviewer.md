@@ -61,10 +61,17 @@ the failure, and say what good looks like.
 
 ## Reporting
 
-Call the `foundry.review` tool exactly once when you are done:
+Call the `foundry.review` tool exactly once when you are done. Some harnesses expose it as
+`mcp__foundry__review`; load it with tool search if it is not listed yet. Do not use any other
+reporting tool — in particular never use a generic findings tool such as `ReportFindings`, which
+does not reach Foundry and leaves the review unrecorded.
 
 - `verdict: "approve"` when there are no blocking findings.
 - `verdict: "request_changes"` when at least one blocking finding exists.
+- `risk: { level, summary }` is required. Use the **merge-risk** skill above to pick `low`,
+  `medium` or `high` and to write one or two sentences naming the categories that drove it.
+  `low` does not mean "no findings"; it means the change is safe to merge even with the
+  non-blocking nits you listed.
 
 Classify every finding with `category`: `code_quality`, `ui_design` or `security` (use `other` only
 when none fits). In the summary, state which areas you checked and which did not apply. When you have

@@ -52,6 +52,7 @@ describe("foundry MCP server", () => {
       arguments: {
         verdict: "request_changes",
         summary: "One blocker",
+        risk: { level: "medium", summary: "Security in a sensitive path." },
         findings: [
           {
             severity: "blocking",
@@ -69,6 +70,7 @@ describe("foundry MCP server", () => {
       {
         verdict: "request_changes",
         summary: "One blocker",
+        risk: { level: "medium", summary: "Security in a sensitive path." },
         findings: [
           {
             severity: "blocking",

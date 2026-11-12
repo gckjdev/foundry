@@ -11,6 +11,21 @@ import defaultPlaybook from "./playbooks/default.md" with { type: "text" };
 import feature from "./playbooks/feature.md" with { type: "text" };
 import onboarding from "./playbooks/onboarding.md" with { type: "text" };
 import reviewer from "./playbooks/reviewer.md" with { type: "text" };
+import mergeRiskSkill from "./skills/merge-risk/SKILL.md" with { type: "text" };
+
+/** Skills that ship with Foundry and can be installed into a repo's harness skill folders. */
+export const BUILTIN_SKILLS: Record<string, string> = {
+  "merge-risk": mergeRiskSkill,
+};
+
+/** Skills the onboarding PR installs into a repo. */
+export const PLAYBOOK_SKILLS = ["merge-risk"] as const;
+
+/** A SKILL.md body without its YAML frontmatter, for embedding in a prompt. */
+export function skillBody(markdown: string): string {
+  const frontmatter = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(markdown);
+  return (frontmatter ? markdown.slice(frontmatter[0].length) : markdown).trim();
+}
 
 /** Built-in playbooks. A repo can override any of them with `.foundry/playbook[.<name>].md`. */
 export const BUILTIN_PLAYBOOKS: Record<string, string> = {
@@ -84,7 +99,10 @@ export function assembleReviewPrompt(
   systemPrompt: string;
   prompt: string;
 } {
-  const parts = [reviewer];
+  // The merge-risk rubric drives the `risk` field every review must report. Embed it here as well
+  // as installing it into the repo so a review works even for repos onboarded before the skill
+  // existed.
+  const parts = [reviewer, `## Skill: merge-risk\n\n${skillBody(mergeRiskSkill)}`];
   for (const skill of repo?.skills ?? []) {
     parts.push(`## Repo knowledge: ${skill.name}\n\n${skill.content.trim()}`);
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HeartbeatResponseSchema } from "./api";
+import { HeartbeatResponseSchema, PrReviewRequestSchema } from "./api";
 import { parseBrief, renderBrief } from "./brief";
 import {
   findMarker,
@@ -7,6 +7,7 @@ import {
   parseFoundryCommand,
   parseReplyAnswer,
   renderAnsweredQuestion,
+  renderPrReviewBody,
   renderQuestionComment,
 } from "./comments";
 import { parseUnifiedDiff } from "./diff";
@@ -155,6 +156,28 @@ describe("tickets", () => {
     expect(jobBranchName("0123456789ab", "Mark recipes as Favorites!")).toBe(
       "foundry/01234567-mark-recipes-as-favorites",
     );
+  });
+});
+
+describe("automatic PR review", () => {
+  const report = {
+    verdict: "approve" as const,
+    summary: "No blocking issues.",
+    risk: { level: "medium" as const, summary: "Impact: touches auth; rollback is cheap." },
+    findings: [],
+  };
+
+  it("renders the merge risk and its reasons in the review body", () => {
+    const body = renderPrReviewBody(report);
+    expect(body).toContain("**Merge risk: medium**");
+    expect(body).toContain("Impact: touches auth; rollback is cheap.");
+    expect(body).toContain("No blocking issues.");
+  });
+
+  it("says so when an older runner did not report a risk", () => {
+    const legacy = { verdict: report.verdict, summary: report.summary, findings: report.findings };
+    expect(PrReviewRequestSchema.parse(legacy).risk).toBeUndefined();
+    expect(renderPrReviewBody(legacy)).toContain("**Merge risk: not reported**");
   });
 });
 

@@ -30,6 +30,7 @@ describe("opencode config", () => {
       command: ["/usr/local/bin/foundry", "mcp"],
       environment: { FOUNDRY_JOB_ID: "j" },
     });
+    expect(c.skills).toEqual({ paths: [".claude/skills", ".opencode/skills"] });
     expect(splitModel("anthropic/claude-sonnet-4-5")).toEqual({
       providerID: "anthropic",
       modelID: "claude-sonnet-4-5",

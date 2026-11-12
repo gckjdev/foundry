@@ -42,6 +42,9 @@ describe("assemblePrompt", () => {
     expect(systemPrompt).toContain("### 2. UI design");
     expect(systemPrompt).toContain("### 3. Security");
     expect(systemPrompt).toContain("foundry.review");
+    expect(systemPrompt).toContain("## Skill: merge-risk");
+    expect(systemPrompt).toContain("Merge risk");
+    expect(systemPrompt).not.toContain("name: merge-risk");
     expect(systemPrompt).toContain("## Repo knowledge: architecture");
     expect(systemPrompt).toContain("Use the repository layer for SQL.");
     expect(prompt).toContain("# Code review for acme/app");

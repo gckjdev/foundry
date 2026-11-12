@@ -122,10 +122,19 @@ export const PrReviewContextSchema = z.object({
 });
 export type PrReviewContext = z.infer<typeof PrReviewContextSchema>;
 
+/** How risky it is to merge a reviewed change. */
+export const MergeRiskSchema = z.object({
+  level: z.enum(["low", "medium", "high"]),
+  summary: z.string().min(1),
+});
+export type MergeRisk = z.infer<typeof MergeRiskSchema>;
+
 /** The reviewer's report for the post-PR review. Mirrors `ReviewReportSchema` in `@foundry/mcp-foundry`. */
 export const PrReviewRequestSchema = z.object({
   verdict: z.enum(["approve", "request_changes"]),
   summary: z.string().min(1),
+  /** Optional so a control plane still accepts reports from runners newer or older than itself. */
+  risk: MergeRiskSchema.optional(),
   findings: z
     .array(
       z.object({

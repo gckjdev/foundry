@@ -10,7 +10,7 @@ export function opencodeConfig(opts: {
   mcpServers: McpServerConfig[];
   permissions: PermissionPolicy;
   model?: string;
-}): Config {
+}): Config & { skills: { paths: string[] } } {
   const bash: Record<string, "allow" | "deny"> = { "*": "allow" };
   for (const d of opts.permissions.denyCommands) {
     const p = d.trim();
@@ -19,6 +19,9 @@ export function opencodeConfig(opts: {
   }
   return {
     ...(opts.model ? { model: opts.model } : {}),
+    // OpenCode scans `.opencode/skill(s)` by default; adding `.claude/skills` makes repos share
+    // one skill install between both harnesses. Relative paths resolve against the job worktree.
+    skills: { paths: [".claude/skills", ".opencode/skills"] },
     share: "disabled",
     autoupdate: false,
     permission: {
