@@ -64,6 +64,10 @@ describe.skipIf(!TEST_DATABASE_URL)("panel and side-effect surfaces", () => {
       status: "waiting_on_you",
       assignedReviewers: [],
     });
+    // The board shows each job's execution time, so the list query must carry both timestamps.
+    const startedAt = new Date("2026-11-01T10:00:00Z");
+    const finishedAt = new Date("2026-11-01T10:45:00Z");
+    const done = await ticket(repo.id, team.id, alice.id, { status: "merged", startedAt, finishedAt });
     await env.ctx.db.insert(questions).values({
       jobId: queued.id,
       teamId: team.id,
@@ -75,6 +79,7 @@ describe.skipIf(!TEST_DATABASE_URL)("panel and side-effect surfaces", () => {
     const board = await boardJobs(env.ctx, team.id);
     expect(board.map((b) => b.job.id)).toEqual(expect.arrayContaining([queued.id, review.id, loose.id]));
     expect(board.find((b) => b.job.id === queued.id)?.repoFullName).toBe("acme/app");
+    expect(board.find((b) => b.job.id === done.id)?.job).toMatchObject({ startedAt, finishedAt });
 
     const box = await inbox(env.ctx, team.id, alice.id);
     expect(box.questions).toHaveLength(1);
