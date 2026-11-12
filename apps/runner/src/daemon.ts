@@ -82,20 +82,32 @@ export class Daemon {
   }
 
   async start(): Promise<void> {
+    const startedAt = Date.now();
+    this.logger.info("runner starting", {
+      dataDir: this.opts.dataDir,
+      maxConcurrency: this.opts.maxConcurrency,
+    });
     await this.tools.start();
+    const detectStarted = Date.now();
     this.harnessInfo = await this.detectHarnesses();
+    this.logger.info("runner harnesses detected", {
+      durationMs: Date.now() - detectStarted,
+      harnesses: this.harnessInfo.filter((h) => h.installed).map((h) => h.id),
+    });
     if (this.opts.limits?.memMb || this.opts.limits?.cpuPercent)
       this.wrap = await this.opts.os.wrapWithLimits([], this.opts.limits);
-    await collectGarbage({
+    const removed = await collectGarbage({
       workspace: this.workspace,
       localJobs: this.localJobs,
       ports: this.ports,
       running: new Set(),
       keep: null,
     });
+    if (removed.length) this.logger.info("startup gc removed worktrees", { count: removed.length });
     await this.tick();
     this.heartbeatTimer = setInterval(() => void this.tick(), this.opts.heartbeatMs ?? HEARTBEAT_INTERVAL_MS);
     this.gcTimer = setInterval(() => void this.gc(), 3600_000);
+    this.logger.info("runner started", { durationMs: Date.now() - startedAt });
   }
 
   /** Give running jobs back (they resume from checkpoints) and stop. */
@@ -199,7 +211,13 @@ export class Daemon {
         for (const r of this.running.values()) void r.runner.pause();
       }
       this.connectRealtime(res.realtimeUrl, res.realtimeToken);
-      await this.readiness.sync(res.repos);
+      // Readiness runs the repo's whole recipe (mirror fetch, install, every check) and can take
+      // minutes. It must not hold up heartbeats or claiming: the control plane only schedules a
+      // repo onto this runner while a readiness report for the current recipe is on record, so a
+      // claim made before the background pass finishes cannot route work to an unproven runner.
+      void this.readiness
+        .sync(res.repos)
+        .catch((err) => this.logger.error("readiness sync failed", errorFields(err)));
       await this.claimLoop();
       this.writeStatus();
     } catch (err) {

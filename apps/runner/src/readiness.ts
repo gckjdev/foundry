@@ -113,13 +113,16 @@ function failureReason(
 /** Run every recipe step in `cwd`, stopping at the first failure or when the deadline passes. */
 async function runRecipeSteps(opts: {
   recipe: Recipe;
+  repo: string;
   cwd: string;
   env: Record<string, string>;
   secrets: string[];
   wrap?: string[];
   deadline: number;
+  logger: Logger;
 }): Promise<ReadinessResult> {
-  for (const step of recipeSteps(opts.recipe)) {
+  const steps = recipeSteps(opts.recipe);
+  for (const [index, step] of steps.entries()) {
     const remaining = opts.deadline - Date.now();
     if (remaining <= 0) {
       return {
@@ -128,14 +131,33 @@ async function runRecipeSteps(opts: {
       };
     }
     const timeoutMs = Math.min(step.timeoutMs ?? remaining, remaining);
+    // Readiness can run the whole recipe, so the log says which step is running while it does.
+    opts.logger.info("readiness step started", {
+      repo: opts.repo,
+      step: step.name,
+      stepIndex: index + 1,
+      stepCount: steps.length,
+    });
     const result = await runCommand(step.run, {
       cwd: opts.cwd,
       env: opts.env,
       timeoutMs,
       wrap: opts.wrap,
     });
-    if (result.exitCode !== 0)
+    if (result.exitCode !== 0) {
+      opts.logger.warn("readiness step failed", {
+        repo: opts.repo,
+        step: step.name,
+        durationMs: result.durationMs,
+        ...(result.timedOut ? { timedOut: true } : { exitCode: result.exitCode }),
+      });
       return { ready: false, reason: failureReason(step, result, timeoutMs, opts.secrets) };
+    }
+    opts.logger.info("readiness step passed", {
+      repo: opts.repo,
+      step: step.name,
+      durationMs: result.durationMs,
+    });
   }
   return { ready: true, reason: null };
 }
@@ -180,11 +202,19 @@ export class ReadinessReporter {
     try {
       for (const repo of repos) {
         if (!repo.recipeSha || this.reported.get(repo.id) === repo.recipeSha) continue;
+        const startedAt = Date.now();
+        this.opts.logger.info("readiness check started", { repo: repo.fullName });
         const result = await this.check(repo);
         await this.api.readiness({ repoId: repo.id, recipeSha: repo.recipeSha, ...result });
         this.reported.set(repo.id, repo.recipeSha);
-        if (result.ready) this.opts.logger.info("repo readiness passed", { repo: repo.fullName });
-        else this.opts.logger.warn("repo readiness failed", { repo: repo.fullName, reason: result.reason });
+        const durationMs = Date.now() - startedAt;
+        if (result.ready) this.opts.logger.info("repo readiness passed", { repo: repo.fullName, durationMs });
+        else
+          this.opts.logger.warn("repo readiness failed", {
+            repo: repo.fullName,
+            reason: result.reason,
+            durationMs,
+          });
       }
     } finally {
       this.checking = false;
@@ -194,35 +224,56 @@ export class ReadinessReporter {
   private async check(repo: ReadinessRepo): Promise<ReadinessResult> {
     try {
       const token = (await this.api.gitToken(repo.id)).token;
+      const mirrorStarted = Date.now();
+      // The fetch is the one network step in readiness; log it so a stalled proxy is visible.
+      this.opts.logger.info("readiness mirror fetch started", { repo: repo.fullName });
       const mirror = await this.workspace.ensureMirror(repo.fullName, token);
+      this.opts.logger.info("readiness mirror ready", {
+        repo: repo.fullName,
+        durationMs: Date.now() - mirrorStarted,
+      });
       const file = await this.workspace.readFileAt(mirror, `origin/${repo.defaultBranch}`, RECIPE_FILE);
       if (!file) return { ready: false, reason: "recipe not found on the default branch" };
       const recipe = parseRecipeYaml(file.content);
       const cheap = await checkRecipe(recipe, this.os, this.opts);
       if (!cheap.ready) return cheap;
-      return await this.runInWorktree(repo, recipe, token);
+      return await this.runInWorktree(repo, recipe, token, mirror);
     } catch (err) {
       return { ready: false, reason: `readiness check failed: ${String(err).slice(0, REASON_MAX)}` };
     }
   }
 
-  private async runInWorktree(repo: ReadinessRepo, recipe: Recipe, token: string): Promise<ReadinessResult> {
+  private async runInWorktree(
+    repo: ReadinessRepo,
+    recipe: Recipe,
+    token: string,
+    mirror: string,
+  ): Promise<ReadinessResult> {
     const id = readinessWorktreeId(repo.id);
+    const worktreeStarted = Date.now();
     const cwd = await this.workspace.createDetachedWorktree({
       fullName: repo.fullName,
       branch: repo.defaultBranch,
       id,
       token,
+      // The mirror was just fetched for the recipe; do not fetch it again.
+      mirror,
+    });
+    this.opts.logger.info("readiness worktree ready", {
+      repo: repo.fullName,
+      durationMs: Date.now() - worktreeStarted,
     });
     try {
       const env = readinessEnv(this.opts.postgresUrl);
       return await runRecipeSteps({
         recipe,
+        repo: repo.fullName,
         cwd,
         env,
         secrets: secretEnvValues({ ...process.env, ...env }),
         wrap: this.opts.wrap?.(),
         deadline: Date.now() + READINESS_TIMEOUT_MS,
+        logger: this.opts.logger,
       });
     } finally {
       await this.workspace.removeWorktree(repo.fullName, id).catch((err) => {

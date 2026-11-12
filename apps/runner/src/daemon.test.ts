@@ -25,6 +25,9 @@ beforeAll(() => {
   prevBase = process.env.FOUNDRY_GIT_BASE;
   process.env.FOUNDRY_GIT_BASE = fixture.base;
   fixture.seedRepo("acme/app", { ".foundry/recipe.yaml": TEST_RECIPE });
+  fixture.seedRepo("acme/slow", {
+    ".foundry/recipe.yaml": "checks: [{name: slow, run: 'sleep 2'}]\n",
+  });
 });
 afterAll(() => {
   if (prevBase === undefined) delete process.env.FOUNDRY_GIT_BASE;
@@ -154,6 +157,47 @@ describe("Daemon", () => {
     expect(api.named("stage").filter((c) => c.jobId === "bbbbbbbb-0000-0000-0000-000000000000")).toHaveLength(
       0,
     );
+    await daemon.stop();
+  });
+
+  it("starts before the readiness check finishes and reports readiness in the background", async () => {
+    const api = new RecordingControlPlane();
+    api.heartbeatResponse = {
+      ...api.heartbeatResponse,
+      repos: [
+        {
+          id: "repo-slow",
+          fullName: "acme/slow",
+          defaultBranch: "main",
+          recipeSha: "sha-slow",
+          acceptsJobs: true,
+        },
+      ],
+    };
+    const daemon = new Daemon({
+      api,
+      os: fakeOs({ ac: true }),
+      harnesses: {},
+      dataDir: mkdtempSync(join(tmpdir(), "foundry-daemon-")),
+      maxConcurrency: 1,
+      schedule: LAPTOP_DEFAULT_SCHEDULE,
+      minFreeDiskMb: 1_000,
+      mcpCommand: { command: "foundry", args: ["mcp"] },
+      socketPath: testSocketPath(),
+      heartbeatMs: 60_000,
+      logger: noopLogger,
+    });
+
+    await daemon.start();
+    // The recipe check is still running: start() returned without waiting for it.
+    expect(api.named("readiness")).toHaveLength(0);
+
+    await until(() => api.named("readiness").length === 1);
+    expect(api.named("readiness")[0]!.body).toMatchObject({
+      repoId: "repo-slow",
+      recipeSha: "sha-slow",
+      ready: true,
+    });
     await daemon.stop();
   });
 });
