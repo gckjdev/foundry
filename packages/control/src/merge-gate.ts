@@ -210,6 +210,11 @@ export async function evaluateJobGate(
   // A concurrent CI webhook may have moved the job to `pr_review` (or somewhere else) already.
   if ((await getJob(ctx, job.id)).status !== "pr_ci") return null;
   const autoReviewComplete = job.prReviewSha === pr.headSha;
+  // A ticket reaching the gate without the automatic review is a deliberate policy choice or a
+  // stale cached `policy_yaml`; either way, say so instead of skipping silently.
+  if (job.kind === "ticket" && !policy.auto_pr_review) {
+    ctx.log.warn("auto PR review disabled", { jobId: job.id, repo: repo.fullName });
+  }
   // With the automatic review enabled, wait for it before gating (CI may still be running, or
   // no check has appeared yet). It must never merge before the review has left its comments.
   if (job.kind === "ticket" && policy.auto_pr_review && !autoReviewComplete) return null;
