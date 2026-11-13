@@ -58,12 +58,6 @@ export function skillFiles(names: readonly string[] = PLAYBOOK_SKILLS): SkillFil
   );
 }
 
-/** A SKILL.md body without its YAML frontmatter, for embedding in a prompt. */
-export function skillBody(markdown: string): string {
-  const frontmatter = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(markdown);
-  return (frontmatter ? markdown.slice(frontmatter[0].length) : markdown).trim();
-}
-
 /** Built-in playbooks. A repo can override any of them with `.foundry/playbook[.<name>].md`. */
 export const BUILTIN_PLAYBOOKS: Record<string, string> = {
   default: defaultPlaybook,
@@ -136,13 +130,10 @@ export function assembleReviewPrompt(
   systemPrompt: string;
   prompt: string;
 } {
-  // Embed the review methodology and the risk rubric as well as installing them into the repo, so
-  // a review works even for repos onboarded before the skills existed.
-  const parts = [
-    reviewer,
-    `## Skill: code-review\n\n${skillBody(codeReviewSkill)}`,
-    `## Skill: merge-risk\n\n${skillBody(mergeRiskSkill)}`,
-  ];
+  // The review methodology and risk rubric are not embedded: the prompt tells the reviewer to
+  // invoke the repo's installed `code-review` and `merge-risk` skills, so a repo's customizations
+  // are what the review actually runs.
+  const parts = [reviewer];
   for (const skill of repo?.skills ?? []) {
     parts.push(`## Repo knowledge: ${skill.name}\n\n${skill.content.trim()}`);
   }
