@@ -25,7 +25,7 @@ const job = {
 
 describe("built-in skills", () => {
   it("ships every playbook skill with its frontmatter intact", () => {
-    expect([...PLAYBOOK_SKILLS]).toEqual(["merge-risk", "show-me", "resolve-merge-conflicts"]);
+    expect([...PLAYBOOK_SKILLS]).toEqual(["code-review", "merge-risk", "show-me", "resolve-merge-conflicts"]);
     expect(Object.keys(BUILTIN_SKILLS)).toEqual([...PLAYBOOK_SKILLS]);
     for (const name of PLAYBOOK_SKILLS) {
       const markdown = BUILTIN_SKILLS[name]!;
@@ -71,6 +71,10 @@ describe("assemblePrompt", () => {
       { skills: [{ name: "architecture", content: "Use the repository layer for SQL." }] },
     );
     expect(systemPrompt).toContain("# Foundry code review playbook");
+    expect(systemPrompt).toContain("Use the **code-review** skill");
+    expect(systemPrompt).toContain("## Skill: code-review");
+    expect(systemPrompt).toContain("# Code review");
+    expect(systemPrompt).not.toContain("name: code-review");
     expect(systemPrompt).toContain("### 1. Code quality");
     expect(systemPrompt).toContain("### 2. UI design");
     expect(systemPrompt).toContain("### 3. Security");

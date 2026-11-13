@@ -12,6 +12,7 @@ worker), the realtime service and the runner all use the same format and the sam
   "level": "info",
   "service": "control",
   "message": "job claimed",
+  "correlationId": "3e0f0c4a-5b39-4d1c-9a8e-0f2f1d7c6b51",
   "jobId": "aa9d6b37",
   "runner": "alice-laptop",
   "resumeMode": "sticky",
@@ -21,13 +22,14 @@ worker), the realtime service and the runner all use the same format and the sam
 
 ## Record shape
 
-| Field     | Meaning                                                                                   |
-| --------- | ----------------------------------------------------------------------------------------- |
-| `ts`      | ISO-8601 UTC timestamp, emitted by the logger                                             |
-| `level`   | `debug`, `info`, `warn` or `error`                                                        |
-| `service` | Process that wrote the record: `control`, `webhook`, `web`, `realtime`, `runner`, `proxy` |
-| `message` | Short, stable sentence. **Dynamic values go in fields, never in the message**             |
-| _fields_  | Context: `jobId`, `runner`, `repo`, `delivery`, `error`, counts, durations…               |
+| Field           | Meaning                                                                                   |
+| --------------- | ----------------------------------------------------------------------------------------- |
+| `ts`            | ISO-8601 UTC timestamp, emitted by the logger                                             |
+| `level`         | `debug`, `info`, `warn` or `error`                                                        |
+| `service`       | Process that wrote the record: `control`, `webhook`, `web`, `realtime`, `runner`, `proxy` |
+| `message`       | Short, stable sentence. **Dynamic values go in fields, never in the message**             |
+| `correlationId` | Id shared by every record of one execution (request, delivery, job run)                   |
+| _fields_        | Context: `jobId`, `runner`, `repo`, `delivery`, `error`, counts, durations…               |
 
 The logger owns `ts`, `level`, `service` and `message`; a field with one of those names is dropped
 instead of overwriting the record.
@@ -48,20 +50,23 @@ Pick the level by what an operator should do with the line:
 
 ## Field conventions
 
-| Field                    | Type   | Example                                 |
-| ------------------------ | ------ | --------------------------------------- |
-| `jobId`                  | string | `"aa9d6b37-411c-..."`                   |
-| `repo`                   | string | `"acme/app"`                            |
-| `issue`, `pr`            | number | `42`                                    |
-| `runner`                 | string | `"alice-laptop"`                        |
-| `stage`                  | string | `"verifying"`                           |
-| `check`                  | string | `"lint"`                                |
-| `status`                 | string | `"passed"`, `"failed"`, `"skipped"`     |
-| `exitCode`, `durationMs` | number | `1`, `2431`                             |
-| `delivery`, `event`      | string | GitHub delivery id and event name       |
-| `by`, `via`              | string | `"alice"`, `"panel"` / `"gh_reply"`     |
-| `error`                  | string | `error.message` from `errorFields(err)` |
-| `count`                  | number | `3`                                     |
+| Field                    | Type           | Example                                 |
+| ------------------------ | -------------- | --------------------------------------- |
+| `jobId`                  | string         | `"aa9d6b37-411c-..."`                   |
+| `repo`                   | string         | `"acme/app"`                            |
+| `issue`, `pr`            | number         | `42`                                    |
+| `runner`                 | string         | `"alice-laptop"`                        |
+| `stage`                  | string         | `"verifying"`                           |
+| `check`                  | string         | `"lint"`                                |
+| `status`                 | string         | `"passed"`, `"failed"`, `"skipped"`     |
+| `exitCode`, `durationMs` | number         | `1`, `2431`                             |
+| `delivery`, `event`      | string         | GitHub delivery id and event name       |
+| `by`, `via`              | string         | `"alice"`, `"panel"` / `"gh_reply"`     |
+| `provider`, `operation`  | string         | `"github"`, `"createComment"`           |
+| `table`, `rows`          | string, number | `"webhook_inbox"`, `1`                  |
+| `correlationId`          | string         | UUID from `newCorrelationId()`          |
+| `error`                  | string         | `error.message` from `errorFields(err)` |
+| `count`                  | number         | `3`                                     |
 
 Use the `errorFields(err)` helper rather than interpolating an error into the message. It keeps
 `error` a plain string and avoids accidentally logging an object that contains tokens.
@@ -88,6 +93,52 @@ jobLog.warn("check failed", { check: "lint", exitCode: 1 });
 
 `console.log` is for **CLI output** (`foundry status`, `foundry doctor`, scripts), not for
 operational logs. Operational code should not use bare `console.*`.
+
+## Correlation
+
+Every execution that spans several records gets one `correlationId`. It is generated at the
+boundary (`newCorrelationId()`), bound to a child logger and passed down, so every record of that
+execution can be followed with one filter.
+
+```ts
+import { newCorrelationId } from "@foundry/shared";
+import { withLogFields } from "@foundry/control";
+
+const correlationId = newCorrelationId();
+const requestLog = log.child({ correlationId, delivery, event });
+// Control code receives a context whose logger already carries the id.
+const ctx = withLogFields(await getContext(), { correlationId, delivery, event });
+```
+
+- The webhook route generates one id per GitHub delivery and keeps it across `after()` processing.
+- The worker generates one id per retried delivery.
+- Runner job logs are correlated by `jobId`; add a `correlationId` the same way when a run fans out.
+
+## The `logged` aspect
+
+`logged(log, message, fn, opts)` runs one operation and writes a single record when it finishes:
+success at `debug` (or `opts.level`) with `durationMs` and the optional `result` fields, failure at
+`error` with `durationMs` and the normalized error. It always rethrows, so callers keep their
+existing error handling. Use it for API calls and database reads/writes instead of hand-rolling
+start/finish lines.
+
+```ts
+import { logged } from "@foundry/shared";
+
+const rows = await logged(ctx.log, "database write", () => ctx.db.insert(webhookInbox).values(row), {
+  fields: { table: "webhook_inbox", operation: "insert", deliveryId },
+  result: (rows) => ({ inserted: rows.length > 0 }),
+});
+
+await logged(ctx.log, "github api call", () => ctx.gh.createComment(ref, issue, body), {
+  fields: { provider: "github", operation: "createComment", repo },
+});
+```
+
+Database and API detail stays at `debug` (off by default) so production stays quiet; decisions and
+lifecycle milestones stay at `info`. The **webhook → job-creation** journey is instrumented end to
+end as the reference: inbound API request, webhook-inbox writes/reads, the job read/write and every
+GitHub call share one `correlationId`.
 
 ## Rules
 
@@ -122,6 +173,9 @@ pnpm dev 2>&1 | jq -c 'select(.level == "error")'
 
 # Everything about one job, control plane and runner logs
 jq -c 'select(.jobId == "aa9d6b37-411c-49bb-88f9-e4a1d5ffc070")' web.log runner.log
+
+# One execution end to end: API call, database reads/writes and external calls
+jq -c 'select(.correlationId == "3e0f0c4a-5b39-4d1c-9a8e-0f2f1d7c6b51")' web.log runner.log
 
 # Webhook deliveries that were rejected
 jq -c 'select(.service == "webhook" and .message | startswith("webhook rejected"))' web.log

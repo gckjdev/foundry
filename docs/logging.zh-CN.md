@@ -11,6 +11,7 @@ runner 使用相同的格式，并共用 `@foundry/shared` 中的同一个 logge
   "level": "info",
   "service": "control",
   "message": "job claimed",
+  "correlationId": "3e0f0c4a-5b39-4d1c-9a8e-0f2f1d7c6b51",
   "jobId": "aa9d6b37",
   "runner": "alice-laptop",
   "resumeMode": "sticky",
@@ -20,13 +21,14 @@ runner 使用相同的格式，并共用 `@foundry/shared` 中的同一个 logge
 
 ## 记录结构
 
-| 字段      | 含义                                                                     |
-| --------- | ------------------------------------------------------------------------ |
-| `ts`      | ISO-8601 UTC 时间戳，由 logger 生成                                      |
-| `level`   | `debug`、`info`、`warn` 或 `error`                                       |
-| `service` | 写日志的进程：`control`、`webhook`、`web`、`realtime`、`runner`、`proxy` |
-| `message` | 简短、稳定的句子。**动态值放在字段里，不要拼进 message**                 |
-| _字段_    | 上下文：`jobId`、`runner`、`repo`、`delivery`、`error`、计数、耗时等     |
+| 字段            | 含义                                                                     |
+| --------------- | ------------------------------------------------------------------------ |
+| `ts`            | ISO-8601 UTC 时间戳，由 logger 生成                                      |
+| `level`         | `debug`、`info`、`warn` 或 `error`                                       |
+| `service`       | 写日志的进程：`control`、`webhook`、`web`、`realtime`、`runner`、`proxy` |
+| `message`       | 简短、稳定的句子。**动态值放在字段里，不要拼进 message**                 |
+| `correlationId` | 同一次执行（请求、delivery、job 运行）所有记录共享的 id                  |
+| _字段_          | 上下文：`jobId`、`runner`、`repo`、`delivery`、`error`、计数、耗时等     |
 
 `ts`、`level`、`service`、`message` 属于 logger；同名字段会被丢弃，不能覆盖记录本身。
 
@@ -45,20 +47,23 @@ runner 使用相同的格式，并共用 `@foundry/shared` 中的同一个 logge
 
 ## 字段约定
 
-| 字段                     | 类型   | 示例                                      |
-| ------------------------ | ------ | ----------------------------------------- |
-| `jobId`                  | string | `"aa9d6b37-411c-..."`                     |
-| `repo`                   | string | `"acme/app"`                              |
-| `issue`、`pr`            | number | `42`                                      |
-| `runner`                 | string | `"alice-laptop"`                          |
-| `stage`                  | string | `"verifying"`                             |
-| `check`                  | string | `"lint"`                                  |
-| `status`                 | string | `"passed"`、`"failed"`、`"skipped"`       |
-| `exitCode`、`durationMs` | number | `1`、`2431`                               |
-| `delivery`、`event`      | string | GitHub delivery id 与事件名               |
-| `by`、`via`              | string | `"alice"`、`"panel"` / `"gh_reply"`       |
-| `error`                  | string | `errorFields(err)` 得到的 `error.message` |
-| `count`                  | number | `3`                                       |
+| 字段                     | 类型           | 示例                                      |
+| ------------------------ | -------------- | ----------------------------------------- |
+| `jobId`                  | string         | `"aa9d6b37-411c-..."`                     |
+| `repo`                   | string         | `"acme/app"`                              |
+| `issue`、`pr`            | number         | `42`                                      |
+| `runner`                 | string         | `"alice-laptop"`                          |
+| `stage`                  | string         | `"verifying"`                             |
+| `check`                  | string         | `"lint"`                                  |
+| `status`                 | string         | `"passed"`、`"failed"`、`"skipped"`       |
+| `exitCode`、`durationMs` | number         | `1`、`2431`                               |
+| `delivery`、`event`      | string         | GitHub delivery id 与事件名               |
+| `by`、`via`              | string         | `"alice"`、`"panel"` / `"gh_reply"`       |
+| `provider`、`operation`  | string         | `"github"`、`"createComment"`             |
+| `table`、`rows`          | string、number | `"webhook_inbox"`、`1`                    |
+| `correlationId`          | string         | `newCorrelationId()` 生成的 UUID          |
+| `error`                  | string         | `errorFields(err)` 得到的 `error.message` |
+| `count`                  | number         | `3`                                       |
 
 请使用 `errorFields(err)`，不要把错误对象直接塞进字段或拼进 message。它保证 `error` 是字符串，
 也避免误把带有 token 的对象写进日志。
@@ -85,6 +90,49 @@ jobLog.warn("check failed", { check: "lint", exitCode: 1 });
 
 `console.log` 只用于 **CLI 输出**（`foundry status`、`foundry doctor`、脚本），不用于运行日志。
 业务代码不应直接使用 `console.*`。
+
+## 关联 id
+
+一次跨多条记录的执行需要一个 `correlationId`：在边界处生成（`newCorrelationId()`），绑定到
+child logger 后向下传递，这段执行的所有记录就能用一个过滤条件串起来。
+
+```ts
+import { newCorrelationId } from "@foundry/shared";
+import { withLogFields } from "@foundry/control";
+
+const correlationId = newCorrelationId();
+const requestLog = log.child({ correlationId, delivery, event });
+// 控制面收到的是已经带有该 id 的 logger。
+const ctx = withLogFields(await getContext(), { correlationId, delivery, event });
+```
+
+- webhook 路由为每个 GitHub delivery 生成一个 id，`after()` 中的处理也沿用它。
+- worker 为每个重试的 delivery 生成一个 id。
+- runner 的 job 日志按 `jobId` 关联；一次运行再分叉时可用同样方式追加 `correlationId`。
+
+## `logged` 切面
+
+`logged(log, message, fn, opts)` 执行一个操作，并在结束时只写一条记录：成功时按 `debug`
+（或 `opts.level`）记录 `durationMs` 与可选的 `result` 字段，失败时按 `error` 记录 `durationMs`
+和规范化后的错误。它始终重新抛出异常，调用方原有的错误处理保持不变。适用于 API 调用和数据库
+读写，避免手写 start/finish 两行。
+
+```ts
+import { logged } from "@foundry/shared";
+
+const rows = await logged(ctx.log, "database write", () => ctx.db.insert(webhookInbox).values(row), {
+  fields: { table: "webhook_inbox", operation: "insert", deliveryId },
+  result: (rows) => ({ inserted: rows.length > 0 }),
+});
+
+await logged(ctx.log, "github api call", () => ctx.gh.createComment(ref, issue, body), {
+  fields: { provider: "github", operation: "createComment", repo },
+});
+```
+
+数据库与 API 细节保持在 `debug`（默认关闭），生产环境保持安静；决策与生命周期节点保持在
+`info`。**webhook → 创建 job** 这段旅程作为参考实现被端到端接入：入站 API 请求、webhook 收件箱
+读写、job 读写以及每次 GitHub 调用共享同一个 `correlationId`。
 
 ## 规则
 
@@ -118,6 +166,9 @@ pnpm dev 2>&1 | jq -c 'select(.level == "error")'
 
 # 某个 job 的全部日志（控制面与 runner）
 jq -c 'select(.jobId == "aa9d6b37-411c-49bb-88f9-e4a1d5ffc070")' web.log runner.log
+
+# 一次执行的端到端日志：API 调用、数据库读写与外部调用
+jq -c 'select(.correlationId == "3e0f0c4a-5b39-4d1c-9a8e-0f2f1d7c6b51")' web.log runner.log
 
 # 被拒绝的 webhook
 jq -c 'select(.service == "webhook" and (.message | startswith("webhook rejected")))' web.log

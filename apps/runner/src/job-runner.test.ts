@@ -819,6 +819,7 @@ describe("JobRunner", () => {
     ).toContain("test -f package.json");
     // Onboarding installs every playbook skill into both harness folders in the same PR.
     const playbookSkills: Record<string, string> = {
+      "code-review": "# Code review",
       "merge-risk": "# Merge risk",
       "show-me": "name: show-me",
       "resolve-merge-conflicts": "# Resolve merge conflicts",

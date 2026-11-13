@@ -30,12 +30,13 @@ Onboarding 任务始终使用内置 onboarding playbook；仓库 playbook 和 sk
 ### Skills
 
 Skill 是 harness 原生加载的 agent 指令（带 `name` 和 `description` frontmatter 的 `SKILL.md`）。
-Foundry 内置三个 skill：`merge-risk`，自动 PR 评审用它给出 low/medium/high 的合并风险；`show-me`，
-用简洁的图、代码草图或聚焦的 HTML 产物把话题可视化；以及 `resolve-merge-conflicts`，agent 用它
-在不把整个文件读入上下文的情况下检查和解决 merge、rebase 或 cherry-pick 冲突。Onboarding 会把每个
-内置 skill 复制到 `.claude/skills/<name>/SKILL.md` 和 `.opencode/skills/<name>/SKILL.md`，因此
-recipe PR 会带上它们。会话从这两个目录加载 skill：Claude Code 只启用仓库 `.claude/skills` 下找到的
-skill 名称（绝不加载机器上的用户或插件 skill），OpenCode 则被指向这两个路径。`show-me` 保留上游的
+Foundry 内置四个 skill：`code-review`（评审者据此执行评审并分类问题）、`merge-risk`（自动 PR 评审
+用它给出 low/medium/high 的合并风险）、`show-me`（用简洁的图、代码草图或聚焦的 HTML 产物把话题
+可视化），以及 `resolve-merge-conflicts`（agent 用它在不把整个文件读入上下文的情况下检查和解决
+merge、rebase 或 cherry-pick 冲突）。Onboarding 会把每个内置 skill 复制到
+`.claude/skills/<name>/SKILL.md` 和 `.opencode/skills/<name>/SKILL.md`，因此 recipe PR 会带上它们。
+会话从这两个目录加载 skill：Claude Code 只启用仓库 `.claude/skills` 下找到的 skill 名称（绝不加载
+机器上的用户或插件 skill），OpenCode 则被指向这两个路径。`show-me` 保留上游的
 `disable-model-invocation: true`，因此它由人通过 `/show-me` 调用，而不是由模型自动选择。
 
 Onboarding 之后，可在仓库根目录安装或更新：

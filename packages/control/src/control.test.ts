@@ -1016,7 +1016,7 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
     const gh = env.gh.repo("acme/app");
     const first = await syncRepoSKills(env.ctx, repo.id);
     expect(first).toMatchObject({
-      skills: ["merge-risk", "show-me", "resolve-merge-conflicts"],
+      skills: ["code-review", "merge-risk", "show-me", "resolve-merge-conflicts"],
       updated: false,
     });
     expect(gh.files.get(".claude/skills/merge-risk/SKILL.md")).toContain("name: merge-risk");
