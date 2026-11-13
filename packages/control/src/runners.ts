@@ -131,6 +131,10 @@ export async function heartbeat(
     const keep = new Set(mine.map((j) => j.id));
     revokedJobIds = req.runningJobIds.filter((id) => !keep.has(id));
   }
+  // A job the sweeper just requeued was not in `runningJobIds`, but this runner may still have
+  // a session for it (a lost claim response or a heartbeat race). Revoke it so a re-claim cannot
+  // start a second session on the same job.
+  for (const id of dropped) if (!revokedJobIds.includes(id)) revokedJobIds.push(id);
 
   const teamRepos = await ctx.db.select().from(repos).where(eq(repos.teamId, runner.teamId));
   return {

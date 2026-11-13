@@ -60,6 +60,9 @@ export class ToolServer {
   }
 
   register(jobId: string, handler: ToolHandler): string {
+    // Two sessions for one job would otherwise fight over a single token: the second register
+    // would clobber the first and every later call from the first session would be a 403.
+    if (this.handlers.has(jobId)) throw new Error(`job ${jobId} is already registered on this runner`);
     const token = randomBytes(24).toString("hex");
     this.handlers.set(jobId, { token, handler });
     return token;
