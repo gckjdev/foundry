@@ -11,17 +11,17 @@ Source of truth: `packages/shared/src/recipe.ts` (`RecipeSchema`) and `packages/
 
 ## Files
 
-| File                                 | Required | What it is                                                                                                                        |
-| ------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `.foundry/recipe.yaml`               | Yes      | How to install, check and run the repo. A ticket job fails to start without a valid recipe.                                       |
-| `.foundry/policy.yaml`               | No       | Merge mode, budgets, permissions and risk rules. Missing or invalid falls back to `DEFAULT_POLICY` (the defaults below).          |
-| `.foundry/playbook.md`               | No       | Replaces the built-in `default` playbook for ticket jobs.                                                                         |
-| `.foundry/playbook.<name>.md`        | No       | Replaces a named built-in playbook (`bugfix`, `feature`) or supplies a new one. Select it with the `playbook:<name>` issue label. |
-| `.foundry/playbook.<harness>.md`     | No       | Extra notes appended to the system prompt for that harness (`claude-code` or `opencode`).                                         |
-| `.foundry/skills/*.md`               | No       | Repo knowledge appended to the system prompt, one section per file, sorted by filename.                                           |
-| `.claude/skills/<name>/SKILL.md`     | No       | Skill Claude Code loads natively. Onboarding installs the built-in skills here; refresh with `foundry skills install`.            |
-| `.opencode/skills/<name>/SKILL.md`   | No       | The OpenCode copy of the same skill. The runner config points OpenCode at both folders.                                           |
-| `.github/ISSUE_TEMPLATE/foundry.yml` | No       | Issue form that adds the `foundry` label and the Goal / Acceptance criteria / Constraints / Out of scope sections.                |
+| File                                 | Required | What it is                                                                                                                                                                                 |
+| ------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `.foundry/recipe.yaml`               | Yes      | How to install, check and run the repo. A ticket job fails to start without a valid recipe.                                                                                                |
+| `.foundry/policy.yaml`               | No       | Merge mode, budgets, permissions and risk rules. Missing or invalid falls back to `DEFAULT_POLICY` (the defaults below).                                                                   |
+| `.foundry/playbook.md`               | No       | Replaces the built-in `default` playbook for ticket jobs.                                                                                                                                  |
+| `.foundry/playbook.<name>.md`        | No       | Replaces a named built-in playbook (`bugfix`, `feature`) or supplies a new one. Select it with the `playbook:<name>` issue label.                                                          |
+| `.foundry/playbook.<harness>.md`     | No       | Extra notes appended to the system prompt for that harness (`claude-code` or `opencode`).                                                                                                  |
+| `.foundry/skills/*.md`               | No       | Repo knowledge appended to the system prompt, one section per file, sorted by filename.                                                                                                    |
+| `.claude/skills/<name>/SKILL.md`     | No       | Skill Claude Code loads natively. Onboarding installs the built-in skills (`code-review`, `merge-risk`, `show-me`, `resolve-merge-conflicts`) here; refresh with `foundry skills install`. |
+| `.opencode/skills/<name>/SKILL.md`   | No       | The OpenCode copy of the same skill. The runner config points OpenCode at both folders.                                                                                                    |
+| `.github/ISSUE_TEMPLATE/foundry.yml` | No       | Issue form that adds the `foundry` label and the Goal / Acceptance criteria / Constraints / Out of scope sections.                                                                         |
 
 Onboarding jobs always use the built-in onboarding playbook; repo playbooks and skills only affect ticket
 jobs. A ticket job gets a playbook from `.foundry/playbook.md` when its `playbook` is `default`, otherwise
@@ -31,14 +31,17 @@ file in `.foundry/skills/` is appended after that.
 ### Skills
 
 Skills are agent instructions the harness loads natively (a `SKILL.md` with `name` and
-`description` frontmatter). Foundry ships the `code-review` skill, which the reviewer follows to run
-the review and classify findings, the `merge-risk` skill, which the automatic PR reviewer uses to
-report a low/medium/high merge risk, and `resolve-merge-conflicts`, which agents use to inspect and
-resolve a conflicted merge, rebase or cherry-pick without loading whole files into context. Onboarding
-copies every built-in skill into `.claude/skills/<name>/SKILL.md` and
+`description` frontmatter). Foundry ships four skills: `code-review`, which the reviewer follows to run
+the review and classify findings; `merge-risk`, which the automatic PR reviewer uses to report a
+low/medium/high merge risk; `show-me`, which explains a topic visually with concise diagrams,
+code-shape sketches or a focused HTML artifact; and `resolve-merge-conflicts`, which agents use to
+inspect and resolve a conflicted merge, rebase or cherry-pick without loading whole files into context.
+Onboarding copies every built-in skill into `.claude/skills/<name>/SKILL.md` and
 `.opencode/skills/<name>/SKILL.md`, so the recipe PR carries them. A session loads skills from those
 folders: Claude Code enables exactly the skill names found under the repo's `.claude/skills` (never
-the machine's user or plugin skills), and OpenCode is pointed at both paths.
+the machine's user or plugin skills), and OpenCode is pointed at both paths. `show-me` keeps its
+upstream `disable-model-invocation: true`, so it is invoked by a person (`/show-me`) rather than
+chosen automatically by the model.
 
 After onboarding, install or update them from the repository root:
 

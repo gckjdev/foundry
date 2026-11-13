@@ -821,13 +821,14 @@ describe("JobRunner", () => {
     const playbookSkills: Record<string, string> = {
       "code-review": "# Code review",
       "merge-risk": "# Merge risk",
+      "show-me": "name: show-me",
       "resolve-merge-conflicts": "# Resolve merge conflicts",
     };
     for (const dir of [".claude/skills", ".opencode/skills"]) {
-      for (const [name, heading] of Object.entries(playbookSkills)) {
+      for (const [name, expected] of Object.entries(playbookSkills)) {
         expect(
           gitIn(join(fixture.root, "acme/fresh.git"), "show", `${job.branch}:${dir}/${name}/SKILL.md`),
-        ).toContain(heading);
+        ).toContain(expected);
       }
     }
   });

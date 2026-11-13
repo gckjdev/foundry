@@ -24,13 +24,20 @@ const job = {
 };
 
 describe("built-in skills", () => {
-  it("ships a self-contained resolve-merge-conflicts skill that onboarding installs", () => {
-    expect(PLAYBOOK_SKILLS).toContain("resolve-merge-conflicts");
+  it("ships every playbook skill with its frontmatter intact", () => {
+    expect([...PLAYBOOK_SKILLS]).toEqual(["code-review", "merge-risk", "show-me", "resolve-merge-conflicts"]);
+    expect(Object.keys(BUILTIN_SKILLS)).toEqual([...PLAYBOOK_SKILLS]);
     for (const name of PLAYBOOK_SKILLS) {
       const markdown = BUILTIN_SKILLS[name]!;
       expect(markdown).toContain(`name: ${name}`);
       expect(skillBody(markdown).length).toBeGreaterThan(0);
     }
+    expect(BUILTIN_SKILLS["show-me"]).toContain("description: Help the user understand");
+    expect(skillBody(BUILTIN_SKILLS["show-me"]!)).toContain("Help the user understand");
+    expect(skillBody(BUILTIN_SKILLS["show-me"]!)).not.toContain("name: show-me");
+  });
+
+  it("ships a self-contained resolve-merge-conflicts skill that onboarding installs", () => {
     const conflict = skillBody(BUILTIN_SKILLS["resolve-merge-conflicts"]!);
     expect(conflict).toContain("# Resolve merge conflicts");
     expect(conflict).toContain("--diff-filter=U");
