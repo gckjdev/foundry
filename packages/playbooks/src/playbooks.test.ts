@@ -65,6 +65,7 @@ describe("assemblePrompt", () => {
         defaultBranch: "main",
         plan: "1. add the button",
         summary: "implementing: added the button",
+        installedSkills: ["code-review", "merge-risk"],
       },
       { skills: [{ name: "architecture", content: "Use the repository layer for SQL." }] },
     );
@@ -74,8 +75,8 @@ describe("assemblePrompt", () => {
     expect(systemPrompt).toContain("Skill(merge-risk)");
     expect(systemPrompt).toContain("foundry.review");
     // The built-in skill bodies are not embedded: the reviewer reads the installed copies.
-    expect(systemPrompt).not.toContain("## Skill: code-review");
-    expect(systemPrompt).not.toContain("## Skill: merge-risk");
+    expect(systemPrompt).not.toContain("## Skill: code-review\n\n# Code review");
+    expect(systemPrompt).not.toContain("## Skill: merge-risk\n\n# Merge risk");
     expect(systemPrompt).not.toContain("### 1. Code quality");
     expect(systemPrompt).not.toContain("## Categories and what low risk means");
     expect(systemPrompt).toContain("## Repo knowledge: architecture");
@@ -85,6 +86,28 @@ describe("assemblePrompt", () => {
     expect(prompt).toContain("A download button");
     expect(prompt).toContain("1. add the button");
     expect(prompt).toContain("implementing: added the button");
+  });
+
+  it("embeds a built-in skill body only when the checkout does not have that skill", () => {
+    const input = {
+      repoFullName: "acme/app",
+      title: "Export CSV",
+      body: "### Acceptance criteria\n\nA download button",
+      issueNumber: 12,
+      branch: "foundry/abcd1234-export-csv",
+      defaultBranch: "main",
+      plan: null,
+      summary: null,
+    };
+    const none = assembleReviewPrompt({ ...input, installedSkills: [] });
+    expect(none.systemPrompt).toContain("## Skill: code-review\n\n# Code review");
+    expect(none.systemPrompt).toContain("### 1. Code quality");
+    expect(none.systemPrompt).toContain("## Skill: merge-risk\n\n# Merge risk");
+    expect(none.systemPrompt).toContain("## Categories and what low risk means");
+
+    const partial = assembleReviewPrompt({ ...input, installedSkills: ["code-review"] });
+    expect(partial.systemPrompt).not.toContain("## Skill: code-review\n\n# Code review");
+    expect(partial.systemPrompt).toContain("## Skill: merge-risk\n\n# Merge risk");
   });
 
   it("applies repo overrides, harness notes and skills", () => {

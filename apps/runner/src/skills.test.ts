@@ -1,10 +1,10 @@
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BUILTIN_SKILLS, PLAYBOOK_SKILLS } from "@foundry/playbooks";
 import { describe, expect, it } from "vitest";
-import { installSkills, SKILL_DIRS } from "./skills";
+import { installedSkillNames, installSkills, SKILL_DIRS } from "./skills";
 
 const REPO_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "../../..");
 
@@ -42,6 +42,29 @@ describe("installSkills", () => {
     const cwd = tempRepo();
     await expect(installSkills(cwd, ["merge-risk", "nope"])).rejects.toThrow(/unknown skill: nope/);
     expect(existsSync(join(cwd, ".claude/skills"))).toBe(false);
+  });
+});
+
+describe("installedSkillNames", () => {
+  it("reads only .claude/skills for Claude Code and both folders for OpenCode", async () => {
+    const cwd = tempRepo();
+    mkdirSync(join(cwd, ".claude/skills/code-review"), { recursive: true });
+    writeFileSync(
+      join(cwd, ".claude/skills/code-review/SKILL.md"),
+      "---\nname: code-review\n---\n\n# Code review\n",
+    );
+    mkdirSync(join(cwd, ".opencode/skills/merge-risk"), { recursive: true });
+    writeFileSync(
+      join(cwd, ".opencode/skills/merge-risk/SKILL.md"),
+      "---\nname: merge-risk\n---\n\n# Merge risk\n",
+    );
+
+    expect(await installedSkillNames(cwd, "claude-code")).toEqual(["code-review"]);
+    expect((await installedSkillNames(cwd, "opencode")).sort()).toEqual(["code-review", "merge-risk"]);
+  });
+
+  it("returns an empty list when nothing is installed", async () => {
+    expect(await installedSkillNames(tempRepo(), "claude-code")).toEqual([]);
   });
 });
 

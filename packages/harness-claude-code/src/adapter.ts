@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { type Dirent, existsSync, readFileSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -13,6 +12,7 @@ import {
   harnessLogJson,
   isDeniedCommand,
   type ResumeOpts,
+  readSkillNames,
   type SessionResult,
   type StartOpts,
 } from "@foundry/harness-core";
@@ -83,26 +83,7 @@ export function userSettingsEnv(home = homedir()): Record<string, string> {
  * machine's user/plugin skills, which must not leak into unattended jobs.
  */
 export async function repoSkillNames(cwd: string): Promise<string[]> {
-  const root = join(cwd, ".claude", "skills");
-  let entries: Dirent[];
-  try {
-    entries = await readdir(root, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  const names: string[] = [];
-  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
-    try {
-      const text = await readFile(join(root, entry.name, "SKILL.md"), "utf8");
-      const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1];
-      const declared = frontmatter ? /^name:\s*["']?([^"'\r\n]+?)["']?\s*$/m.exec(frontmatter)?.[1] : null;
-      names.push(declared?.trim() || entry.name);
-    } catch {
-      // Not a skill directory; ignore it.
-    }
-  }
-  return names;
+  return readSkillNames(join(cwd, ".claude", "skills"));
 }
 
 /** True inside a `bun build --compile` binary, where the SDK's bundled engine is unavailable. */

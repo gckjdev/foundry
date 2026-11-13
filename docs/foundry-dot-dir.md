@@ -39,9 +39,11 @@ inspect and resolve a conflicted merge, rebase or cherry-pick without loading wh
 Onboarding copies every built-in skill into `.claude/skills/<name>/SKILL.md` and
 `.opencode/skills/<name>/SKILL.md`, so the recipe PR carries them. A session loads skills from those
 folders: Claude Code enables exactly the skill names found under the repo's `.claude/skills` (never
-the machine's user or plugin skills), and OpenCode is pointed at both paths. `show-me` keeps its
-upstream `disable-model-invocation: true`, so it is invoked by a person (`/show-me`) rather than
-chosen automatically by the model.
+the machine's user or plugin skills), and OpenCode is pointed at both paths. The reviewer invokes
+the installed `code-review` and `merge-risk` skills; when a repo has not installed one, its review
+prompt carries the built-in body as a fallback. `show-me` keeps its upstream
+`disable-model-invocation: true`, so it is invoked by a person (`/show-me`) rather than chosen
+automatically by the model.
 
 After onboarding, install or update them from the repository root:
 
