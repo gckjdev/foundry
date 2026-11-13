@@ -58,7 +58,7 @@ export function skillFiles(names: readonly string[] = PLAYBOOK_SKILLS): SkillFil
   );
 }
 
-/** A SKILL.md body without its YAML frontmatter, for embedding in a prompt. */
+/** A SKILL.md body without its YAML frontmatter, for the fallback copy in a review prompt. */
 export function skillBody(markdown: string): string {
   const frontmatter = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(markdown);
   return (frontmatter ? markdown.slice(frontmatter[0].length) : markdown).trim();
@@ -123,6 +123,12 @@ export interface ReviewPromptInput {
   pullRequest?: { number: number; url: string; headSha: string };
   /** Failed checks for the PR head, when the review was triggered by CI. */
   ciFailures?: CiFailure[];
+  /**
+   * Skill names the review harness loads from the checkout. A built-in body is embedded only for
+   * `code-review` or `merge-risk` when it is missing here, so reviews still have a rubric on repos
+   * that never installed the skills.
+   */
+  installedSkills: readonly string[];
 }
 
 /**
@@ -136,13 +142,16 @@ export function assembleReviewPrompt(
   systemPrompt: string;
   prompt: string;
 } {
-  // Embed the review methodology and the risk rubric as well as installing them into the repo, so
-  // a review works even for repos onboarded before the skills existed.
-  const parts = [
-    reviewer,
-    `## Skill: code-review\n\n${skillBody(codeReviewSkill)}`,
-    `## Skill: merge-risk\n\n${skillBody(mergeRiskSkill)}`,
-  ];
+  // Prefer the repo's installed skills so its customizations are what the review actually runs.
+  // Embed the built-in body only when the checkout does not have the skill, as a fallback for
+  // repos onboarded before the skills existed.
+  const parts = [reviewer];
+  if (!input.installedSkills.includes("code-review")) {
+    parts.push(`## Skill: code-review\n\n${skillBody(codeReviewSkill)}`);
+  }
+  if (!input.installedSkills.includes("merge-risk")) {
+    parts.push(`## Skill: merge-risk\n\n${skillBody(mergeRiskSkill)}`);
+  }
   for (const skill of repo?.skills ?? []) {
     parts.push(`## Repo knowledge: ${skill.name}\n\n${skill.content.trim()}`);
   }

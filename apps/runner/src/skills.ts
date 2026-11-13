@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { skillFiles } from "@foundry/playbooks";
+import { readSkillNames } from "@foundry/harness-core";
+import { SKILL_DIRS, skillFiles } from "@foundry/playbooks";
 
 export { SKILL_DIRS } from "@foundry/playbooks";
 
@@ -29,4 +30,17 @@ export async function installSkills(cwd: string, names?: readonly string[]): Pro
     pathsByName.set(file.name, paths);
   }
   return [...pathsByName].map(([name, paths]) => ({ name, paths }));
+}
+
+/**
+ * Names of the skills the harness will load from `cwd`. Claude Code reads only `.claude/skills`;
+ * OpenCode is configured with both folders.
+ */
+export async function installedSkillNames(cwd: string, harness: string): Promise<string[]> {
+  const dirs = harness === "opencode" ? SKILL_DIRS : ([".claude/skills"] as const);
+  const names = new Set<string>();
+  for (const dir of dirs) {
+    for (const name of await readSkillNames(join(cwd, dir))) names.add(name);
+  }
+  return [...names];
 }

@@ -56,6 +56,12 @@ beforeAll(async () => {
   fixture.seedRepo("acme/app", { ".foundry/recipe.yaml": TEST_RECIPE, "README.md": "# app\n" });
   fixture.seedRepo("acme/ui", { ".foundry/recipe.yaml": UI_RECIPE, "README.md": "# ui\n" });
   fixture.seedRepo("acme/fresh", { "package.json": "{}\n" });
+  fixture.seedRepo("acme/skilled", {
+    ".foundry/recipe.yaml": TEST_RECIPE,
+    "README.md": "# app\n",
+    ".claude/skills/code-review/SKILL.md": "---\nname: code-review\n---\n\n# Code review\n",
+    ".claude/skills/merge-risk/SKILL.md": "---\nname: merge-risk\n---\n\n# Merge risk\n",
+  });
   tools = new ToolServer(testSocketPath());
   await tools.start();
 });
@@ -186,6 +192,8 @@ describe("JobRunner", () => {
     // The reviewer ran in a throwaway detached worktree, not the job's.
     expect(harness.calls[1]!.opts.cwd).not.toBe(join(dataDir, "worktrees", job.id));
     expect(harness.calls[1]!.opts.permissions.allowEdits).toBe(false);
+    // The fixture repo has no skills installed, so the reviewer gets the built-in fallback.
+    expect(harness.calls[1]!.opts.systemPrompt).toContain("## Skill: code-review\n\n# Code review");
     expect(existsSync(join(dataDir, "worktrees", `${job.id}-review`))).toBe(false);
 
     const origin = join(fixture.root, "acme/app.git");
@@ -199,6 +207,20 @@ describe("JobRunner", () => {
     expect(said.text).toContain("[redacted]");
     expect(events.some((e) => e.kind === "usage")).toBe(true);
     expect(existsSync(join(dataDir, "worktrees", job.id))).toBe(false);
+  });
+
+  it("points the reviewer at the installed skills instead of embedding them", async () => {
+    const harness = new FakeHarness("claude-code", happyTurns());
+    const job = claimedJob({
+      repo: { id: "repo-2", fullName: "acme/skilled", defaultBranch: "main" },
+    });
+    expect(await new JobRunner(deps(harness), job).run()).toBe("pr_opened");
+
+    const systemPrompt = harness.calls[1]!.opts.systemPrompt;
+    expect(systemPrompt).toContain("Skill(code-review)");
+    expect(systemPrompt).toContain("Skill(merge-risk)");
+    expect(systemPrompt).not.toContain("## Skill: code-review\n\n# Code review");
+    expect(systemPrompt).not.toContain("## Skill: merge-risk\n\n# Merge risk");
   });
 
   it("downloads images attached to a human message into the worktree", async () => {

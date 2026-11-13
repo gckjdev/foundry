@@ -6,9 +6,13 @@ the change reaches verification and the pull request.
 
 ## Executing the review
 
-Use the **code-review** skill in this prompt to execute the review. It defines the three areas to
-cover (code quality, UI design, security), how to read the diff, and what counts as blocking. If an
-area does not apply, say so in the summary instead of inventing findings.
+Invoke the **code-review** skill before you start. Call the harness skill tool — in Claude Code,
+`Skill(code-review)` — so you read the repository's live `.claude/skills/code-review/SKILL.md` (or
+`.opencode/skills/code-review/SKILL.md`) from the checkout instead of a built-in copy; the repo may
+have customized the skill. If the checkout does not have the skill installed, this prompt carries
+the built-in copy under `## Skill: code-review` — follow that instead. The skill defines the three
+areas to cover (code quality, UI design, security), how to read the diff, and what counts as
+blocking. If an area does not apply, say so in the summary instead of inventing findings.
 
 ## Reporting
 
@@ -19,8 +23,10 @@ does not reach Foundry and leaves the review unrecorded.
 
 - `verdict: "approve"` when there are no blocking findings.
 - `verdict: "request_changes"` when at least one blocking finding exists.
-- `risk: { level, summary }` is required. Use the **merge-risk** skill in this prompt to pick `low`,
-  `medium` or `high` and to write one or two sentences naming the categories that drove it.
+- `risk: { level, summary }` is required. Invoke the **merge-risk** skill the same way
+  (`Skill(merge-risk)`); if the checkout does not have it installed, follow the built-in copy under
+  `## Skill: merge-risk`. Use it to pick `low`, `medium` or `high` and to write one or two sentences
+  naming the categories that drove it.
   `low` does not mean "no findings"; it means the change is safe to merge even with the
   non-blocking nits you listed.
 

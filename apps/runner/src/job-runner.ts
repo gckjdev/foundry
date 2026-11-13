@@ -55,7 +55,7 @@ import type { PortLeases } from "./ports";
 import { loadPlaybookFiles, loadPolicy, loadRecipe } from "./repo-files";
 import { scrub, secretEnvValues } from "./scrub";
 import { dropServices, provisionServices } from "./services";
-import { installSkills } from "./skills";
+import { installedSkillNames, installSkills } from "./skills";
 import type { LocalJobs } from "./state";
 import type { ToolServer } from "./tool-server";
 import type { Workspace } from "./workspace";
@@ -154,6 +154,9 @@ const REVIEWER_DENY_COMMANDS = [
   "go get",
   "sudo",
 ];
+
+/** Skills the reviewer invokes; a missing one falls back to the built-in body in its prompt. */
+const REVIEW_SKILLS = ["code-review", "merge-risk"] as const;
 
 function nextStage(stage: RunnerStage): (typeof STAGE_ORDER)[number] {
   // The post-PR review is a standalone pass; it never advances the playbook chain.
@@ -809,6 +812,18 @@ export class JobRunner {
   }
 
   /**
+   * Skill names the review harness loads from the review checkout. The reviewer prompt embeds a
+   * built-in body for any review skill missing here, so a repo that never installed the skills
+   * still gets the review methodology and risk rubric.
+   */
+  private async reviewerSkills(dir: string): Promise<string[]> {
+    const names = await installedSkillNames(dir, this.job.harness);
+    const missing = REVIEW_SKILLS.filter((name) => !names.includes(name));
+    if (missing.length) this.logEvent("info", "reviewer uses built-in skills", { missing });
+    return names;
+  }
+
+  /**
    * A fresh harness session reviews a clean detached checkout of the job's HEAD. It gets its own
    * MCP registration (so it can only report a review) and a read-only permission policy.
    */
@@ -834,6 +849,7 @@ export class JobRunner {
     try {
       const mcpServers = this.mcpServersFor(reviewKey, reviewToken);
       const repo = await loadPlaybookFiles(this.cwd, []);
+      const installedSkills = await this.reviewerSkills(dir);
       const { systemPrompt, prompt } = assembleReviewPrompt(
         {
           repoFullName: this.job.repo.fullName,
@@ -844,6 +860,7 @@ export class JobRunner {
           defaultBranch: this.job.repo.defaultBranch,
           plan: this.plan,
           summary: this.findings.at(-1) ?? null,
+          installedSkills,
         },
         repo,
       );
@@ -932,6 +949,7 @@ export class JobRunner {
         this.job.resumeMode === "portable"
           ? await fetchBrief(this.cwd, this.jobId, token).catch(() => null)
           : null;
+      const installedSkills = await this.reviewerSkills(dir);
       const { systemPrompt, prompt } = assembleReviewPrompt(
         {
           repoFullName: this.job.repo.fullName,
@@ -944,6 +962,7 @@ export class JobRunner {
           summary: brief?.findings.at(-1) ?? this.findings.at(-1) ?? null,
           pullRequest: { number: context.prNumber, url: context.url, headSha: context.headSha },
           ciFailures: context.ciFailures,
+          installedSkills,
         },
         repo,
       );

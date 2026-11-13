@@ -36,7 +36,8 @@ Foundry 内置四个 skill：`code-review`（评审者据此执行评审并分�
 merge、rebase 或 cherry-pick 冲突）。Onboarding 会把每个内置 skill 复制到
 `.claude/skills/<name>/SKILL.md` 和 `.opencode/skills/<name>/SKILL.md`，因此 recipe PR 会带上它们。
 会话从这两个目录加载 skill：Claude Code 只启用仓库 `.claude/skills` 下找到的 skill 名称（绝不加载
-机器上的用户或插件 skill），OpenCode 则被指向这两个路径。`show-me` 保留上游的
+机器上的用户或插件 skill），OpenCode 则被指向这两个路径。评审者调用仓库已安装的 `code-review` 和
+`merge-risk` skill；如果仓库没有安装其中某个，评审 prompt 会附带内置正文作为后备。`show-me` 保留上游的
 `disable-model-invocation: true`，因此它由人通过 `/show-me` 调用，而不是由模型自动选择。
 
 Onboarding 之后，可在仓库根目录安装或更新：
