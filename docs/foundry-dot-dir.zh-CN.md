@@ -30,12 +30,12 @@ Onboarding 任务始终使用内置 onboarding playbook；仓库 playbook 和 sk
 ### Skills
 
 Skill 是 harness 原生加载的 agent 指令（带 `name` 和 `description` frontmatter 的 `SKILL.md`）。
-Foundry 内置 `merge-risk` skill，自动 PR 评审用它给出 low/medium/high 的合并风险；还内置
-`resolve-merge-conflicts` skill，agent 用它在不把整个文件读入上下文的情况下检查和解决 merge、
-rebase 或 cherry-pick 冲突。Onboarding 会把每个内置 skill 复制到 `.claude/skills/<name>/SKILL.md`
-和 `.opencode/skills/<name>/SKILL.md`，因此 recipe PR 会带上它们。会话从这两个目录加载 skill：
-Claude Code 只启用仓库 `.claude/skills` 下找到的 skill 名称（绝不加载机器上的用户或插件 skill），
-OpenCode 则被指向这两个路径。
+Foundry 内置 `code-review` skill（评审者据此执行评审并分类问题）、`merge-risk` skill（自动 PR 评审
+用它给出 low/medium/high 的合并风险），以及 `resolve-merge-conflicts` skill（agent 用它在不把整个
+文件读入上下文的情况下检查和解决 merge、rebase 或 cherry-pick 冲突）。Onboarding 会把每个内置 skill
+复制到 `.claude/skills/<name>/SKILL.md` 和 `.opencode/skills/<name>/SKILL.md`，因此 recipe PR 会带上
+它们。会话从这两个目录加载 skill：Claude Code 只启用仓库 `.claude/skills` 下找到的 skill 名称（绝不
+加载机器上的用户或插件 skill），OpenCode 则被指向这两个路径。
 
 Onboarding 之后，可在仓库根目录安装或更新：
 

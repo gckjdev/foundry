@@ -10,6 +10,7 @@ function tempRepo(): string {
 }
 
 const HEADINGS: Record<string, string> = {
+  "code-review": "# Code review",
   "merge-risk": "# Merge risk",
   "resolve-merge-conflicts": "# Resolve merge conflicts",
 };
@@ -28,7 +29,7 @@ describe("installSkills", () => {
         expect(content).toContain(HEADINGS[name]!);
       }
     }
-    expect(installed[0]!.paths).toEqual(SKILL_DIRS.map((dir) => join(dir, "merge-risk", "SKILL.md")));
+    expect(installed[0]!.paths).toEqual(SKILL_DIRS.map((dir) => join(dir, PLAYBOOK_SKILLS[0], "SKILL.md")));
   });
 
   it("installs only the named skills", async () => {
@@ -36,6 +37,7 @@ describe("installSkills", () => {
     const installed = await installSkills(cwd, ["merge-risk"]);
     expect(installed).toHaveLength(1);
     expect(existsSync(join(cwd, ".claude/skills/merge-risk/SKILL.md"))).toBe(true);
+    expect(existsSync(join(cwd, ".claude/skills/code-review/SKILL.md"))).toBe(false);
   });
 
   it("rejects an unknown skill name before writing anything", async () => {

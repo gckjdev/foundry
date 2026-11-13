@@ -31,10 +31,11 @@ file in `.foundry/skills/` is appended after that.
 ### Skills
 
 Skills are agent instructions the harness loads natively (a `SKILL.md` with `name` and
-`description` frontmatter). Foundry ships the `merge-risk` skill, which the automatic PR reviewer
-uses to report a low/medium/high merge risk, and `resolve-merge-conflicts`, which agents use to
-inspect and resolve a conflicted merge, rebase or cherry-pick without loading whole files into
-context. Onboarding copies every built-in skill into `.claude/skills/<name>/SKILL.md` and
+`description` frontmatter). Foundry ships the `code-review` skill, which the reviewer follows to run
+the review and classify findings, the `merge-risk` skill, which the automatic PR reviewer uses to
+report a low/medium/high merge risk, and `resolve-merge-conflicts`, which agents use to inspect and
+resolve a conflicted merge, rebase or cherry-pick without loading whole files into context. Onboarding
+copies every built-in skill into `.claude/skills/<name>/SKILL.md` and
 `.opencode/skills/<name>/SKILL.md`, so the recipe PR carries them. A session loads skills from those
 folders: Claude Code enables exactly the skill names found under the repo's `.claude/skills` (never
 the machine's user or plugin skills), and OpenCode is pointed at both paths.
