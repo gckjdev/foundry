@@ -280,6 +280,13 @@ export class Daemon {
         while (!this.stopped && this.accepting.ok && this.running.size < this.opts.maxConcurrency) {
           const job = await this.opts.api.claim();
           if (!job) break;
+          if (this.running.has(job.id)) {
+            // The control plane re-queued a job this daemon is still driving (a heartbeat or
+            // claim-response race). A second JobRunner would overwrite the running entry and
+            // clobber the live session's MCP token, so keep the session that is already working.
+            this.logger.warn("ignoring duplicate claim for a running job", { jobId: job.id });
+            continue;
+          }
           this.logger.info("job claimed", {
             jobId: job.id,
             resumeMode: job.resumeMode,
@@ -291,6 +298,9 @@ export class Daemon {
             .run()
             .catch((err) => this.logger.error("job crashed", { jobId: job.id, ...errorFields(err) }))
             .finally(() => {
+              // Only clear the entry if it is still this runner: a stale JobRunner finishing late
+              // must not drop a newer one that was claimed for the same job.
+              if (this.running.get(job.id)?.runner !== runner) return;
               this.running.delete(job.id);
               this.updateInhibitor();
               void this.claimLoop();

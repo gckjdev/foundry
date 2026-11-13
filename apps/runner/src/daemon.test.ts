@@ -4,9 +4,10 @@ import { join } from "node:path";
 import { FakeHarness } from "@foundry/harness-core";
 import type { OsAdapter } from "@foundry/os-adapters";
 import { LAPTOP_DEFAULT_SCHEDULE, noopLogger, parseRecipeYaml } from "@foundry/shared";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { applyScheduleArgs } from "./config";
 import { Daemon } from "./daemon";
+import { JobRunner } from "./job-runner";
 import { checkRecipe, depBinary } from "./readiness";
 import { scrub } from "./scrub";
 import {
@@ -163,6 +164,38 @@ describe("Daemon", () => {
       0,
     );
     await daemon.stop();
+  });
+
+  it("ignores a duplicate claim for a job it is already running", async () => {
+    const api = new RecordingControlPlane();
+    const job = claimedJob({ id: "eeeeeeee-0000-0000-0000-000000000000", branch: "foundry/e" });
+    // The control plane re-queues and hands back the same job while the first session is live.
+    api.claimQueue.push(job, job);
+    const harness = new FakeHarness("claude-code", [{ act: () => new Promise(() => {}) }]);
+    const daemon = new Daemon({
+      api,
+      os: fakeOs({ ac: true }),
+      harnesses: { "claude-code": harness },
+      dataDir: mkdtempSync(join(tmpdir(), "foundry-daemon-")),
+      maxConcurrency: 2,
+      schedule: LAPTOP_DEFAULT_SCHEDULE,
+      minFreeDiskMb: 1_000,
+      mcpCommand: { command: "foundry", args: ["mcp"] },
+      socketPath: testSocketPath(),
+      heartbeatMs: 60_000,
+      logger: noopLogger,
+    });
+    // Count JobRunner sessions started from claims (the harness may still be in setup).
+    const runs = vi.spyOn(JobRunner.prototype, "run");
+    try {
+      await daemon.start();
+      await until(() => api.claimQueue.length === 0);
+      expect(runs).toHaveBeenCalledTimes(1);
+      expect(daemon.running.size).toBe(1);
+    } finally {
+      runs.mockRestore();
+      await daemon.stop();
+    }
   });
 
   it("starts before the readiness check finishes and reports readiness in the background", async () => {

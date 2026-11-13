@@ -494,6 +494,30 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
     expect((await getJob(env.ctx, claimed.id)).status).toBe("triage");
   });
 
+  it("revokes a job it just requeued even though the runner did not report it", async () => {
+    const { team, repo } = await seedTeam(env);
+    const runner = await seedRunner(env, team.id, repo.id, { name: "alice-mbp" });
+    env.gh.addIssue("acme/app", { number: 22, title: "Dropped but still running" });
+    await deliver(env, "issues", issueLabeledPayload({ number: 22, title: "Dropped but still running" }));
+    const claimed = (await claimJob(env.ctx, runner))!;
+
+    env.clock.advance(DROPPED_JOB_GRACE_MS + 1);
+    const hb = await heartbeat(env.ctx, runner, {
+      cpu: 10,
+      memMb: 32000,
+      diskFreeMb: 100000,
+      onAcPower: true,
+      accepting: true,
+      runningJobIds: [],
+      harnesses: [{ id: "claude-code", installed: true, authOk: true }],
+      maxConcurrency: 1,
+      version: "0.1.0",
+    });
+    // The runner did not report it, but it may still hold a session: tell it to stop.
+    expect(hb.revokedJobIds).toEqual([claimed.id]);
+    expect((await getJob(env.ctx, claimed.id)).status).toBe("queued");
+  });
+
   it("auto-merges when every gate rule passes, otherwise hands over with routed reviewers", async () => {
     const policy = `merge: merge_when_confident\nrisk_rules:\n  - name: migrations\n    paths: ["db/migrations/**"]\n    reviewers: ["@acme/dba", "carol"]\n`;
     const { team, repo } = await seedTeam(env, { policyYaml: policy });
