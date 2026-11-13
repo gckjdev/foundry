@@ -160,20 +160,25 @@ export async function messageAction(form: FormData): Promise<MessageResult> {
   return { ok: true };
 }
 
+export type JobLimitsResult = { ok: true } | { ok: false; error: string };
+
 /** The Job limits form saves both limits together; an empty field clears that override. */
-export async function jobLimitsAction(form: FormData) {
+export async function jobLimitsAction(form: FormData): Promise<JobLimitsResult> {
   const { ctx, team, job } = await teamJob(str(form, "jobId"));
   const minutesRaw = str(form, "maxMinutes");
   const costRaw = str(form, "maxCost");
   const minutes = minutesRaw === "" ? null : Number(minutesRaw);
   const cost = costRaw === "" ? null : Number(costRaw);
   // All-or-nothing: an invalid field leaves both saved values untouched.
-  if (minutes !== null && (!Number.isInteger(minutes) || minutes < 1)) return;
-  if (cost !== null && (!Number.isFinite(cost) || cost <= 0)) return;
+  if (minutes !== null && (!Number.isInteger(minutes) || minutes < 1))
+    return { ok: false, error: "Max execution time must be a whole number of at least 1 minute." };
+  if (cost !== null && (!Number.isFinite(cost) || cost <= 0))
+    return { ok: false, error: "Max cost must be greater than $0." };
   await setJobMaxMinutes(ctx, team.id, job.id, minutes);
   await setJobMaxCost(ctx, team.id, job.id, cost);
   revalidatePath(`/jobs/${job.id}`);
   revalidatePath(`/jobs/${job.id}/configuration`);
+  return { ok: true };
 }
 
 export async function retryAction(form: FormData) {
