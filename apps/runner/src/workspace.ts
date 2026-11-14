@@ -75,7 +75,7 @@ export class Workspace {
   }) {
     const mirror = await this.ensureMirror(opts.fullName, opts.token);
     const path = this.worktreePath(opts.jobId);
-    if (existsSync(path)) await this.removeWorktree(opts.fullName, opts.jobId);
+    await this.removeWorktree(opts.fullName, opts.jobId);
     await mkdir(join(this.root, "worktrees"), { recursive: true });
     const start = (await this.remoteBranchExists(mirror, opts.branch))
       ? `origin/${opts.branch}`
@@ -103,7 +103,7 @@ export class Workspace {
   }): Promise<string> {
     const mirror = opts.mirror ?? (await this.ensureMirror(opts.fullName, opts.token));
     const path = this.worktreePath(opts.id);
-    if (existsSync(path)) await this.removeWorktree(opts.fullName, opts.id);
+    await this.removeWorktree(opts.fullName, opts.id);
     await mkdir(join(this.root, "worktrees"), { recursive: true });
     await git(["worktree", "prune"], { cwd: mirror });
     await git(["worktree", "add", "--force", "--detach", path, opts.commit ?? `origin/${opts.branch}`], {

@@ -912,4 +912,45 @@ describe("JobRunner", () => {
     // The reviewer worked in a throwaway checkout, not the job worktree.
     expect(existsSync(join(dataDir, "worktrees", `${job.id}-pr-review`))).toBe(false);
   });
+
+  it("does not create a job worktree for the post-PR review pass", async () => {
+    const createWorktree = vi.spyOn(Workspace.prototype, "createWorktree");
+    const headSha = gitIn(join(fixture.root, "acme/app.git"), "rev-parse", "main");
+    const job = claimedJob({
+      id: "99999999-0000-0000-0000-000000000000",
+      resumeStage: "pr_review",
+      resumeMode: "portable",
+      prReview: {
+        prNumber: 9,
+        url: "https://github.com/acme/app/pull/9",
+        headSha,
+        ciFailures: [],
+      },
+    });
+    const harness = new FakeHarness("claude-code", [
+      {
+        costUsd: 0.03,
+        act: async ({ env }) => {
+          const reply = await agentTools(env)("review", {
+            verdict: "approve",
+            summary: "LGTM",
+            risk: { level: "low", summary: "A small change." },
+            findings: [],
+          });
+          expect(reply.isError).toBeFalsy();
+        },
+      },
+    ]);
+
+    try {
+      expect(await new JobRunner(deps(harness), job).run()).toBe("pr_reviewed");
+      // The post-PR review reads from a detached checkout of the PR head; it must not check the
+      // job branch out into worktrees/<jobId>, which would race the ticket run's cleanup.
+      expect(createWorktree).not.toHaveBeenCalled();
+      expect(api.named("submitPrReview")[0]!.body).toMatchObject({ verdict: "approve" });
+      expect(existsSync(join(dataDir, "worktrees", job.id))).toBe(false);
+    } finally {
+      createWorktree.mockRestore();
+    }
+  });
 });
