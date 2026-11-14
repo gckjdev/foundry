@@ -303,7 +303,12 @@ export class JobRunner {
 
     const local = deps.localJobs.get(job.id);
     const token = await this.token();
-    if (job.resumeMode === "sticky" && local && existsSync(local.worktree)) {
+    const postPrReview = job.resumeStage === "pr_review";
+    if (postPrReview) {
+      // The post-PR review reads from a detached checkout of the PR head in runPrReview; it never
+      // needs the job's own branch worktree, and creating one races the ticket run's cleanup.
+      this.cwd = "";
+    } else if (job.resumeMode === "sticky" && local && existsSync(local.worktree)) {
       this.cwd = local.worktree;
       await deps.workspace.ensureMirror(job.repo.fullName, token);
     } else {
@@ -330,15 +335,14 @@ export class JobRunner {
     }
 
     // The post-PR review only reads the branch; it needs neither the recipe nor the job services.
-    const postPrReview = job.resumeStage === "pr_review";
     if (job.kind === "ticket" && !postPrReview) {
       const { recipe, error } = await loadRecipe(this.cwd);
       if (!recipe) throw new FailJob(error ?? "no recipe");
       this.recipe = recipe;
     } else {
-      this.recipe = (await loadRecipe(this.cwd)).recipe;
+      this.recipe = postPrReview ? null : (await loadRecipe(this.cwd)).recipe;
     }
-    this.policy = job.kind === "ticket" ? await loadPolicy(this.cwd) : DEFAULT_POLICY;
+    this.policy = job.kind === "ticket" && !postPrReview ? await loadPolicy(this.cwd) : DEFAULT_POLICY;
     this.maxJobMinutes = effectiveMaxJobMinutes(job.maxJobMinutes, this.policy);
     this.maxCostUsd = effectiveMaxCostUsd(job.maxCostUsd, this.policy);
 
@@ -939,15 +943,18 @@ export class JobRunner {
       commit: context.headSha,
       token,
     });
+    // The reviewer's permissions are built from the repo's policy; the job worktree was not
+    // checked out for this pass, so read the policy from the detached PR-head checkout instead.
+    this.policy = await loadPolicy(dir);
     this.pendingReview = null;
     const reviewToken = this.deps.tools.register(reviewKey, (tool, args) => this.onReviewTool(tool, args));
     let session: HarnessSession | null = null;
     try {
       const mcpServers = this.mcpServersFor(reviewKey, reviewToken);
-      const repo = await loadPlaybookFiles(this.cwd, []);
+      const repo = await loadPlaybookFiles(dir, []);
       const brief =
         this.job.resumeMode === "portable"
-          ? await fetchBrief(this.cwd, this.jobId, token).catch(() => null)
+          ? await fetchBrief(dir, this.jobId, token).catch(() => null)
           : null;
       const installedSkills = await this.reviewerSkills(dir);
       const { systemPrompt, prompt } = assembleReviewPrompt(

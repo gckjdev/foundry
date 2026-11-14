@@ -1,7 +1,8 @@
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createGitFixture } from "./testing";
 import { remoteUrl, Workspace } from "./workspace";
 
 const prev = {
@@ -68,5 +69,31 @@ describe("ensureMirror", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe("createWorktree", () => {
+  it("clears a leftover directory before checking out the branch", async () => {
+    const fixture = createGitFixture();
+    fixture.seedRepo("acme/app", { "README.md": "# app\n" });
+    process.env.FOUNDRY_GIT_BASE = fixture.base;
+    const workspace = new Workspace(mkdtempSync(join(tmpdir(), "foundry-ws-")));
+    const jobId = "job-1";
+
+    // Simulate a stale directory left by a prior run that git no longer tracks.
+    const path = workspace.worktreePath(jobId);
+    mkdirSync(path, { recursive: true });
+    writeFileSync(join(path, "stale.txt"), "leftover\n");
+
+    const cwd = await workspace.createWorktree({
+      fullName: "acme/app",
+      jobId,
+      branch: "foundry/job-1",
+      defaultBranch: "main",
+    });
+
+    expect(cwd).toBe(path);
+    expect(readFileSync(join(path, "README.md"), "utf8")).toBe("# app\n");
+    expect(() => readFileSync(join(path, "stale.txt"))).toThrow();
   });
 });
