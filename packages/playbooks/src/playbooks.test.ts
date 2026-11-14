@@ -24,7 +24,13 @@ const job = {
 
 describe("built-in skills", () => {
   it("ships every playbook skill with its frontmatter intact", () => {
-    expect([...PLAYBOOK_SKILLS]).toEqual(["code-review", "merge-risk", "show-me", "resolve-merge-conflicts"]);
+    expect([...PLAYBOOK_SKILLS]).toEqual([
+      "code-review",
+      "harness-log",
+      "merge-risk",
+      "show-me",
+      "resolve-merge-conflicts",
+    ]);
     expect(Object.keys(BUILTIN_SKILLS)).toEqual([...PLAYBOOK_SKILLS]);
     for (const name of PLAYBOOK_SKILLS) {
       const markdown = BUILTIN_SKILLS[name]!;
@@ -39,7 +45,7 @@ describe("built-in skills", () => {
     const conflict = BUILTIN_SKILLS["resolve-merge-conflicts"]!;
     expect(conflict).toContain("# Resolve merge conflicts");
     expect(conflict).toContain("--diff-filter=U");
-    // The installer copies a single SKILL.md, so the skill must not depend on helper scripts.
+    // This skill ships no companion files, so it stays a single self-contained SKILL.md.
     expect(conflict).not.toContain("extract_conflict_context.py");
   });
 });
@@ -164,10 +170,20 @@ describe("assemblePrompt", () => {
 describe("skillFiles", () => {
   it("returns every playbook skill for both harness folders", () => {
     const files = skillFiles();
-    expect(files.map((file) => file.path)).toEqual(
+    const md = files.filter((file) => file.path.endsWith("/SKILL.md"));
+    expect(md.map((file) => file.path)).toEqual(
       PLAYBOOK_SKILLS.flatMap((name) => SKILL_DIRS.map((dir) => `${dir}/${name}/SKILL.md`)),
     );
-    expect(files.every((file) => file.content.includes(`name: ${file.name}`))).toBe(true);
+    expect(md.every((file) => file.content.includes(`name: ${file.name}`))).toBe(true);
+  });
+
+  it("ships a skill's companion files alongside its SKILL.md", () => {
+    expect(skillFiles(["harness-log"]).map((file) => file.path)).toEqual([
+      ".claude/skills/harness-log/SKILL.md",
+      ".opencode/skills/harness-log/SKILL.md",
+      ".claude/skills/harness-log/extract-conversation.mjs",
+      ".opencode/skills/harness-log/extract-conversation.mjs",
+    ]);
   });
 
   it("returns just the named skill and rejects unknown names", () => {
