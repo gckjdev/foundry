@@ -25,7 +25,7 @@ secret scrubbing, playbook/repo files, and the CLI.
 - Security: `scrub`, `secretEnvValues` ([scrub.ts]).
 - Brief/parking: `pushBrief`, `fetchBrief` ([brief.ts]); `collectGarbage`, `PARKED_TTL_MS` ([gc.ts]).
 - MCP bridge: `ToolServer`, `ToolHandler` ([tool-server.ts]); skills `installSkills`, `installedSkillNames`, `SKILL_DIRS` ([skills.ts]); harness factory `defaultHarnesses` ([harnesses.ts]); `smokeTest` ([smoke.ts]).
-- CLI: `main`, `selfCommand` ([cli.ts]); `index.ts` re-exports `api`, `daemon`, `job-runner`, `ports`, `skills`, `state`, `testing`, `tool-server`, `workspace` ([index.ts:index]).
+- CLI: `main`, `selfCommand`, `joinDeniedMessage` ([cli.ts]); `index.ts` re-exports `api`, `daemon`, `job-runner`, `ports`, `skills`, `state`, `testing`, `tool-server`, `workspace` ([index.ts:index]).
 - Test doubles shipped for the e2e suite: `RecordingControlPlane`, `createGitFixture`, `claimedJob`, `TEST_RECIPE`, `agentTools`, `testSocketPath` ([testing.ts]).
 
 ## Invariants

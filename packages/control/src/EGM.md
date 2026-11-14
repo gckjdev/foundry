@@ -46,7 +46,7 @@ Public entry points are re-exported by `[index.ts]`. Notable symbols by file:
 - `runnerStage` moves to a requeue state, records `resumeStage`, and opens the sticky window `[runner-api.ts:runnerStage]`.
 - `heartbeat` requeues dropped runners' jobs and returns revoked/keep/jobLimits `[runner-api.ts:heartbeat]`.
 - The worker ticks every `SWEEP_INTERVAL_MS = 30_000`; a job with no heartbeat for `DROPPED_JOB_GRACE_MS = 2 * HEARTBEAT_INTERVAL_MS` is dropped `[sweeper.ts][sweeper.ts:DROPPED_JOB_GRACE_MS]`.
-- Join tokens are prefixed `fdj_`, live 7 days; realtime tokens live 1 hour `[runners.ts:createJoinToken]`.
+- Join tokens are prefixed `fdj_`, live 7 days; realtime tokens live 1 hour `[runners.ts:createJoinToken]`. A rejected join says whether the token expired or is invalid, and only reports expiry after the signature verifies `[runners.ts:joinRunner][tokens.ts:verifyTokenDetailed]`.
 
 ## Side Effects
 

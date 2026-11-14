@@ -8,7 +8,7 @@ import {
   randomToken,
   sha256,
   signToken,
-  verifyToken,
+  verifyTokenDetailed,
 } from "@foundry/shared";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import type { ControlContext } from "./context";
@@ -39,8 +39,17 @@ export function createJoinToken(ctx: ControlContext, teamId: string, userId: str
 }
 
 export async function joinRunner(ctx: ControlContext, req: JoinRequest) {
-  const claims = verifyToken<JoinClaims>(req.joinToken.replace(/^fdj_/, ""), ctx.secret, ctx.now().getTime());
-  if (claims?.kind !== "join") throw new UnauthorizedError("invalid or expired join token");
+  const verification = verifyTokenDetailed<JoinClaims>(
+    req.joinToken.replace(/^fdj_/, ""),
+    ctx.secret,
+    ctx.now().getTime(),
+  );
+  if (!verification.ok)
+    throw new UnauthorizedError(
+      verification.reason === "expired" ? "join token expired" : "join token is invalid",
+    );
+  const claims = verification.claims;
+  if (claims.kind !== "join") throw new UnauthorizedError("join token is invalid");
   const runnerToken = randomToken("fdr");
   const values = {
     teamId: claims.teamId,
