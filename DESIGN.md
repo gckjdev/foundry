@@ -402,6 +402,12 @@ components:
     typography: "{typography.body-sm}"
     rounded: "{rounded.sm}"
     padding: 10px
+  toast:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.on-background}"
+    typography: "{typography.body-md}"
+    rounded: "{rounded.sm}"
+    padding: 12px
 ```
 
 ### Shell and navigation
@@ -437,6 +443,16 @@ Pills carry the job and runner vocabulary. Default is `on-background-variant`; l
 (with its dot pulsing); info uses `secondary`; success, warning, and error use their semantic tokens.
 The pill shape and dot never change — only the text color. Semantic colors are never used as a pill
 background.
+
+### Toasts
+
+A toast is the panel's transient result channel: a raised `surface`, 6px radius, 12px padding, and
+a 1px border tinted with its semantic tone (success, warning, error, or steel for neutral
+information). The title is `body-md` at 500 weight; an optional description is `body-sm` in
+`on-background-variant`. The tone colors the title and border only — never fill the surface with it.
+Toasts stack bottom-right, never take focus, announce through a persistent `aria-live="polite"`
+region, dismiss after five seconds, and stay open while hovered or focused. Enter with a 200ms
+fade and 6px lift; drop the animation under `prefers-reduced-motion`.
 
 ### Data display
 

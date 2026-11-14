@@ -1,9 +1,8 @@
 import { jobDetail, repoPolicy } from "@foundry/control";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { usd } from "@/components/status";
 import { requireTeam } from "@/server/session";
-import { jobLimitsAction } from "../../../../actions";
+import { JobLimitsForm } from "./job-limits-form";
 import { jobLimitValues } from "./limits";
 
 export default async function JobConfigurationPage({ params }: { params: Promise<{ id: string }> }) {
@@ -31,32 +30,16 @@ export default async function JobConfigurationPage({ params }: { params: Promise
       <div className="grid grid-2" style={{ alignItems: "start" }}>
         <section className="card">
           <h2 style={{ marginBottom: 10 }}>Job limits</h2>
-          <form key={limitsKey} action={jobLimitsAction} className="stack">
-            <input type="hidden" name="jobId" value={job.id} />
-            <label>
-              Max execution time (minutes)
-              <input name="maxMinutes" type="number" min="1" step="1" defaultValue={maxJobMinutes} />
-            </label>
-            <div className="dim small">
-              {job.maxJobMinutes === null
-                ? `Using the repo default (${policyMaxMinutes} minutes).`
-                : "Custom for this job."}{" "}
-              The runner stops the job when it runs over. Changes apply to a running job too.
-            </div>
-            <label>
-              Max cost (USD)
-              <input name="maxCost" type="number" min="0.01" step="0.01" defaultValue={maxCostUsd} />
-            </label>
-            <div className="dim small">
-              {job.maxCostUsd === null
-                ? `Using the repo default (${usd(policyMaxCost)}).`
-                : "Custom for this job."}{" "}
-              The runner stops the job when it spends more. Changes apply to a running job too.
-            </div>
-            <div>
-              <button type="submit">Save</button>
-            </div>
-          </form>
+          <JobLimitsForm
+            jobId={job.id}
+            limitsKey={limitsKey}
+            maxJobMinutes={maxJobMinutes}
+            maxCostUsd={maxCostUsd}
+            customMaxMinutes={job.maxJobMinutes !== null}
+            customMaxCost={job.maxCostUsd !== null}
+            policyMaxMinutes={policyMaxMinutes}
+            policyMaxCost={policyMaxCost}
+          />
         </section>
       </div>
     </>

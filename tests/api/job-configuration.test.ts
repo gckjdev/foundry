@@ -52,7 +52,7 @@ async function submit(
   form.set("maxMinutes", overrides.maxMinutes ?? String(shown.maxJobMinutes));
   form.set("maxCost", overrides.maxCost ?? String(shown.maxCostUsd));
   const { jobLimitsAction } = await import("@/app/actions");
-  await jobLimitsAction(form);
+  return jobLimitsAction(form);
 }
 
 describe.skipIf(!TEST_DATABASE_URL)("job configuration page", () => {
@@ -105,7 +105,8 @@ describe.skipIf(!TEST_DATABASE_URL)("job configuration page", () => {
   });
 
   it("saves both limits with the single Save button", async () => {
-    await submit(env, teamId, jobId, { maxMinutes: "90", maxCost: "18.5" });
+    const result = await submit(env, teamId, jobId, { maxMinutes: "90", maxCost: "18.5" });
+    expect(result).toEqual({ ok: true });
 
     const shown = await shownLimits(env, teamId, jobId);
     expect(shown.maxJobMinutes).toBe(90);
@@ -126,8 +127,15 @@ describe.skipIf(!TEST_DATABASE_URL)("job configuration page", () => {
 
   it("keeps both saved values when an invalid value is submitted", async () => {
     await submit(env, teamId, jobId, { maxMinutes: "90", maxCost: "18.5" });
-    await submit(env, teamId, jobId, { maxMinutes: "1.5", maxCost: "25" });
-    await submit(env, teamId, jobId, { maxMinutes: "0" });
+    const fractional = await submit(env, teamId, jobId, { maxMinutes: "1.5", maxCost: "25" });
+    expect(fractional).toEqual({
+      ok: false,
+      error: "Max execution time must be a whole number of at least 1 minute.",
+    });
+    const zero = await submit(env, teamId, jobId, { maxMinutes: "0" });
+    expect(zero.ok).toBe(false);
+    const zeroCost = await submit(env, teamId, jobId, { maxCost: "0" });
+    expect(zeroCost).toEqual({ ok: false, error: "Max cost must be greater than $0." });
 
     const shown = await shownLimits(env, teamId, jobId);
     expect(shown.maxJobMinutes).toBe(90);
