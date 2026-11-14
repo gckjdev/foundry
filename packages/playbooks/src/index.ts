@@ -12,8 +12,8 @@ import feature from "./playbooks/feature.md" with { type: "text" };
 import onboarding from "./playbooks/onboarding.md" with { type: "text" };
 import reviewer from "./playbooks/reviewer.md" with { type: "text" };
 import codeReviewSkill from "./skills/code-review/SKILL.md" with { type: "text" };
-import harnessLogScript from "./skills/harness-log/extract-conversation.mjs" with { type: "text" };
 import harnessLogSkill from "./skills/harness-log/SKILL.md" with { type: "text" };
+import harnessLogScript from "./skills/harness-log/scripts/extract-conversation.mjs" with { type: "text" };
 import mergeRiskSkill from "./skills/merge-risk/SKILL.md" with { type: "text" };
 import resolveMergeConflictsSkill from "./skills/resolve-merge-conflicts/SKILL.md" with { type: "text" };
 import showMeSkill from "./skills/show-me/SKILL.md" with { type: "text" };
@@ -51,7 +51,7 @@ export interface SkillFile {
  * name and written into the skill's directory. `path` is relative to the skill directory.
  */
 export const BUILTIN_SKILL_ASSETS: Record<string, { path: string; content: string }[]> = {
-  "harness-log": [{ path: "extract-conversation.mjs", content: harnessLogScript }],
+  "harness-log": [{ path: "scripts/extract-conversation.mjs", content: harnessLogScript }],
 };
 
 /**
