@@ -81,5 +81,3 @@ conflict.
   state before the operation started.
 - If a conflicting change comes from a dependency update or generated file, check the repository's
   instructions for how that file is produced before hand-editing it.
-
-Adapted from `warpdotdev/common-skills` (MIT): `.agents/skills/resolve-merge-conflicts/SKILL.md`.
