@@ -171,7 +171,22 @@ describe.skipIf(!TEST_DATABASE_URL)("control plane", () => {
         memMb: 1,
         maxConcurrency: 1,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow("join token is invalid");
+    const stale = createJoinToken(env.ctx, team.id, alice.id);
+    env.clock.advance(8 * 24 * 3600 * 1000);
+    await expect(
+      joinRunner(env.ctx, {
+        joinToken: stale,
+        name: "x",
+        kind: "shared",
+        os: "linux",
+        arch: "x64",
+        osVersion: "1",
+        cpu: 1,
+        memMb: 1,
+        maxConcurrency: 1,
+      }),
+    ).rejects.toThrow("join token expired");
   });
 
   it("shows my queued jobs blocked without a runner, and only mine", async () => {

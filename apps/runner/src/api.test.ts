@@ -131,4 +131,24 @@ describe("HttpControlPlane", () => {
       }),
     ).rejects.toBeInstanceOf(ApiError);
   });
+
+  it("keeps the control plane's error text on ApiError", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => json(401, { error: "join token expired" })),
+    );
+    const err = await joinControlPlane("http://localhost:3000", {
+      joinToken: "fdj_x",
+      name: "mbp",
+      kind: "personal",
+      os: "macos",
+      arch: "arm64",
+      osVersion: "15",
+      cpu: 8,
+      memMb: 16000,
+      maxConcurrency: 1,
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err).toMatchObject({ status: 401, detail: "join token expired" });
+  });
 });

@@ -11,7 +11,7 @@ import { PLAYBOOK_SKILLS } from "@foundry/playbooks";
 import { createLogger, parseRecipeYaml, VERSION } from "@foundry/shared";
 import { loadGitHubEnvFromFile } from "@foundry/shared/github-host";
 import { applyHttpProxyEnv, loadHttpProxyFromEnvFile } from "@foundry/shared/proxy";
-import { HttpControlPlane, joinControlPlane } from "./api";
+import { ApiError, HttpControlPlane, joinControlPlane } from "./api";
 import {
   applyRunnerHome,
   applyScheduleArgs,
@@ -84,6 +84,12 @@ async function requireConfig(): Promise<{ config: RunnerConfig; token: string }>
   return { config, token };
 }
 
+/** A rejected join means the token expired or was mistyped; point the user at a fresh one. */
+export function joinDeniedMessage(reason: string, serverUrl: string): string {
+  const panel = `${serverUrl.replace(/\/$/, "")}/runners`;
+  return `${reason}. Create a new join token on the Runners page (${panel}) and run this command again.`;
+}
+
 async function join_(
   positionals: string[],
   values: Record<string, string | boolean | undefined>,
@@ -97,17 +103,24 @@ async function join_(
   const kind = values.shared ? "shared" : ((values.kind as "shared" | "personal" | undefined) ?? "personal");
   const name = (values.name as string | undefined) ?? `${userInfo().username}-${hostname().split(".")[0]}`;
   const maxConcurrency = Number(values.concurrency ?? 1) || 1;
-  const res = await joinControlPlane(serverUrl, {
-    joinToken,
-    name,
-    kind,
-    os: info.os,
-    arch: info.arch,
-    osVersion: info.osVersion,
-    cpu: info.cpu,
-    memMb: info.memMb,
-    maxConcurrency,
-  });
+  let res: Awaited<ReturnType<typeof joinControlPlane>>;
+  try {
+    res = await joinControlPlane(serverUrl, {
+      joinToken,
+      name,
+      kind,
+      os: info.os,
+      arch: info.arch,
+      osVersion: info.osVersion,
+      cpu: info.cpu,
+      memMb: info.memMb,
+      maxConcurrency,
+    });
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401)
+      throw new ApiError(err.status, joinDeniedMessage(err.detail, serverUrl));
+    throw err;
+  }
   await (await os.secrets()).set(TOKEN_SECRET_KEY, res.runnerToken);
   const onLaptop = (await os.onAcPower()) !== null;
   const existing = loadConfig();
@@ -385,5 +398,9 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
 }
 
 if (import.meta.main) {
-  main().catch((err) => fail(String(err?.stack ?? err)));
+  main().catch((err) => {
+    // A rejected API call already has a user-facing message; a stack trace only hides it.
+    if (err instanceof ApiError) fail(err.message);
+    fail(String(err?.stack ?? err));
+  });
 }

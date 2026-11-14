@@ -18,23 +18,42 @@ export function signToken(payload: object, secret: string): string {
   return `${body}.${sig}`;
 }
 
+export type TokenRejection = "malformed" | "bad-signature" | "expired";
+
+export type TokenVerification<T> = { ok: true; claims: T } | { ok: false; reason: TokenRejection };
+
+/**
+ * Like `verifyToken`, but says why a token was rejected so callers can give the user
+ * actionable advice. The reason is only "expired" once the signature checks out.
+ */
+export function verifyTokenDetailed<T extends { exp: number }>(
+  token: string,
+  secret: string,
+  now = Date.now(),
+): TokenVerification<T> {
+  const [body, sig] = token.split(".");
+  if (!body || !sig) return { ok: false, reason: "malformed" };
+  const expected = createHmac("sha256", secret).update(body).digest();
+  const given = Buffer.from(sig, "base64url");
+  if (given.length !== expected.length || !timingSafeEqual(given, expected))
+    return { ok: false, reason: "bad-signature" };
+  try {
+    const claims = JSON.parse(Buffer.from(body, "base64url").toString()) as T;
+    if (typeof claims.exp !== "number") return { ok: false, reason: "malformed" };
+    if (claims.exp * 1000 < now) return { ok: false, reason: "expired" };
+    return { ok: true, claims };
+  } catch {
+    return { ok: false, reason: "malformed" };
+  }
+}
+
 export function verifyToken<T extends { exp: number }>(
   token: string,
   secret: string,
   now = Date.now(),
 ): T | null {
-  const [body, sig] = token.split(".");
-  if (!body || !sig) return null;
-  const expected = createHmac("sha256", secret).update(body).digest();
-  const given = Buffer.from(sig, "base64url");
-  if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
-  try {
-    const claims = JSON.parse(Buffer.from(body, "base64url").toString()) as T;
-    if (typeof claims.exp !== "number" || claims.exp * 1000 < now) return null;
-    return claims;
-  } catch {
-    return null;
-  }
+  const result = verifyTokenDetailed<T>(token, secret, now);
+  return result.ok ? result.claims : null;
 }
 
 export function randomToken(prefix: string): string {
