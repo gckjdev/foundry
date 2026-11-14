@@ -11,7 +11,7 @@ Repository-level Node.js helper scripts (ESM, `.mjs`) that sit outside the pnpm 
 
 ## Invariants
 
-- `coverage-report.mjs` requires `coverage/coverage-summary.json` at `join(process.cwd(), "coverage/coverage-summary.json")`; on any read/parse error it prints `"Run \`pnpm test:coverage\` first (writes coverage/coverage-summary.json)."` and exits with code `1` (`[coverage-report.mjs:summaryPath, catch]`).
+- `coverage-report.mjs` requires `coverage/coverage-summary.json` under the current working directory; on any read/parse error it prints a hint to run `pnpm test:coverage` first and exits with code `1` (`[coverage-report.mjs:summaryPath, catch]`).
 - `coverage-report.mjs` resolves both input and output paths against `process.cwd()`, so it must be executed from the repository root (`[coverage-report.mjs:summaryPath]`, `[coverage-report.mjs:writeFileSync]`).
 - `coverage-report.mjs` skips the `"total"` key when grouping and uses that key only for the Overall table; every other top-level entry is treated as a file with `statements` / `branches` / `functions` / `lines` metrics (`[coverage-report.mjs:groups loop]`).
 - `coverage-report.mjs` buckets files by the regex `^(packages/[^/]+|apps/[^/]+)` after stripping the cwd prefix; anything else is reduced to its first two path segments (`[coverage-report.mjs:bucket]`).
