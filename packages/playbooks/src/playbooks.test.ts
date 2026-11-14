@@ -181,8 +181,8 @@ describe("skillFiles", () => {
     expect(skillFiles(["harness-log"]).map((file) => file.path)).toEqual([
       ".claude/skills/harness-log/SKILL.md",
       ".opencode/skills/harness-log/SKILL.md",
-      ".claude/skills/harness-log/extract-conversation.mjs",
-      ".opencode/skills/harness-log/extract-conversation.mjs",
+      ".claude/skills/harness-log/scripts/extract-conversation.mjs",
+      ".opencode/skills/harness-log/scripts/extract-conversation.mjs",
     ]);
   });
 

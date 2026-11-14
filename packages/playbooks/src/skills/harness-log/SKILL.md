@@ -20,10 +20,10 @@ An agent harness (a Foundry runner job, or a raw Claude Code SDK session) writes
 
 ## Quick Reference
 
-Run the bundled script, installed next to this SKILL.md (`.claude/skills/harness-log/` for Claude Code, `.opencode/skills/harness-log/` for OpenCode):
+Run the bundled script, installed in this skill's `scripts/` directory (`.claude/skills/harness-log/scripts/` for Claude Code, `.opencode/skills/harness-log/scripts/` for OpenCode):
 
 ```bash
-node .claude/skills/harness-log/extract-conversation.mjs <file|jobId> [flags]
+node .claude/skills/harness-log/scripts/extract-conversation.mjs <file|jobId> [flags]
 ```
 
 | Flag             | Effect                                                                                   |
