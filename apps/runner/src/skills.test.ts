@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BUILTIN_SKILLS, PLAYBOOK_SKILLS } from "@foundry/playbooks";
+import { BUILTIN_SKILL_ASSETS, BUILTIN_SKILLS, PLAYBOOK_SKILLS } from "@foundry/playbooks";
 import { describe, expect, it } from "vitest";
 import { installedSkillNames, installSkills, SKILL_DIRS } from "./skills";
 
@@ -27,6 +27,16 @@ describe("installSkills", () => {
       }
     }
     expect(installed[0]!.paths).toEqual(SKILL_DIRS.map((dir) => join(dir, PLAYBOOK_SKILLS[0], "SKILL.md")));
+    // Companion files (e.g. harness-log's script) are written next to the SKILL.md.
+    for (const dir of SKILL_DIRS) {
+      for (const name of PLAYBOOK_SKILLS) {
+        for (const asset of BUILTIN_SKILL_ASSETS[name] ?? []) {
+          const file = join(cwd, dir, name, asset.path);
+          expect(existsSync(file)).toBe(true);
+          expect(readFileSync(file, "utf8")).toBe(asset.content);
+        }
+      }
+    }
   });
 
   it("installs only the named skills", async () => {
@@ -76,6 +86,12 @@ describe("checked-in skill copies", () => {
       for (const name of PLAYBOOK_SKILLS) {
         const file = join(REPO_ROOT, dir, name, "SKILL.md");
         expect(readFileSync(file, "utf8"), `${dir}/${name}/SKILL.md is stale`).toBe(BUILTIN_SKILLS[name]);
+        for (const asset of BUILTIN_SKILL_ASSETS[name] ?? []) {
+          const assetFile = join(REPO_ROOT, dir, name, asset.path);
+          expect(readFileSync(assetFile, "utf8"), `${dir}/${name}/${asset.path} is stale`).toBe(
+            asset.content,
+          );
+        }
       }
     }
   });

@@ -12,6 +12,8 @@ import feature from "./playbooks/feature.md" with { type: "text" };
 import onboarding from "./playbooks/onboarding.md" with { type: "text" };
 import reviewer from "./playbooks/reviewer.md" with { type: "text" };
 import codeReviewSkill from "./skills/code-review/SKILL.md" with { type: "text" };
+import harnessLogScript from "./skills/harness-log/extract-conversation.mjs" with { type: "text" };
+import harnessLogSkill from "./skills/harness-log/SKILL.md" with { type: "text" };
 import mergeRiskSkill from "./skills/merge-risk/SKILL.md" with { type: "text" };
 import resolveMergeConflictsSkill from "./skills/resolve-merge-conflicts/SKILL.md" with { type: "text" };
 import showMeSkill from "./skills/show-me/SKILL.md" with { type: "text" };
@@ -19,13 +21,20 @@ import showMeSkill from "./skills/show-me/SKILL.md" with { type: "text" };
 /** Skills that ship with Foundry and can be installed into a repo's harness skill folders. */
 export const BUILTIN_SKILLS: Record<string, string> = {
   "code-review": codeReviewSkill,
+  "harness-log": harnessLogSkill,
   "merge-risk": mergeRiskSkill,
   "show-me": showMeSkill,
   "resolve-merge-conflicts": resolveMergeConflictsSkill,
 };
 
 /** Skills the onboarding PR installs into a repo. */
-export const PLAYBOOK_SKILLS = ["code-review", "merge-risk", "show-me", "resolve-merge-conflicts"] as const;
+export const PLAYBOOK_SKILLS = [
+  "code-review",
+  "harness-log",
+  "merge-risk",
+  "show-me",
+  "resolve-merge-conflicts",
+] as const;
 
 /** Harness skill folders a repo can carry. Both use `<dir>/<skill>/SKILL.md`. */
 export const SKILL_DIRS = [".claude/skills", ".opencode/skills"] as const;
@@ -36,6 +45,14 @@ export interface SkillFile {
   path: string;
   content: string;
 }
+
+/**
+ * Extra files a built-in skill ships beside its SKILL.md (e.g. a helper script), keyed by skill
+ * name and written into the skill's directory. `path` is relative to the skill directory.
+ */
+export const BUILTIN_SKILL_ASSETS: Record<string, { path: string; content: string }[]> = {
+  "harness-log": [{ path: "extract-conversation.mjs", content: harnessLogScript }],
+};
 
 /**
  * The files `foundry skills install` writes for `names` (default: every playbook skill).
@@ -49,13 +66,21 @@ export function skillFiles(names: readonly string[] = PLAYBOOK_SKILLS): SkillFil
       `unknown skill${unknown.length > 1 ? "s" : ""}: ${unknown.join(", ")} (known: ${Object.keys(BUILTIN_SKILLS).join(", ")})`,
     );
   }
-  return names.flatMap((name) =>
+  const files = names.flatMap((name) =>
     SKILL_DIRS.map((dir) => ({
       name,
       path: `${dir}/${name}/SKILL.md`,
       content: BUILTIN_SKILLS[name]!,
     })),
   );
+  for (const name of names) {
+    for (const asset of BUILTIN_SKILL_ASSETS[name] ?? []) {
+      for (const dir of SKILL_DIRS) {
+        files.push({ name, path: `${dir}/${name}/${asset.path}`, content: asset.content });
+      }
+    }
+  }
+  return files;
 }
 
 /** A SKILL.md body without its YAML frontmatter, for the fallback copy in a review prompt. */

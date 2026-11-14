@@ -3,10 +3,12 @@ import { defineConfig } from "vitest/config";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 
-const markdownAsText = {
-  name: "markdown-as-text",
+const textAsString = {
+  name: "text-as-string",
   transform(code: string, id: string) {
-    if (id.endsWith(".md")) return { code: `export default ${JSON.stringify(code)};`, map: null };
+    if (id.endsWith(".md") || id.endsWith(".mjs")) {
+      return { code: `export default ${JSON.stringify(code)};`, map: null };
+    }
   },
 };
 
@@ -26,7 +28,7 @@ const nodeTest = {
 
 export default defineConfig({
   root,
-  plugins: [markdownAsText],
+  plugins: [textAsString],
   resolve: { alias: aliases },
   test: {
     ...nodeTest,
@@ -39,7 +41,7 @@ export default defineConfig({
     },
     projects: [
       {
-        plugins: [markdownAsText],
+        plugins: [textAsString],
         resolve: { alias: aliases },
         test: {
           name: "unit",
@@ -49,7 +51,7 @@ export default defineConfig({
         },
       },
       {
-        plugins: [markdownAsText],
+        plugins: [textAsString],
         resolve: { alias: aliases },
         test: {
           name: "api",
@@ -62,7 +64,7 @@ export default defineConfig({
         },
       },
       {
-        plugins: [markdownAsText],
+        plugins: [textAsString],
         resolve: { alias: aliases },
         test: {
           name: "e2e",
