@@ -13,9 +13,9 @@
 //   <file|jobId>  a path to a harness log / transcript, or a job UUID (resolved to the default
 //                 Foundry log path ~/.foundry/jobs/<id>.harness.log).
 
-import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { join } from "node:path";
 
 const MARKER = /^===== (.*) =====$/;
 const DEFAULT_LOG_DIR = join(homedir(), ".foundry", "jobs");
@@ -35,7 +35,9 @@ function parseArgs(argv) {
     else if (!a.startsWith("--")) opts.file = a;
   }
   if (!opts.file) {
-    console.error("usage: extract-conversation.mjs <file|jobId> [--session review|work|<index>|<substr>] [--thinking] [--tool-results] [--max-text N] [--json]");
+    console.error(
+      "usage: extract-conversation.mjs <file|jobId> [--session review|work|<index>|<substr>] [--thinking] [--tool-results] [--max-text N] [--json]",
+    );
     process.exit(2);
   }
   return opts;
@@ -90,32 +92,50 @@ function classifySession(systemPrompt) {
 function truncate(s, n) {
   if (s == null) return "";
   const t = String(s).replace(/\s+/g, " ").trim();
-  return t.length > n ? t.slice(0, n) + "…" : t;
+  return t.length > n ? `${t.slice(0, n)}…` : t;
 }
 
 /** A one-line summary of a tool call's key input, by tool name. */
 function summarizeTool(name, input = {}) {
   switch (name) {
-    case "Skill": return `Skill(${input.skill ?? "?"})`;
-    case "Bash": return truncate(input.command, 120);
-    case "Read": return `Read ${truncate(input.file_path, 100)}`;
-    case "Edit": return `Edit ${truncate(input.file_path, 100)}`;
-    case "Write": return `Write ${truncate(input.file_path, 100)}`;
-    case "Grep": return `Grep ${truncate(input.pattern, 60)} in ${truncate(input.path, 60)}`;
-    case "Glob": return `Glob ${truncate(input.pattern, 80)}`;
-    case "Task": return `Task: ${truncate(input.description ?? input.prompt, 90)}`;
-    case "Agent": return `Agent(${truncate(input.description, 90)})`;
-    case "AskUserQuestion": return `Ask: ${truncate(input.questions?.[0]?.question, 90)}`;
-    case "ToolSearch": return `ToolSearch: ${truncate(input.query, 80)}`;
+    case "Skill":
+      return `Skill(${input.skill ?? "?"})`;
+    case "Bash":
+      return truncate(input.command, 120);
+    case "Read":
+      return `Read ${truncate(input.file_path, 100)}`;
+    case "Edit":
+      return `Edit ${truncate(input.file_path, 100)}`;
+    case "Write":
+      return `Write ${truncate(input.file_path, 100)}`;
+    case "Grep":
+      return `Grep ${truncate(input.pattern, 60)} in ${truncate(input.path, 60)}`;
+    case "Glob":
+      return `Glob ${truncate(input.pattern, 80)}`;
+    case "Task":
+      return `Task: ${truncate(input.description ?? input.prompt, 90)}`;
+    case "Agent":
+      return `Agent(${truncate(input.description, 90)})`;
+    case "AskUserQuestion":
+      return `Ask: ${truncate(input.questions?.[0]?.question, 90)}`;
+    case "ToolSearch":
+      return `ToolSearch: ${truncate(input.query, 80)}`;
     case "mcp__foundry__review":
       return `review: verdict=${input.verdict ?? "?"} risk=${input.risk?.level ?? "?"}`;
-    case "mcp__foundry__stage": return `stage(${input.name ?? input.to ?? input.stage ?? "?"})`;
-    case "mcp__foundry__ask": return `ask: ${truncate(input.prompt, 90)}`;
-    case "mcp__foundry__confidence": return `confidence(${input.level ?? "?"})`;
-    case "mcp__foundry__evidence": return `evidence: ${input.name ?? "?"} (${input.status ?? "?"})`;
-    case "mcp__foundry__plan": return "plan";
-    case "mcp__foundry__run_checks": return "run_checks";
-    default: return name;
+    case "mcp__foundry__stage":
+      return `stage(${input.name ?? input.to ?? input.stage ?? "?"})`;
+    case "mcp__foundry__ask":
+      return `ask: ${truncate(input.prompt, 90)}`;
+    case "mcp__foundry__confidence":
+      return `confidence(${input.level ?? "?"})`;
+    case "mcp__foundry__evidence":
+      return `evidence: ${input.name ?? "?"} (${input.status ?? "?"})`;
+    case "mcp__foundry__plan":
+      return "plan";
+    case "mcp__foundry__run_checks":
+      return "run_checks";
+    default:
+      return name;
   }
 }
 
@@ -125,7 +145,8 @@ function extractMessage(msg) {
   for (const c of msg?.message?.content ?? []) {
     if (c.type === "text" && c.text?.trim()) out.push({ kind: "text", text: c.text.trim() });
     else if (c.type === "tool_use") out.push({ kind: "tool", name: c.name, input: c.input ?? {} });
-    else if (c.type === "thinking" && c.thinking?.trim()) out.push({ kind: "thinking", text: c.thinking.trim() });
+    else if (c.type === "thinking" && c.thinking?.trim())
+      out.push({ kind: "thinking", text: c.thinking.trim() });
   }
   return out;
 }
@@ -172,9 +193,7 @@ for (const sec of sections) {
     } else if (m.type === "user" && opts.toolResults) {
       for (const c of m.message?.content ?? []) {
         if (c.type === "tool_result" && c.content) {
-          const text = Array.isArray(c.content)
-            ? c.content.map((b) => b.text ?? "").join(" ")
-            : c.content;
+          const text = Array.isArray(c.content) ? c.content.map((b) => b.text ?? "").join(" ") : c.content;
           if (text?.trim()) current.items.push({ kind: "user", text: truncate(text, opts.maxText) });
         }
       }

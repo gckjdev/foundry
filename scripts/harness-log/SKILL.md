@@ -1,4 +1,5 @@
 ---
+
 name: harness-log
 description: Use when needing to read or reconstruct a coding agent's conversation — its text messages, tool calls and thinking — from a harness log (*.harness.log) or Claude Code SDK stream-json transcript file.
 ---
@@ -25,13 +26,13 @@ Run the bundled script:
 node scripts/harness-log/extract-conversation.mjs <file|jobId> [flags]
 ```
 
-| Flag | Effect |
-|---|---|
-| `--session <v>` | Restrict to a session by tag (`review`/`work`), a 1-based index, or a worktree-substring |
-| `--thinking` | Include `thinking` blocks (default: hidden) |
-| `--tool-results` | Include tool results, truncated (default: hidden) |
-| `--max-text N` | Truncate long text at N chars (default 600) |
-| `--json` | Emit raw JSON instead of the readable form |
+| Flag             | Effect                                                                                   |
+| ---------------- | ---------------------------------------------------------------------------------------- |
+| `--session <v>`  | Restrict to a session by tag (`review`/`work`), a 1-based index, or a worktree-substring |
+| `--thinking`     | Include `thinking` blocks (default: hidden)                                              |
+| `--tool-results` | Include tool results, truncated (default: hidden)                                        |
+| `--max-text N`   | Truncate long text at N chars (default 600)                                              |
+| `--json`         | Emit raw JSON instead of the readable form                                               |
 
 A job UUID resolves to `~/.foundry/jobs/<id>.harness.log`; otherwise pass a file path.
 
