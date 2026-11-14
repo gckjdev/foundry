@@ -134,6 +134,8 @@ describe.skipIf(!TEST_DATABASE_URL)("job configuration page", () => {
     });
     const zero = await submit(env, teamId, jobId, { maxMinutes: "0" });
     expect(zero.ok).toBe(false);
+    const zeroCost = await submit(env, teamId, jobId, { maxCost: "0" });
+    expect(zeroCost).toEqual({ ok: false, error: "Max cost must be greater than $0." });
 
     const shown = await shownLimits(env, teamId, jobId);
     expect(shown.maxJobMinutes).toBe(90);

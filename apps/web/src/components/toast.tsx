@@ -53,11 +53,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={api}>
       {children}
-      <div className="toasts">
+      {/* Persistent live region so screen readers announce toasts inserted after page load. */}
+      <ul className="toasts" aria-live="polite" aria-atomic="false">
         {items.map((item) => (
           <ToastView key={item.id} item={item} onDismiss={dismiss} />
         ))}
-      </div>
+      </ul>
     </ToastContext.Provider>
   );
 }
@@ -74,10 +75,9 @@ function ToastView({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
   }, [paused, duration, item.id, onDismiss]);
 
   return (
-    <div
+    <li
       className="toast"
       data-tone={item.tone ?? "info"}
-      role="status"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocusCapture={() => setPaused(true)}
@@ -95,6 +95,6 @@ function ToastView({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
       >
         ×
       </button>
-    </div>
+    </li>
   );
 }

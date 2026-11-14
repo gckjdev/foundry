@@ -522,6 +522,9 @@ pre {
   flex-direction: column;
   gap: 8px;
   width: min(360px, calc(100vw - 32px));
+  margin: 0;
+  padding: 0;
+  list-style: none;
   pointer-events: none;
 }
 .toast {
@@ -532,7 +535,7 @@ pre {
   background: var(--bg-raised);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
-  padding: 11px 12px;
+  padding: 12px;
   animation: toast-in 0.2s ease-out both;
 }
 .toast[data-tone="ok"] {

@@ -450,9 +450,9 @@ A toast is the panel's transient result channel: a raised `surface`, 6px radius,
 a 1px border tinted with its semantic tone (success, warning, error, or steel for neutral
 information). The title is `body-md` at 500 weight; an optional description is `body-sm` in
 `on-background-variant`. The tone colors the title and border only — never fill the surface with it.
-Toasts stack bottom-right, never take focus, announce through `role="status"`, dismiss after five
-seconds, and stay open while hovered or focused. Enter with a 200ms fade and 6px lift; drop the
-animation under `prefers-reduced-motion`.
+Toasts stack bottom-right, never take focus, announce through a persistent `aria-live="polite"`
+region, dismiss after five seconds, and stay open while hovered or focused. Enter with a 200ms
+fade and 6px lift; drop the animation under `prefers-reduced-motion`.
 
 ### Data display
 
