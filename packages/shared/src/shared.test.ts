@@ -16,7 +16,7 @@ import { expandRecipeVars, parseRecipeYaml } from "./recipe";
 import { isUiChange, matchRiskRules, splitReviewers } from "./risk";
 import { assertTransition, canTransition, stageLabel } from "./states";
 import { jobBranchName, missingTicketSections, parseLabels, parseTicketSections } from "./ticket";
-import { signToken, verifyToken } from "./tokens";
+import { signToken, verifyToken, verifyTokenDetailed } from "./tokens";
 
 const DIFF = `diff --git a/src/app/page.tsx b/src/app/page.tsx
 --- a/src/app/page.tsx
@@ -218,5 +218,26 @@ describe("brief and tokens", () => {
     expect(verifyToken(t, "s")?.exp).toBeGreaterThan(0);
     expect(verifyToken(t, "other")).toBeNull();
     expect(verifyToken(signToken({ exp: 1 }, "s"), "s")).toBeNull();
+  });
+  it("says why a token was rejected", () => {
+    const now = Date.parse("2026-11-14T00:00:00Z");
+    const exp = Math.floor(now / 1000) + 60;
+    expect(verifyTokenDetailed(signToken({ exp }, "s"), "s", now)).toEqual({
+      ok: true,
+      claims: { exp },
+    });
+    expect(verifyTokenDetailed(signToken({ exp }, "s"), "s", now + 120_000)).toEqual({
+      ok: false,
+      reason: "expired",
+    });
+    expect(verifyTokenDetailed(signToken({ exp }, "other"), "s", now)).toEqual({
+      ok: false,
+      reason: "bad-signature",
+    });
+    expect(verifyTokenDetailed("not-a-token", "s", now)).toEqual({ ok: false, reason: "malformed" });
+    expect(verifyTokenDetailed(signToken({}, "s"), "s", now)).toEqual({
+      ok: false,
+      reason: "malformed",
+    });
   });
 });

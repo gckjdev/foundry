@@ -78,6 +78,8 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** The control plane's error text, without the request URL prefix. */
+    readonly detail = message,
   ) {
     super(message);
   }
@@ -113,7 +115,7 @@ async function request<T>(
   if (!res.ok) {
     const message = (data as { error?: string }).error ?? `${res.status} ${res.statusText}`;
     if (res.status === 409) throw new JobRevokedError(message);
-    throw new ApiError(res.status, `${url}: ${message}`);
+    throw new ApiError(res.status, `${url}: ${message}`, message);
   }
   return schema ? schema.parse(data) : (data as T);
 }

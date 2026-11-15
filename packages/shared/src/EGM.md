@@ -26,7 +26,7 @@ Public entry points are re-exported by `[index.ts:export *]`. Notable symbols by
 - `[scheduler.ts]` — `HEARTBEAT_INTERVAL_MS`, `HEARTBEAT_TIMEOUT_MS`, `STICKY_WINDOW_MS`, `isOnline`, `ineligibility`, `rankRunners`, `shouldClaim`, `scheduleAllows`, `LAPTOP_DEFAULT_SCHEDULE`, `SHARED_DEFAULT_SCHEDULE`.
 - `[states.ts]` — `JOB_STATUSES`, `RUNNER_STAGES`, `RUNNER_STAGE_NAMES`, `TERMINAL_STATUSES`, `RUNNING_STATUSES`, `canTransition`, `assertTransition`, `InvalidTransitionError`, `isRunnerStage`, `nextRunnerStage`, `stageLabel`, `ALL_STAGE_LABELS`, `STATUS_TITLES`, `JobKindSchema`.
 - `[ticket.ts]` — `TRIGGER_LABEL`, `HARNESS_IDS`, `parseLabels`, `parseTicketSections`, `missingTicketSections`, `jobBranchName`.
-- `[tokens.ts]` — `signToken`, `verifyToken`, `randomToken`, `sha256`, type `RealtimeClaims`.
+- `[tokens.ts]` — `signToken`, `verifyToken`, `verifyTokenDetailed`, `randomToken`, `sha256`, types `RealtimeClaims`, `TokenRejection`, `TokenVerification`.
 - `[version.ts]` — `VERSION`.
 
 ## Invariants
@@ -39,7 +39,7 @@ Public entry points are re-exported by `[index.ts:export *]`. Notable symbols by
 - Proxy precedence is `FOUNDRY_HTTP_PROXY` → `HTTPS_PROXY`/`https_proxy` → `HTTP_PROXY`/`http_proxy` → caller fallback → macOS system proxy `[proxy.ts:resolveHttpProxy]`.
 - Loopback hosts (`localhost`, `127.0.0.1`, `::1`) are always excluded from proxying `[proxy.ts:hostMatchesNoProxy]`.
 - Logger fields named `ts`, `level`, `service`, `message` are dropped, so a caller cannot spoof the envelope `[log.ts:RESERVED]`.
-- `verifyToken` compares signatures with `timingSafeEqual` and rejects expired tokens `[tokens.ts:verifyToken]`.
+- `verifyToken` compares signatures with `timingSafeEqual` and rejects expired tokens `[tokens.ts:verifyToken]`; `verifyTokenDetailed` also reports `malformed`, `bad-signature` or `expired`, and only says `expired` once the signature checks out `[tokens.ts:verifyTokenDetailed]`.
 - `priceFor` strips a `provider/` prefix and uses the longest matching key `[pricing.ts:priceFor]`.
 - Scheduling precedence: pinned runner, then a live sticky runner (exclusive), then shared runners, then least-loaded personal runner, tie-broken toward the issue author `[scheduler.ts:rankRunners]`.
 - `DEFAULT_POLICY` disables merge, requires green CI, allows 3 verify loops, 2 review loops, $10 and 400 diff lines `[policy.ts:DEFAULT_POLICY]`.
