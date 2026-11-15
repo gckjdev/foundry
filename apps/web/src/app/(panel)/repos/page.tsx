@@ -1,8 +1,8 @@
 import { syncUnlinkedInstallations, teamReposWithReadiness } from "@foundry/control";
-import { HARNESS_IDS } from "@foundry/shared";
 import { githubInstallUrl } from "@foundry/shared/github-host";
 import { requireTeam } from "@/server/session";
-import { onboardAction, repoSettingsAction, syncReposAction, syncSkillsAction } from "../../actions";
+import { onboardAction, syncReposAction, syncSkillsAction } from "../../actions";
+import { RepoSettingsForm } from "./repo-settings-form";
 
 const ONBOARDING: Record<string, { label: string; tone: string }> = {
   not_started: { label: "not onboarded", tone: "" },
@@ -80,9 +80,9 @@ export default async function Repos({ searchParams }: { searchParams: Promise<Re
       <div className="stack">
         {list.map(({ repo, recipePrUrl, readiness }) => {
           const ob = ONBOARDING[repo.onboardingStatus] ?? ONBOARDING.not_started!;
-          // React resets uncontrolled fields after a form action, and an uncontrolled select
-          // keeps the value it had before the save. Key the form by the saved settings so the
-          // fields remount with the values the action just persisted.
+          // The form fields are uncontrolled, so they keep whatever the browser held until the
+          // component remounts. Key the form by the saved settings so it remounts with the values
+          // the action just persisted instead of stale ones.
           const settingsKey = [
             repo.mergeMode,
             repo.defaultHarness ?? "",
@@ -159,46 +159,14 @@ export default async function Repos({ searchParams }: { searchParams: Promise<Re
                 </div>
               ) : null}
               {role === "admin" ? (
-                <form
+                <RepoSettingsForm
                   key={settingsKey}
-                  action={repoSettingsAction}
-                  className="row"
-                  style={{ marginTop: 10, alignItems: "flex-end" }}
-                >
-                  <input type="hidden" name="repoId" value={repo.id} />
-                  <label>
-                    Merge mode
-                    <select name="mergeMode" defaultValue={repo.mergeMode}>
-                      <option value="off">Off — always hand over</option>
-                      <option value="merge_when_confident">Merge when confident</option>
-                    </select>
-                  </label>
-                  <label>
-                    Default harness
-                    <select name="defaultHarness" defaultValue={repo.defaultHarness ?? ""}>
-                      <option value="">Team default</option>
-                      {HARNESS_IDS.map((h) => (
-                        <option key={h} value={h}>
-                          {h}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Default model
-                    <input
-                      name="defaultModel"
-                      defaultValue={repo.defaultModel ?? ""}
-                      placeholder="team default — deepseek/deepseek-chat"
-                      style={{ width: 300 }}
-                    />
-                  </label>
-                  <label>
-                    GitHub Project ID (optional)
-                    <input name="ghProjectId" defaultValue={repo.ghProjectId ?? ""} placeholder="PVT_…" />
-                  </label>
-                  <button type="submit">Save</button>
-                </form>
+                  repoId={repo.id}
+                  mergeMode={repo.mergeMode}
+                  defaultHarness={repo.defaultHarness}
+                  defaultModel={repo.defaultModel}
+                  ghProjectId={repo.ghProjectId}
+                />
               ) : null}
             </section>
           );

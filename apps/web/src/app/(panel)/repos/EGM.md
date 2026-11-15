@@ -10,12 +10,14 @@ id, and a skills-sync action.
 
 - Default export `Repos({ searchParams })` — calls `requireTeam()`, then `teamReposWithReadiness(ctx, team.id)`; for an empty list and an admin caller it first runs `syncUnlinkedInstallations` ([page.tsx:Repos]).
 - `ONBOARDING` — status label/tone map for `not_started`, `running`, `pr_open`, `done`, `failed` ([page.tsx:ONBOARDING]).
+- Client `RepoSettingsForm({ repoId, mergeMode, defaultHarness, defaultModel, ghProjectId })` — saves all four settings together through `repoSettingsAction` and reports the outcome with `useToast` ([repo-settings-form.tsx:RepoSettingsForm]).
 - Forms submit to `onboardAction`, `repoSettingsAction`, `syncReposAction`, `syncSkillsAction` ([page.tsx:Repos], [actions.ts]).
 
 ## Invariants
 
 - Onboarding button is hidden while a recipe PR is open; it is labeled Retry and sends `restart=1` when onboarding is running or failed ([page.tsx:Repos]).
 - Settings forms are keyed by the saved `mergeMode|defaultHarness|defaultModel|ghProjectId` tuple so uncontrolled selects remount with persisted values ([page.tsx:Repos]).
+- The Save button is disabled and labeled "Saving…" while the action runs, then a toast reports success or failure without stealing focus ([repo-settings-form.tsx:RepoSettingsForm]).
 - The skills PR link is rendered only when `sp.skills` is an absolute `http(s)` URL; user-editable query strings are not echoed as links otherwise ([page.tsx:Repos]).
 - Only admins see Sync from GitHub, Install GitHub App, settings, and skills sync controls ([page.tsx:Repos]).
 - `defaultHarness` options come from `HARNESS_IDS`; the empty option means team default ([page.tsx:Repos]).

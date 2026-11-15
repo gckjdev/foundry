@@ -227,7 +227,10 @@ export async function onboardAction(form: FormData) {
   redirect(`/jobs/${job.id}`);
 }
 
-export async function repoSettingsAction(form: FormData) {
+export type RepoSettingsResult = { ok: true };
+
+/** The Repos settings form saves all four fields together and reports success as a toast. */
+export async function repoSettingsAction(form: FormData): Promise<RepoSettingsResult> {
   const { ctx, repo } = await teamRepo(str(form, "repoId"), true);
   await updateRepoSettings(ctx, repo.id, {
     mergeMode: str(form, "mergeMode") === "merge_when_confident" ? "merge_when_confident" : "off",
@@ -236,6 +239,7 @@ export async function repoSettingsAction(form: FormData) {
     ghProjectId: str(form, "ghProjectId") || null,
   });
   revalidatePath("/repos");
+  return { ok: true };
 }
 
 /** Install or update the built-in skills by opening a PR; the result shows on the Repos page. */
